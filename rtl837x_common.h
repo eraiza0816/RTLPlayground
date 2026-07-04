@@ -87,6 +87,7 @@ struct vlan_tag {
 
 // Store update image after running image
 #define FIRMWARE_UPLOAD_START 0x80000
+#define SFP_EEPROM_BACKUP 0x54000
 
 // Constants for the circular command buffer, the size must be 2^n
 #define CMD_HISTORY_SIZE 0x400
@@ -170,4 +171,11 @@ void sds_write_v(uint8_t sds_id, uint8_t page, uint8_t reg, uint16_t v);
 void sds_config_mac(uint8_t sds, uint8_t mode);
 void sds_config(uint8_t sds, uint8_t mode);
 void handle_sfp(void);
+uint8_t sfp_write_reg(uint8_t slot, uint8_t reg, uint8_t data) __reentrant;
+void sfp_dump_eeprom(uint8_t slot) __reentrant;
+uint8_t sfp_fix_checksum(uint8_t slot) __reentrant;
+uint8_t sfp_eeprom_fix(uint8_t slot) __reentrant;
+uint8_t sfp_save_backup(uint8_t slot) __reentrant;
+uint8_t sfp_restore_backup(uint8_t slot) __reentrant;
+uint8_t sfp_bulk_write(uint8_t slot) __reentrant;
 #endif

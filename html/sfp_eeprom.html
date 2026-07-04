@@ -1,8 +1,15 @@
 <!DOCTYPE html>
 <html>
-  <script src="/main.js"></script>
-  <link rel="stylesheet" href="style.css">
-  <title>FreeSwitchOS SFP EEPROM</title>
+  <style>
+ul { list-style-type: none; margin: 0; padding: 0; width: 12%; height: calc(100% - 50px); position: fixed; top: 50px; overflow: auto; }
+li a { background-color: #aaf; display: block; color: #000; padding: 8px 16px; text-decoration: none; cursor: pointer; }
+li a:hover { background-color: #226; color: white; }
+h1 { color: #226; }
+button { padding: 8px; background-color: #99f; color: #000; border-radius: 15px; cursor: pointer; }
+button:hover { background-color: #226; color: white; }
+select { font-family: monospace; padding: 4px; }
+  </style>
+  <title>SFP EEPROM Editor</title>
   </head>
   <body>
     <nav id="sidebar"></nav>
@@ -13,18 +20,15 @@
         <option value="0">SFP 1</option>
         <option value="1">SFP 2</option>
       </select>
-      <button onclick="loadEeprom()">&#x1F504; Refresh</button>
-      <button onclick="saveBackup()">&#x1F4BE; Save to Flash</button>
-      <button onclick="restoreBackup()">&#x1F4C2; Restore from Flash</button>
-      <button onclick="fixModule()">&#x1F527; Fix 1xCOPPER PAS</button>
-      <button onclick="downloadBin()">&#x2B07; Download .bin</button>
+      <button onclick="loadEeprom()">Refresh</button>
+      <button onclick="downloadBin()">Download .bin</button>
       <input type="file" id="uploadfile" accept=".bin" style="display:none" onchange="uploadBin(this)">
-      <button onclick="document.getElementById('uploadfile').click()">&#x2B06; Upload .bin</button>
+      <button onclick="document.getElementById('uploadfile').click()">Upload .bin</button>
     </div>
     <div id="info" style="margin-top:1em;font-family:monospace"></div>
     <div id="hexdump" style="margin-top:1em;font-family:monospace;font-size:12px"></div>
     <script src="/sfp_eeprom.js"></script>
     </div>
-    <script src="/navigation.js"></script>
+    <script>document.getElementById('sidebar').innerHTML="<ul><li><a href='index.html'>Back to Overview</a></li></ul>";</script>
   </body>
 </html>

@@ -95,12 +95,14 @@ function restoreBackup() {
   sendCmd('sfp ' + (sfpSlot+1) + ' restore', function() { loadEeprom(); });
 }
 
-function fixModule() {
-  if (!confirm('Set byte 3 bit 0 (1xCOPPER PAS) and fix checksum?')) return;
-  sendCmd('sfp ' + (sfpSlot+1) + ' fix', function() { loadEeprom(); });
-}
-
 function downloadBin() {
+  var vendor = '';
+  for (var i = 20; i < 36; i++) vendor += String.fromCharCode(sfpData[i]);
+  vendor = vendor.replace(/\0/g, '').trim().replace(/\s+/g, '_');
+  var pn = '';
+  for (var i = 40; i < 56; i++) pn += String.fromCharCode(sfpData[i]);
+  pn = pn.replace(/\0/g, '').trim().replace(/\s+/g, '_');
+  var name = (vendor ? vendor + '_' : '') + (pn ? pn : 'sfp' + (sfpSlot+1) + '_eeprom') + '.bin';
   var buf = new ArrayBuffer(256);
   var view = new Uint8Array(buf);
   for (var i = 0; i < 256; i++) view[i] = sfpData[i];
@@ -108,7 +110,7 @@ function downloadBin() {
   var url = URL.createObjectURL(blob);
   var a = document.createElement('a');
   a.href = url;
-  a.download = 'sfp' + (sfpSlot+1) + '_eeprom.bin';
+  a.download = name;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -131,6 +133,4 @@ function uploadBin(input) {
   reader.readAsArrayBuffer(file);
 }
 
-window.addEventListener('load', function() {
-  update(function() { loadEeprom(); });
-});
+window.addEventListener('load', function() { loadEeprom(); });

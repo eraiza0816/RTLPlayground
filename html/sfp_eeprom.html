@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+  <script src="/main.js"></script>
+  <link rel="stylesheet" href="style.css">
+  <title>FreeSwitchOS SFP EEPROM</title>
+  </head>
+  <body>
+    <nav id="sidebar"></nav>
+    <div style="margin-left:16%;padding:1px 16px;height:1000px;">
+    <h1>SFP EEPROM Editor</h1>
+    <div id="sfpselect">
+      Slot: <select id="slotsel" onchange="loadEeprom()">
+        <option value="0">SFP 1</option>
+        <option value="1">SFP 2</option>
+      </select>
+      <button onclick="loadEeprom()">&#x1F504; Refresh</button>
+      <button onclick="saveBackup()">&#x1F4BE; Save to Flash</button>
+      <button onclick="restoreBackup()">&#x1F4C2; Restore from Flash</button>
+      <button onclick="fixModule()">&#x1F527; Fix 1xCOPPER PAS</button>
+      <button onclick="downloadBin()">&#x2B07; Download .bin</button>
+      <input type="file" id="uploadfile" accept=".bin" style="display:none" onchange="uploadBin(this)">
+      <button onclick="document.getElementById('uploadfile').click()">&#x2B06; Upload .bin</button>
+    </div>
+    <div id="info" style="margin-top:1em;font-family:monospace"></div>
+    <div id="hexdump" style="margin-top:1em;font-family:monospace;font-size:12px"></div>
+    <script src="/sfp_eeprom.js"></script>
+    </div>
+    <script src="/navigation.js"></script>
+  </body>
+</html>

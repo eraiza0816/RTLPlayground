@@ -682,6 +682,9 @@ void httpd_appcall(void)
 				send_mtu();
 			} else if (is_word(q, "/lag.json")) {
 				send_lag();
+			} else if (is_word(q, "/sfp_eeprom.json")) {
+				parse_short(q + 20);
+				send_sfp_eeprom(short_parsed);
 			} else if (is_word(q, "/vlanlist")) {
 				send_vlanlist();
 			} else if (is_word(q, "/config")) {

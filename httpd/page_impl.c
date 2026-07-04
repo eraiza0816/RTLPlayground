@@ -185,6 +185,18 @@ void send_sfp_info(uint8_t sfp)
 	}
 }
 
+void send_sfp_eeprom(uint8_t slot)
+{
+	slen = strtox(outbuf, HTTP_RESPONCE_JSON);
+	slen += strtox(outbuf + slen, "{\"slot\":");
+	itoa_html(slot);
+	slen += strtox(outbuf + slen, ",\"data\":\"");
+	for (uint16_t i = 0; i < 256; i++) {
+		byte_to_html(sfp_read_reg(slot, (uint8_t)i));
+	}
+	slen += strtox(outbuf + slen, "\"}");
+}
+
 
 void sfp_send_data(uint8_t slot, uint8_t reg, uint8_t len)
 {

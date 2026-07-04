@@ -27,6 +27,12 @@ static void gpio_set(uint8_t pin, uint8_t hi) __reentrant
 	}
 }
 
+static void i2c_delay(void)
+{
+	__xdata uint8_t i;
+	for (i = 0; i < 100; i++);
+}
+
 static uint8_t gpio_read(uint8_t pin) __reentrant
 {
 	if (pin >= 32) reg_read_m(RTL837X_REG_GPIO_32_63_INPUT);
@@ -46,55 +52,80 @@ uint8_t sfp_write_reg(uint8_t slot, uint8_t reg, uint8_t data) __reentrant
 	gpio_mux_setup(scl);
 	gpio_mux_setup(sda);
 	gpio_set(scl, 1);
+	i2c_delay();
 	gpio_set(sda, 1);
+	i2c_delay();
 
 	gpio_set(sda, 0);
+	i2c_delay();
 	gpio_set(scl, 0);
+	i2c_delay();
 
 	err = 0;
 	for (mask = 0x80; mask; mask >>= 1) {
 		gpio_set(sda, !(0xA0 & mask));
+		i2c_delay();
 		gpio_set(scl, 1);
+		i2c_delay();
 		gpio_set(scl, 0);
+		i2c_delay();
 	}
 	gpio_set(sda, 1);
+	i2c_delay();
 	gpio_set(scl, 1);
+	i2c_delay();
 	if (gpio_read(sda)) err = 1;
 	gpio_set(scl, 0);
+	i2c_delay();
 
 	if (!err) for (mask = 0x80; mask; mask >>= 1) {
 		gpio_set(sda, !(reg & mask));
+		i2c_delay();
 		gpio_set(scl, 1);
+		i2c_delay();
 		gpio_set(scl, 0);
+		i2c_delay();
 	}
 	if (!err) {
 		gpio_set(sda, 1);
+		i2c_delay();
 		gpio_set(scl, 1);
+		i2c_delay();
 		if (gpio_read(sda)) err = 1;
 		gpio_set(scl, 0);
+		i2c_delay();
 	}
 
 	if (!err) for (mask = 0x80; mask; mask >>= 1) {
 		gpio_set(sda, !(data & mask));
+		i2c_delay();
 		gpio_set(scl, 1);
+		i2c_delay();
 		gpio_set(scl, 0);
+		i2c_delay();
 	}
 	if (!err) {
 		gpio_set(sda, 1);
+		i2c_delay();
 		gpio_set(scl, 1);
+		i2c_delay();
 		if (gpio_read(sda)) err = 1;
 		gpio_set(scl, 0);
+		i2c_delay();
 	}
 
 	gpio_set(sda, 0);
+	i2c_delay();
 	gpio_set(scl, 1);
+	i2c_delay();
 	gpio_set(sda, 1);
+	i2c_delay();
 
 	for (i = 0; i < 4; i++) sfr_data[i] = saved[i];
 	reg_write_m(RTL837X_PIN_MUX_1);
 
 	if (err) return 1;
-	delay(1);
+	delay(2);
 	return sfp_read_reg(slot, reg) == data ? 0 : 1;
 }
 

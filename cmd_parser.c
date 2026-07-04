@@ -757,7 +757,7 @@ void parse_sfp(void)
 {
 	uint8_t slot;
 
-	if (cmd_words_len != 1 && cmd_words_len != 3)
+	if (cmd_words_len != 1 && cmd_words_len != 3 && cmd_words_len != 5)
 		goto err;
 
 	if (cmd_words_len == 1) {
@@ -785,6 +785,64 @@ void parse_sfp(void)
 		return;
 	}
 
+	if (cmd_compare(2, "dump")) {
+		sfp_dump_eeprom(slot);
+		return;
+	}
+	if (cmd_compare(2, "save")) {
+		print_string(" Saving EEPROM to flash...\n");
+		sfp_save_backup(slot);
+		print_string(" OK\n");
+		return;
+	}
+	if (cmd_compare(2, "restore")) {
+		print_string(" Restoring EEPROM from flash...\n");
+		if (sfp_restore_backup(slot))
+			print_string(" Restore failed!\n");
+		else
+			print_string(" OK\n");
+		return;
+	}
+	if (cmd_compare(2, "fix")) {
+		if (sfp_eeprom_fix(slot))
+			print_string(" Fix failed!\n");
+		else
+			print_string(" OK - 1xCOPPER PAS\n");
+		return;
+	}
+	if (cmd_words_len == 4 && cmd_compare(2, "bulk")) {
+		uint8_t bulk_idx = cmd_words_b[3];
+		for (uint16_t bulk_i = 0; bulk_i < 256; bulk_i++) {
+			uint8_t bh = cmd_buffer[bulk_idx];
+			uint8_t bl = cmd_buffer[bulk_idx + 1];
+			if (bh >= 'a') bh -= 'a' - 10; else bh -= '0';
+			if (bl >= 'a') bl -= 'a' - 10; else bl -= '0';
+			if (bh > 15 || bl > 15) { print_string("Invalid hex\n"); break; }
+			flash_buf[bulk_i] = (bh << 4) | bl;
+			bulk_idx += 2;
+		}
+		sfp_bulk_write(slot);
+		print_string(" Bulk write OK\n");
+		return;
+	}
+	if (cmd_words_len == 5 && cmd_compare(2, "write")) {
+		uint8_t hsz = atoi_hex(cmd_words_b[3]);
+		if (hsz == 0) { print_string(" Invalid offset\n"); return; }
+		uint8_t off = hexvalue[0];
+		hsz = atoi_hex(cmd_words_b[4]);
+		if (hsz == 0) { print_string(" Invalid value\n"); return; }
+		uint8_t val = hexvalue[0];
+		print_string(" Write 0x"); print_byte(off); print_string(" = 0x"); print_byte(val); print_string("...\n");
+		if (sfp_write_reg(slot, off, val)) {
+			print_string(" Write failed!\n");
+		} else {
+			print_string(" OK - verified\n");
+			if (off >= 0x00 && off <= 0x3E)
+				print_string(" WARNING: update CC_BASE with: sfp "); write_char('1' + slot); print_string(" fix\n");
+		}
+		return;
+	}
+
 	if (cmd_compare(2, "10g")) {
 		print_string(" 10G\n");
 		sfp_speed[slot] = SFP_SPEED_10G;
@@ -807,7 +865,7 @@ void parse_sfp(void)
 	handle_sfp();
 	return;
 err:
-	print_string("\nUsage:\n\tsfp\n\tsfp [1|2] [1g|2g5|10g]\n");
+	print_string("\nUsage:\n\tsfp\n\tsfp [1|2] [1g|2g5|10g]\n\tsfp [1|2] dump\n\tsfp [1|2] save\n\tsfp [1|2] restore\n\tsfp [1|2] fix\n\tsfp [1|2] write <off> <val>\n");
 }
 
 

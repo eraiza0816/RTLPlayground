@@ -160,41 +160,24 @@ function rxLosHTML(pin, mod) {
 }
 
 function callbackXHTTP() {
-  var x = currentRequests.shift();
+  var x = currentRequests[0];
   x.onreadystatechange = currentCallback;
   x.onreadystatechange();
+  currentRequests.shift();
   if (currentRequests.length === 0) return;
   x = currentRequests[0];
   currentCallback = x.onreadystatechange;
   x.onreadystatechange = callbackXHTTP;
-  var retries = 10;
-  while (retries) {
-    try { setTimeout(() => { x.send(); }, 20); } catch (error) {
-      retries--;
-      setTimeout(() => { console.log("Retry " + retries + " failed: " + error.message); }, 200);
-      if (retries < 1) throw error;
-    }
-    return;
-  }
+  try { x.send(); } catch (error) { console.error("callback send failed"); }
 }
 
 function sendXHTTP(x) {
-  if (currentRequests.length === 0) {
-    currentRequests.push(x);
+  currentRequests.push(x);
+  if (currentRequests.length === 1) {
     currentCallback = x.onreadystatechange;
     x.onreadystatechange = callbackXHTTP;
-    var retries = 10;
-    while (retries) {
-      try { x.send(); } catch (error) {
-        retries--;
-        setTimeout(() => { console.log("Retry " + retries + " failed: " + error.message); }, 200);
-        if (retries < 1) throw error;
-      }
-      return;
-    }
-    return;
+    try { x.send(); } catch (error) { console.error("send failed: " + error.message); }
   }
-  currentRequests.push(x);
 }
 
 function update(callback) {
@@ -294,7 +277,7 @@ function createPortTable() {
       const tr = tbl.insertRow();
       let td = tr.insertCell(); td.appendChild(document.createTextNode("Port " + i));
       td = tr.insertCell(); td.appendChild(document.createTextNode(portNames[physToLogPort[i - 1]] || ''));
-      td = tr.insertCell(); td.innerHTML = linkS[pState[i] + 1];
+      td = tr.insertCell(); td.innerHTML = linkS[pState[i - 1] + 1];
       td = tr.insertCell(); td.innerHTML = sSelect.replaceAll("speed_sel", "speed_sel_" + i);
       td = tr.insertCell(); td.innerHTML = dSwitch.replaceAll("disable_port", "disable_port_" + i).replace("portOnOff()", "portOnOff(" + i + ")");
       td = tr.insertCell(); td.innerHTML = '<button type="button" style="margin: 0 0 0 24px" onclick="applySpeed(' + i + ');">Apply</button>';
@@ -564,13 +547,15 @@ async function loadVlanTable() {
   var resp;
   try { resp = await fetch('/vlanlist'); } catch (e) { return; }
   if (!resp.ok) return;
-  var vlans = await resp.json();
+  var vlans;
+  try { vlans = await resp.json(); } catch (e) { return; }
   for (var i = 0; i < vlans.length; i++) {
     var v = vlans[i];
     var vresp;
     try { vresp = await fetch('/vlan.json?vid=' + v.id); } catch (e) { continue; }
     if (!vresp.ok) continue;
-    var s = await vresp.json();
+    var s;
+    try { s = await vresp.json(); } catch (e) { continue; }
     var m = parseInt(s.members, 16);
     var members = m & 0x3FF;
     var untag = ((m >> 10) & 0x3FF) & members;
@@ -611,7 +596,8 @@ function loadVlanList() {
     if (this.readyState !== 4) return;
     var sel = document.getElementById('vlanSelect');
     if (this.status !== 200) { sel.style.display = 'none'; return; }
-    var vlans = JSON.parse(this.responseText);
+    var vlans;
+    try { vlans = JSON.parse(this.responseText); } catch (e) { sel.style.display = 'none'; return; }
     if (!vlans.length) { sel.style.display = 'none'; return; }
     sel.options.length = 1;
     for (var i = 0; i < vlans.length; i++) {
@@ -774,7 +760,7 @@ function lagForm() {
       l.innerHTML = "" + i; l.classList.add("cbgroup");
       const inp = document.createElement("input");
       inp.type = "checkbox"; inp.setAttribute("class", "psel");
-      inp.id = "p_mLAG" + lag + "_" + i;
+      inp.id = "p_mLAG" + j + "_" + i;
       const o = document.createElement("img");
       o.src = pIsSFP[i - 1] ? "sfp.svg" : "port.svg";
       o.width = pIsSFP[i - 1] ? "60" : "40";
@@ -862,7 +848,7 @@ function getEEE() {
 }
 
 async function eeeSub(port, enable) {
-  try { await fetch('/cmd', { method: 'POST', body: "eee " + (enable ? "on" : "off") }); } catch (err) { console.error("Error: " + err); }
+  try { await fetch('/cmd', { method: 'POST', body: "eee " + (port ? port + " " : "") + (enable ? "on" : "off") }); } catch (err) { console.error("Error: " + err); }
 }
 
 const iLayout = '" type="number" maxlength="10" size="10"  onfocus="inputFocus(';

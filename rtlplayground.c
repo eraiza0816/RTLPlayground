@@ -25,6 +25,7 @@
 #include "machine.h"
 #include "phy.h"
 #include "syslog.h"
+#include "telnetd/telnetd.h"
 
 extern __code const struct machine machine;
 extern __xdata uint32_t flash_size;
@@ -224,11 +225,15 @@ void write_char_no_syslog(char c)
 	if (c =='\n') {
 		tx_buf_empty = 0;
 		SBUF = '\r';
+		if (telnet_connected && telnet_echo)
+			telnet_tx_enqueue('\r');
 		do {
 		} while (tx_buf_empty == 0);
 	}
 	tx_buf_empty = 0;
 	SBUF = c;
+	if (telnet_connected && telnet_echo)
+		telnet_tx_enqueue(c);
 }
 
 void write_char(char c)
@@ -634,9 +639,6 @@ void nic_tx_packet(uint16_t ring_ptr)
 	if (management_vlan) {
 		SFR_NIC_DATA_U16LE = (uint16_t) uip_buf;
 		len = FRAME_Q->len;
-		/*
-		(__xdata struct rtl_dot1q_frame *)uip_buf
-#define FRAME (((__xdata struct rtl_dot1q_frame *)&uip_buf[0]).nonq_frame)*/
 	} else {
 		SFR_NIC_DATA_U16LE = (uint16_t) uip_buf + VLAN_TAG_SIZE;
 		len = FRAME->len;
@@ -2090,6 +2092,7 @@ void main(void)
 	uip_init();
 	uip_arp_init();
 	httpd_init();
+	telnetd_init();
 
 	management_vlan = 1; // Default management VLAN is 1
 

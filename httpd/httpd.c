@@ -543,9 +543,14 @@ bad_request:
 	return;
 }
 
+extern void telnetd_appcall(void) __banked;
 
 void httpd_appcall(void)
 {
+	if (uip_conn->lport == HTONS(23)) {
+		telnetd_appcall();
+		return;
+	}
 	__xdata struct httpd_state * __xdata s = &(uip_conn->appstate);
 
 	dbg_char('P');

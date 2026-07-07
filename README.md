@@ -292,6 +292,7 @@ If you want to modify settings after the flash is done, go to the Advanced Setti
 ip xxx.xxx.xxx.xxx      = IP adress of the switch
 gw yyy.yyy.yyy.yyy      = IP adress of the gateway
 netmask zzz.zzz.zzz.zzz = Network mask of the switch 
+hostname name           = Hostname of the switch (defaults to machine name)
 port x name xxx         = Name xxx the port number x
 port z 1g               = Set 1g speed for port z
 igmp on/off             = Turn IGMP on or off

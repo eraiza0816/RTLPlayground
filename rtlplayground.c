@@ -118,6 +118,7 @@ __xdata uint8_t uip_buf[UIP_CONF_BUFFER_SIZE+2];
 
 __xdata uint16_t rx_packet_vlan;
 __xdata uint16_t management_vlan;
+__xdata char hostname[32];
 __xdata uint8_t tx_seq;
 
 __xdata uint8_t stpEnabled;
@@ -218,21 +219,22 @@ void isr_serial(void) __interrupt(4)
 }
 
 
-void write_char_no_syslog(char c)
+static void uart_putc(char c)
 {
-	do {
-	} while (tx_buf_empty == 0);
-	if (c =='\n') {
-		tx_buf_empty = 0;
-		SBUF = '\r';
-		if (telnet_connected && telnet_echo)
-			telnet_tx_enqueue('\r');
-		do {
-		} while (tx_buf_empty == 0);
-	}
+	do {} while (tx_buf_empty == 0);
 	tx_buf_empty = 0;
 	SBUF = c;
-	if (telnet_connected && telnet_echo)
+}
+
+void write_char_no_syslog(char c)
+{
+	if (c =='\n') {
+		uart_putc('\r');
+		if (telnet_is_connected() && telnet_echo_enabled())
+			telnet_tx_enqueue('\r');
+	}
+	uart_putc(c);
+	if (telnet_is_connected() && telnet_echo_enabled())
 		telnet_tx_enqueue(c);
 }
 
@@ -375,7 +377,14 @@ void print_byte(uint8_t a)
 
 void print_cmd_prompt(void)
 {
-	print_string_no_syslog("\n> ");
+	print_string_no_syslog("\n");
+	if (hostname[0]) {
+		write_char_no_syslog('[');
+		__xdata char *p = hostname;
+		while (*p) write_char_no_syslog(*p++);
+		write_char_no_syslog(']');
+	}
+	print_string_no_syslog("> ");
 }
 
 /*

@@ -39,6 +39,7 @@ extern __xdata uint8_t flash_buf[FLASH_BUF_SIZE];
 extern __xdata struct flash_region_t flash_region;
 
 extern __xdata char passwd[21];
+extern __xdata char hostname[32];
 
 extern __xdata struct dhcp_state dhcp_state;
 
@@ -1128,6 +1129,27 @@ void parse_passwd(void)
 	print_string("Missing password\n");
 }
 
+void parse_hostname(void)
+{
+	if (cmd_words_len >= 2) {
+		uint8_t i = cmd_words_b[1];
+		uint8_t j = 0;
+		while (cmd_buffer[i] && j < 31) {
+			hostname[j++] = cmd_buffer[i++];
+		}
+		hostname[j] = '\0';
+		print_string("Hostname set to ");
+		print_string_x(hostname);
+		write_char('\n');
+		return;
+	}
+	if (hostname[0])
+		print_string_x(hostname);
+	else
+		print_string("(not set)");
+	write_char('\n');
+}
+
 
 void parse_eee(void)
 {
@@ -1569,6 +1591,8 @@ void cmd_parser(void) __banked
 			parse_physet();
 		} else if (cmd_compare(0, "rnd")) {
 			parse_rnd();
+		} else if (cmd_compare(0, "hostname")) {
+			parse_hostname();
 		} else if (cmd_compare(0, "passwd")) {
 			parse_passwd();
 		} else if (cmd_compare(0, "eee")) {
@@ -1687,6 +1711,10 @@ void execute_config(void) __banked
 	} while(pages_left);
 
 config_done:
+	// Set default hostname from machine name if not configured
+	if (!hostname[0])
+		strtox(hostname, machine.machine_name);
+
 	// Start saving commands to cmd_history
 	clear_command_history();
 	save_cmd = 1;

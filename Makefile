@@ -70,7 +70,7 @@ distclean:
 	-rm -f html_data.c html_data.h $(VERSION_HEADER)
 	-rm -rf $(BUILDDIR)
 
-TELNET_FLAGS = -mmcs51 --stack-auto -I. -Ihttpd -Iuip
+TELNET_FLAGS = $(CC_FLAGS) --stack-auto
 
 $(BUILDDIR)/telnetd/%.rel: telnetd/%.c
 	$(CC) -MMD $(TELNET_FLAGS) -DMACHINE_$(MACHINE) -o $@ -c $<

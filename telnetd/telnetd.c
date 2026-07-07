@@ -2,7 +2,6 @@
 
 #include <8051.h>
 #include <stdint.h>
-#include <string.h>
 #include "telnetd.h"
 #include "uip.h"
 
@@ -11,6 +10,8 @@ extern __xdata uint16_t uip_slen;
 
 #define TX_BUF 512
 #define RX_BUF 256
+#define RING_ADVANCE(ptr, amount) (((ptr) + (amount)) & (TX_BUF - 1))
+#define UIP_APPBUF_OFFSET 66
 
 #define AUTH_WAIT 0
 #define AUTH_OK   1
@@ -24,8 +25,8 @@ static __xdata uint16_t tx_head, tx_tail, tx_inflight;
 static __xdata uint8_t rx_buf[RX_BUF], rx_pos;
 static __xdata uint8_t auth_state;
 
-__xdata uint8_t telnet_connected;
-__xdata uint8_t telnet_echo;
+static __xdata uint8_t telnet_connected;
+static __xdata uint8_t telnet_echo;
 
 static uint16_t ring_used(void)
 {
@@ -57,9 +58,9 @@ static void drain(void)
     {
         uint16_t i;
         for (i = 0; i < avail; i++)
-            uip_buf[66 + i] = tx_buf[(tx_tail + i) & (TX_BUF - 1)];
+            uip_buf[UIP_APPBUF_OFFSET + i] = tx_buf[RING_ADVANCE(tx_tail, i)];
         for (i = 0; i < 3; i++)
-            uip_buf[66 + avail + i] = 0;
+            uip_buf[UIP_APPBUF_OFFSET + avail + i] = 0;
     }
     uip_slen = avail;
     tx_inflight = avail;
@@ -73,37 +74,55 @@ void telnet_tx_enqueue(char c) __banked
     EA = 0;
     if (ring_space() < 1) { EA = 1; return; }
     tx_buf[tx_head] = c;
-    tx_head = (tx_head + 1) & (TX_BUF - 1);
+    tx_head = RING_ADVANCE(tx_head, 1);
     EA = 1;
+}
+
+uint8_t telnet_is_connected(void) __banked
+{
+    return telnet_connected;
+}
+
+uint8_t telnet_echo_enabled(void) __banked
+{
+    return telnet_echo;
 }
 
 static void send_iac(uint8_t cmd, uint8_t opt)
 {
     EA = 0;
     if (ring_space() < 3) { EA = 1; return; }
-    tx_buf[tx_head] = IAC; tx_head = (tx_head + 1) & (TX_BUF - 1);
-    tx_buf[tx_head] = cmd; tx_head = (tx_head + 1) & (TX_BUF - 1);
-    tx_buf[tx_head] = opt; tx_head = (tx_head + 1) & (TX_BUF - 1);
+    tx_buf[tx_head] = IAC; tx_head = RING_ADVANCE(tx_head, 1);
+    tx_buf[tx_head] = cmd; tx_head = RING_ADVANCE(tx_head, 1);
+    tx_buf[tx_head] = opt; tx_head = RING_ADVANCE(tx_head, 1);
     EA = 1;
 }
 
 static void process_input(__xdata uint8_t *data, uint16_t len)
 {
+    uint8_t iac_state = 0;
+    uint8_t iac_cmd = 0;
     uint16_t i;
     for (i = 0; i < len; i++) {
         uint8_t c = data[i];
 
-        if (c == IAC) {
-            if (i + 1 >= len) break;
-            uint8_t cmd = data[++i];
-            if (cmd == IAC) goto pc;
-            if (i + 1 >= len) break;
-            uint8_t opt = data[++i];
-            if (cmd == WILL) send_iac(DONT, opt);
-            else if (cmd == DO) send_iac(WONT, opt);
+        if (iac_state == 1) {
+            iac_state = 0;
+            if (c != IAC) {
+                iac_cmd = c;
+                iac_state = 2;
+                continue;
+            }
+        } else if (iac_state == 2) {
+            iac_state = 0;
+            if (iac_cmd == WILL) send_iac(DONT, c);
+            else if (iac_cmd == DO) send_iac(WONT, c);
+            continue;
+        } else if (c == IAC) {
+            iac_state = 1;
             continue;
         }
-pc:
+
         if (c == '\r' || c == '\n') {
             if (rx_pos == 0) {
                 if (auth_state == AUTH_OK && telnet_echo) {
@@ -154,19 +173,31 @@ pc:
                 rx_buf[rx_pos++] = c;
                 if (telnet_echo) telnet_tx_enqueue(c);
             }
+        } else if ((c == 0x08 || c == 0x7F) && rx_pos > 0) {
+            rx_pos--;
+            if (telnet_echo) {
+                telnet_tx_enqueue(0x08);
+                telnet_tx_enqueue(' ');
+                telnet_tx_enqueue(0x08);
+            }
         }
     }
 }
 
-void telnetd_init(void) __banked
+static void reset_connection_state(void)
 {
-    telnet_connected = 0;
     telnet_echo = 0;
     auth_state = AUTH_WAIT;
     rx_pos = 0;
     tx_head = 0;
     tx_tail = 0;
     tx_inflight = 0;
+}
+
+void telnetd_init(void) __banked
+{
+    telnet_connected = 0;
+    reset_connection_state();
     uip_listen(HTONS(23));
 }
 
@@ -174,21 +205,15 @@ void telnetd_appcall(void) __banked
 {
     if (uip_connected()) {
         telnet_connected = 1;
-        telnet_echo = 0;
-        auth_state = AUTH_WAIT;
-        rx_pos = 0;
-        tx_head = 0;
-        tx_tail = 0;
-        tx_inflight = 0;
+        reset_connection_state();
 
-        uip_buf[66] = IAC; uip_buf[67] = WILL; uip_buf[68] = SGA;
-        uip_buf[69] = 'P'; uip_buf[70] = 'a'; uip_buf[71] = 's';
-        uip_buf[72] = 's'; uip_buf[73] = 'w'; uip_buf[74] = 'o';
-        uip_buf[75] = 'r'; uip_buf[76] = 'd'; uip_buf[77] = ':';
-        uip_buf[78] = ' ';
-        uip_buf[79] = 0; uip_buf[80] = 0; uip_buf[81] = 0;
-
-        uip_slen = 13;
+        send_iac(WILL, SGA);
+        telnet_tx_enqueue('P'); telnet_tx_enqueue('a');
+        telnet_tx_enqueue('s'); telnet_tx_enqueue('s');
+        telnet_tx_enqueue('w'); telnet_tx_enqueue('o');
+        telnet_tx_enqueue('r'); telnet_tx_enqueue('d');
+        telnet_tx_enqueue(':'); telnet_tx_enqueue(' ');
+        drain();
         return;
     }
     if (uip_closed() || uip_aborted() || uip_timedout()) {
@@ -198,7 +223,7 @@ void telnetd_appcall(void) __banked
     }
     if (uip_acked()) {
         EA = 0;
-        tx_tail = (tx_tail + tx_inflight) & (TX_BUF - 1);
+        tx_tail = RING_ADVANCE(tx_tail, tx_inflight);
         tx_inflight = 0;
         EA = 1;
     }
@@ -206,9 +231,9 @@ void telnetd_appcall(void) __banked
         if (tx_inflight > 0) {
             uint16_t i;
             for (i = 0; i < tx_inflight; i++)
-                uip_buf[66 + i] = tx_buf[(tx_tail + i) & (TX_BUF - 1)];
+                uip_buf[UIP_APPBUF_OFFSET + i] = tx_buf[RING_ADVANCE(tx_tail, i)];
             for (i = 0; i < 3; i++)
-                uip_buf[66 + tx_inflight + i] = 0;
+                uip_buf[UIP_APPBUF_OFFSET + tx_inflight + i] = 0;
             uip_slen = tx_inflight;
         }
         return;

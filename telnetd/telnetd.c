@@ -105,7 +105,14 @@ static void process_input(__xdata uint8_t *data, uint16_t len)
         }
 pc:
         if (c == '\r' || c == '\n') {
-            if (rx_pos == 0) continue;
+            if (rx_pos == 0) {
+                if (auth_state == AUTH_OK && telnet_echo) {
+                    telnet_tx_enqueue('\r');
+                    telnet_tx_enqueue('\n');
+                    telnet_tx_enqueue('>'); telnet_tx_enqueue(' ');
+                }
+                continue;
+            }
 
             if (telnet_echo) {
                 telnet_tx_enqueue('\r');
@@ -153,7 +160,6 @@ pc:
 
 void telnetd_init(void) __banked
 {
-    passwd[0]='1'; passwd[1]='2'; passwd[2]='3'; passwd[3]='4'; passwd[4]='\0';
     telnet_connected = 0;
     telnet_echo = 0;
     auth_state = AUTH_WAIT;

@@ -67,12 +67,31 @@ function editByte(offset) {
   if (newVal.startsWith('0x')) newVal = newVal.substring(2);
   var v = parseInt(newVal, 16);
   if (isNaN(v) || v < 0 || v > 255) { alert('Invalid value'); return; }
-  sendCmd('sfp ' + (sfpSlot+1) + ' write ' + hex(offset) + ' ' + hex(v), function() {
+  sendCmd('sfp ' + (sfpSlot+1) + ' write ' + hex(offset) + ' ' + hex(v) + pwArg(), function() {
     sfpData[offset] = v;
     cell.textContent = hex(v);
     cell.style.backgroundColor = '#ff8';
     setTimeout(function() { cell.style.backgroundColor = ''; }, 2000);
   });
+}
+
+function pwArg() {
+  var pw = document.getElementById('pwinput').value.trim();
+  if (!pw) return '';
+  if (!/^[0-9a-fA-F]{8}$/.test(pw)) { alert('Password must be 8 hex digits'); return ''; }
+  return ' --pw ' + pw;
+}
+
+function patchEeprom() {
+  sfpSlot = parseInt(document.getElementById('slotsel').value);
+  if (!confirm('Patch SFP ' + (sfpSlot+1) + ' EEPROM (FC→Ethernet)?')) return;
+  sendCmd('sfp ' + (sfpSlot+1) + ' patch' + pwArg(), function(t) { alert(t); loadEeprom(); });
+}
+
+function fixChecksum() {
+  sfpSlot = parseInt(document.getElementById('slotsel').value);
+  if (!confirm('Fix checksums on SFP ' + (sfpSlot+1) + '?')) return;
+  sendCmd('sfp ' + (sfpSlot+1) + ' checksum --fix' + pwArg(), function(t) { alert(t); loadEeprom(); });
 }
 
 function sendCmd(cmd, callback) {
@@ -125,7 +144,7 @@ function uploadBin(input) {
     var data = new Uint8Array(e.target.result);
     var hexStr = '';
     for (var i = 0; i < 256; i++) hexStr += hex(data[i]);
-    sendCmd('sfp ' + (sfpSlot+1) + ' bulk ' + hexStr, function() {
+    sendCmd('sfp ' + (sfpSlot+1) + ' bulk ' + hexStr + pwArg(), function() {
       alert('Write complete');
       loadEeprom();
     });

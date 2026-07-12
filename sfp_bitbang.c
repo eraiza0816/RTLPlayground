@@ -16,6 +16,9 @@ extern __code struct machine machine;
 extern __xdata uint8_t flash_buf[FLASH_BUF_SIZE];
 extern __xdata struct flash_region_t flash_region;
 
+__xdata uint8_t sfp_pw[4];
+__xdata uint8_t sfp_pw_pending;
+
 static void gpio_set(uint8_t pin, uint8_t hi) __reentrant
 {
 	if (pin >= 32) {
@@ -40,6 +43,69 @@ static uint8_t gpio_read(uint8_t pin) __reentrant
 	return !!(sfr_data[3-((pin>>3)&3)] & (1 << (pin & 7)));
 }
 
+static void send_pw(uint8_t scl, uint8_t sda)
+{
+	uint8_t mask, i;
+	gpio_set(sda, 0);
+	i2c_delay();
+	gpio_set(scl, 0);
+	i2c_delay();
+	for (mask = 0x80; mask; mask >>= 1) {
+		gpio_set(sda, !(0xA4 & mask));
+		i2c_delay();
+		gpio_set(scl, 1);
+		i2c_delay();
+		gpio_set(scl, 0);
+		i2c_delay();
+	}
+	gpio_set(sda, 1);
+	i2c_delay();
+	gpio_set(scl, 1);
+	i2c_delay();
+	gpio_read(sda);
+	gpio_set(scl, 0);
+	i2c_delay();
+	for (mask = 0x80; mask; mask >>= 1) {
+		gpio_set(sda, !(0x7B & mask));
+		i2c_delay();
+		gpio_set(scl, 1);
+		i2c_delay();
+		gpio_set(scl, 0);
+		i2c_delay();
+	}
+	gpio_set(sda, 1);
+	i2c_delay();
+	gpio_set(scl, 1);
+	i2c_delay();
+	gpio_read(sda);
+	gpio_set(scl, 0);
+	i2c_delay();
+	for (i = 0; i < 4; i++) {
+		for (mask = 0x80; mask; mask >>= 1) {
+			gpio_set(sda, !(sfp_pw[i] & mask));
+			i2c_delay();
+			gpio_set(scl, 1);
+			i2c_delay();
+			gpio_set(scl, 0);
+			i2c_delay();
+		}
+		gpio_set(sda, 1);
+		i2c_delay();
+		gpio_set(scl, 1);
+		i2c_delay();
+		gpio_read(sda);
+		gpio_set(scl, 0);
+		i2c_delay();
+	}
+	gpio_set(sda, 0);
+	i2c_delay();
+	gpio_set(scl, 1);
+	i2c_delay();
+	gpio_set(sda, 1);
+	i2c_delay();
+	sfp_pw_pending = 0;
+}
+
 uint8_t sfp_write_reg(uint8_t slot, uint8_t reg, uint8_t data) __reentrant
 {
 	uint8_t scl = machine.sfp_port[slot].i2c.scl;
@@ -55,6 +121,8 @@ uint8_t sfp_write_reg(uint8_t slot, uint8_t reg, uint8_t data) __reentrant
 	i2c_delay();
 	gpio_set(sda, 1);
 	i2c_delay();
+
+	if (sfp_pw_pending) send_pw(scl, sda);
 
 	gpio_set(sda, 0);
 	i2c_delay();

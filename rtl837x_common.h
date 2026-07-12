@@ -171,6 +171,8 @@ void sds_write_v(uint8_t sds_id, uint8_t page, uint8_t reg, uint16_t v);
 void sds_config_mac(uint8_t sds, uint8_t mode);
 void sds_config(uint8_t sds, uint8_t mode);
 void handle_sfp(void);
+extern __xdata uint8_t sfp_pw[4];
+extern __xdata uint8_t sfp_pw_pending;
 uint8_t sfp_write_reg(uint8_t slot, uint8_t reg, uint8_t data) __reentrant;
 void sfp_dump_eeprom(uint8_t slot) __reentrant;
 uint8_t sfp_fix_checksum(uint8_t slot) __reentrant;

@@ -43,6 +43,13 @@
           <label for="telnet_toggle" id="telnet_label">disabled</label>
         </div>
       </div>
+      <div class="row">
+        <div class="lcol"> <label for="web_toggle">Web:</label></div>
+        <div class="rcol">
+          <input id="web_toggle" type="checkbox" onchange="webToggle();">
+          <label for="web_toggle" id="web_label">enabled</label>
+        </div>
+      </div>
       <br/>
       When updating the above settings, remember to point your browser to the new IP afterwards:<br/>
       <input style="width:40%;" class="action" id="ip_sub" onclick="ipSub();" type="button" value="Update Settings"><br/>

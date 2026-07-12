@@ -38,6 +38,7 @@ extern __xdata uint8_t vlan_names[VLAN_NAMES_SIZE];
 extern __xdata uint8_t cmd_history[CMD_HISTORY_SIZE];
 extern __xdata uint16_t cmd_history_ptr;
 extern __xdata uint8_t telnet_enabled;
+extern __xdata uint8_t web_enabled;
 
 extern __xdata struct flash_region_t flash_region;
 
@@ -243,6 +244,11 @@ void send_basic_info(void)
 	itoa_html(uip_netmask[1] >> 8);
 	slen += strtox(outbuf + slen, "\",\"telnet_enabled\":\"");
 	if (telnet_enabled)
+		char_to_html('1');
+	else
+		char_to_html('0');
+	slen += strtox(outbuf + slen, "\",\"web_enabled\":\"");
+	if (web_enabled)
 		char_to_html('1');
 	else
 		char_to_html('0');

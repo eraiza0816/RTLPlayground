@@ -128,6 +128,25 @@ function updateTelnetLabel(enabled) {
   document.getElementById('telnet_label').textContent = enabled ? 'enabled' : 'disabled';
 }
 
+async function webToggle() {
+  var cmd = 'web ' + (document.getElementById('web_toggle').checked ? 'on' : 'off');
+  try {
+    const response = await fetch('/cmd', {
+      method: 'POST',
+      body: cmd + '\n'
+    });
+    console.log('Web toggle: ', response);
+    updateWebLabel(document.getElementById('web_toggle').checked);
+  } catch(err) {
+    console.error(`Error: ${err}`);
+  }
+}
+
+function updateWebLabel(enabled) {
+  document.getElementById('web_toggle').checked = enabled;
+  document.getElementById('web_label').textContent = enabled ? 'enabled' : 'disabled';
+}
+
 function fetchIP() {
   var xhttp = new XMLHttpRequest();
   xhttp.onreadystatechange = function() {
@@ -139,6 +158,8 @@ function fetchIP() {
       document.getElementById("gw").value=s.ip_gateway;
       if (s.telnet_enabled)
         updateTelnetLabel(s.telnet_enabled === '1');
+      if (s.web_enabled)
+        updateWebLabel(s.web_enabled === '1');
       clearInterval(systemInterval);
       // Fetch and populate the config textbox
       fetchConfig().then((configText) => {

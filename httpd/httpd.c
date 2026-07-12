@@ -696,7 +696,7 @@ void httpd_appcall(void)
 				send_mtu(); // dummy response
 			} else if (is_word(q, "/reset")) {
 				uip_close();
-				delay(1000); //wait for the close packet to be sent, otherwise the browser will retry
+				delay(1000);
 				reset_chip();
 			} else {
 				send_not_found();
@@ -705,8 +705,7 @@ void httpd_appcall(void)
 			dbg_string("Have entry, authenticated: "); dbg_byte(authenticated); dbg_char('\n');
 			if (!authenticated && !(f_data[entry].start == FDATA_START_login_html 
 						|| f_data[entry].start == FDATA_START_port_svg 
-						|| f_data[entry].start == FDATA_START_sfp_svg
-						|| f_data[entry].start == FDATA_START_style_css)) {
+						|| f_data[entry].start == FDATA_START_sfp_svg)) {
 				send_to_login();
 				goto do_send;
 			}

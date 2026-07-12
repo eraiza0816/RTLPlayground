@@ -29,6 +29,8 @@ The board has two flash chips `BY25Q16BS` with 16M-bit size. The front switch, s
 These can be programed independently by using said switch - so it is e.g. possible to run the original and new firmware in parallel.
 The switch actually controls the HOLD line of each flash chip, and toggling the switch results in a reboot.
 
+Programming the front-side chip writes to the "S-side", while programming the back-side chip writes to the "V-side".
+
 If the programming clip keeps HOLD not connected, the flashing will commence on whatever the switch selected, regardless on which chip was clipped.
 
 For the initial flash (at least with flashrom), the bin file produced by the build is much smaller than the flash chip, it is suggested to pad the file to keep flashrom happy: `truncate -s 2097152 rtlplayground-*-PCB_K0402WS_V3.bin`. Note: do not then proceed to use this resulting padded file for the web flashing (as it bricks the device), use the original unpadded .bin.

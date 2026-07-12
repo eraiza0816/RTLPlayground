@@ -42,6 +42,7 @@ extern __xdata char passwd[21];
 extern __xdata char hostname[32];
 
 extern __xdata struct dhcp_state dhcp_state;
+extern __xdata uint8_t telnet_enabled;
 
 __xdata uint8_t vlan_names[VLAN_NAMES_SIZE];
 __xdata uint16_t vlan_ptr;
@@ -192,7 +193,11 @@ uint8_t atoi_byte(__xdata uint8_t *out, uint8_t idx)
 
 	while (isnumber(cmd_buffer[idx])) {
 		err = 0;
-		num = (num * 10) + cmd_buffer[idx] - '0';
+		uint8_t digit = cmd_buffer[idx] - '0';
+		if (num > 25 || (num == 25 && digit > 5)) {
+			return 1;
+		}
+		num = (num * 10) + digit;
 		idx++;
 	}
 
@@ -208,8 +213,11 @@ uint8_t atoi_short(__xdata uint16_t *vlan, uint8_t idx)
 
 	while (isnumber(cmd_buffer[idx])) {
 		err = 0;
-		uint8_t val = cmd_buffer[idx] - '0';
-		*vlan = (*vlan * 10) + val;
+		uint8_t digit = cmd_buffer[idx] - '0';
+		if (*vlan > 6553 || (*vlan == 6553 && digit > 5)) {
+			return 1;
+		}
+		*vlan = (*vlan * 10) + digit;
 		idx++;
 	}
 
@@ -220,17 +228,31 @@ uint8_t atoi_short(__xdata uint16_t *vlan, uint8_t idx)
 uint8_t parse_ip(uint8_t idx)
 {
 	__xdata uint8_t b;
+	__xdata uint16_t val;
 
 	for (b = 0; b < 4; b++) {
-		ip[b] = 0;
+		val = 0;
+		if (!isnumber(cmd_buffer[idx])) {
+			print_string("Error in IP format: missing octet\n");
+			return -1;
+		}
 		while (isnumber(cmd_buffer[idx])) {
-			ip[b] = (ip[b] * 10) + cmd_buffer[idx] - '0';
+			val = val * 10 + (cmd_buffer[idx] - '0');
+			if (val > 255) {
+				print_string("Error in IP format: octet > 255\n");
+				return -1;
+			}
 			idx++;
 		}
+		ip[b] = val;
 		if (b < 3 && cmd_buffer[idx++] != '.') {
 			print_string("Error in IP format, expecting '.'\n");
 			return -1;
 		}
+	}
+	if (cmd_buffer[idx] != '\0' && cmd_buffer[idx] != ' ') {
+		print_string("Error in IP format: trailing characters\n");
+		return -1;
 	}
 	return 0;
 }
@@ -1124,6 +1146,12 @@ void parse_passwd(void)
 			passwd[j++] = c;
 		} while (c != '\0' && j < 20);
 		passwd[j] = '\0';
+		if (j < 5) {
+			print_string("Error: password too short (min 4 chars)\n");
+			passwd[0] = '\0';
+			return;
+		}
+		print_string("Password set\n");
 		return;
 	}
 	print_string("Missing password\n");
@@ -1135,7 +1163,13 @@ void parse_hostname(void)
 		uint8_t i = cmd_words_b[1];
 		uint8_t j = 0;
 		while (cmd_buffer[i] && j < 31) {
-			hostname[j++] = cmd_buffer[i++];
+			uint8_t c = cmd_buffer[i];
+			if (!isletter(c) && !isnumber(c) && c != '-' && c != '_') {
+				print_string("Error: invalid character in hostname\n");
+				return;
+			}
+			hostname[j++] = c;
+			i++;
 		}
 		hostname[j] = '\0';
 		print_string("Hostname set to ");
@@ -1147,6 +1181,61 @@ void parse_hostname(void)
 		print_string_x(hostname);
 	else
 		print_string("(not set)");
+	write_char('\n');
+}
+
+
+extern void parse_commit(void) __banked;
+
+
+void parse_show(void)
+{
+	print_string("Hostname:   ");
+	if (hostname[0])
+		print_string_x(hostname);
+	else
+		print_string("(not set)");
+	write_char('\n');
+
+	print_string("IP:         ");
+	itoa(uip_hostaddr[0]); write_char('.');
+	itoa(uip_hostaddr[0] >> 8); write_char('.');
+	itoa(uip_hostaddr[1]); write_char('.');
+	itoa(uip_hostaddr[1] >> 8);
+	write_char('\n');
+
+	print_string("Gateway:    ");
+	itoa(uip_draddr[0]); write_char('.');
+	itoa(uip_draddr[0] >> 8); write_char('.');
+	itoa(uip_draddr[1]); write_char('.');
+	itoa(uip_draddr[1] >> 8);
+	write_char('\n');
+
+	print_string("Netmask:    ");
+	itoa(uip_netmask[0]); write_char('.');
+	itoa(uip_netmask[0] >> 8); write_char('.');
+	itoa(uip_netmask[1]); write_char('.');
+	itoa(uip_netmask[1] >> 8);
+	write_char('\n');
+
+	print_string("Password:   ");
+	if (passwd[0])
+		print_string("(set)");
+	else
+		print_string("(not set)");
+	write_char('\n');
+
+	print_string("Syslog:     ");
+	if (syslog_state.enabled) {
+		print_string("on (");
+		itoa(syslog_state.server_ip[0]); write_char('.');
+		itoa(syslog_state.server_ip[1]); write_char('.');
+		itoa(syslog_state.server_ip[2]); write_char('.');
+		itoa(syslog_state.server_ip[3]);
+		write_char(')');
+	} else {
+		print_string("off");
+	}
 	write_char('\n');
 }
 
@@ -1331,6 +1420,31 @@ void parse_syslog(void)
 	}
 }
 
+extern void parse_l2_delete(void) __banked __reentrant;
+
+
+void parse_telnet(void)
+{
+	if (cmd_words_len < 2) {
+		print_string("Telnet: ");
+		if (telnet_enabled)
+			print_string("enabled\n");
+		else
+			print_string("disabled\n");
+		return;
+	}
+
+	if (cmd_compare(1, "on")) {
+		telnet_enabled = 1;
+		print_string("Telnet enabled\n");
+	} else if (cmd_compare(1, "off")) {
+		telnet_enabled = 0;
+		print_string("Telnet disabled\n");
+	} else {
+		print_string("Error: telnet [on|off]\n");
+	}
+}
+
 // Parse command into words
 // cmd_words_len contains the number of words found.
 // cmd_words_b[] contains only start of a word offset.
@@ -1473,6 +1587,8 @@ void cmd_parser(void) __banked
 			parse_mtu();
 		} else if (cmd_compare(0, "syslog")) {
 			parse_syslog();
+		} else if (cmd_compare(0, "telnet")) {
+			parse_telnet();
 		} else if (cmd_compare(0, "ip")) {
 			if (cmd_compare(1, "dhcp")) {
 				dhcp_start();
@@ -1536,6 +1652,8 @@ void cmd_parser(void) __banked
 		} else if (cmd_compare(0, "l2")) {
 			if (cmd_compare(1, "forget"))
 				port_l2_forget();
+			else if (cmd_compare(1, "del") && cmd_words_len >= 3)
+				parse_l2_delete();
 			else
 				port_l2_learned();
 		} else if (cmd_compare(0, "igmp")) {
@@ -1591,6 +1709,10 @@ void cmd_parser(void) __banked
 			parse_physet();
 		} else if (cmd_compare(0, "rnd")) {
 			parse_rnd();
+		} else if (cmd_compare(0, "commit")) {
+			parse_commit();
+		} else if (cmd_compare(0, "show")) {
+			parse_show();
 		} else if (cmd_compare(0, "hostname")) {
 			parse_hostname();
 		} else if (cmd_compare(0, "passwd")) {

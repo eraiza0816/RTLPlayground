@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+  <style>
+ul { list-style-type: none; margin: 0; padding: 0; width: 12%; height: calc(100% - 50px); position: fixed; top: 50px; overflow: auto; }
+li a { background-color: #aaf; display: block; color: #000; padding: 8px 16px; text-decoration: none; cursor: pointer; }
+li a:hover { background-color: #226; color: white; }
+h1 { color: #226; }
+button { padding: 8px; background-color: #99f; color: #000; border-radius: 15px; cursor: pointer; }
+button:hover { background-color: #226; color: white; }
+select { font-family: monospace; padding: 4px; }
+  </style>
+  <title>SFP EEPROM Editor</title>
+  </head>
+  <body>
+    <nav id="sidebar"></nav>
+    <div style="margin-left:16%;padding:1px 16px;height:1000px;">
+    <h1>SFP EEPROM Editor</h1>
+    <div id="sfpselect">
+      Slot: <select id="slotsel" onchange="loadEeprom()">
+        <option value="0">SFP 1</option>
+        <option value="1">SFP 2</option>
+      </select>
+      <button onclick="loadEeprom()">Refresh</button>
+      <button onclick="downloadBin()">Download .bin</button>
+      <input type="file" id="uploadfile" accept=".bin" style="display:none" onchange="uploadBin(this)">
+      <button onclick="document.getElementById('uploadfile').click()">Upload .bin</button>
+      <button onclick="saveBackup()" style="background-color:#4a4">Save Backup</button>
+      <button onclick="restoreBackup()" style="background-color:#a44">Restore Backup</button>
+      <button onclick="patchEeprom()" style="background-color:#48a">Patch FC→Eth</button>
+      <button onclick="fixChecksum()" style="background-color:#a8a">Fix Checksum</button>
+      <span style="margin-left:1em">PW: <input type="text" id="pwinput" size="8" maxlength="8" placeholder="00000000" style="font-family:monospace"></span>
+    </div>
+    <div id="info" style="margin-top:1em;font-family:monospace"></div>
+    <div id="hexdump" style="margin-top:1em;font-family:monospace;font-size:12px"></div>
+    <script src="/sfp_eeprom.js"></script>
+    </div>
+    <script>document.getElementById('sidebar').innerHTML="<ul><li><a href='index.html'>Back to Overview</a></li></ul>";</script>
+  </body>
+</html>

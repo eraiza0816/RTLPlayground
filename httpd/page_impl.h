@@ -15,6 +15,7 @@ void send_config(void);
 void send_cmd_log(void);
 void send_lag(void);
 void send_vlanlist(void);
+void send_sfp_eeprom(uint8_t slot);
 
 /*  Convert only the lower nibble to ascii HEX char.
     For convenience the upper nibble is masked out.

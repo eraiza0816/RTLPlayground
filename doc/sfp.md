@@ -105,3 +105,98 @@ apart, solder wires to the pins of the on-board PCB which are then routed back t
 the end of the module. By pulling e.g. TX-Fault low while printing out the GPIOs, the
 correct GPIO can be identified.
 
+## EEPROM Write via GPIO Bit-bang
+
+The hardware I2C controller of the RTL8372/3 only supports reading the SFP EEPROM.
+To write the EEPROM (e.g. to fix a module's configuration or checksum), the I2C pins
+must be temporarily switched to GPIO mode and driven directly by software (bit-bang).
+
+This is implemented in `sfp_bitbang.c`. When any write operation is triggered, the
+selected I2C pins (SCL/SDA) are reconfigured as GPIOs via `gpio_mux_setup()`, the
+I2C write protocol is executed in software, and the pins are restored to their
+original I2C function.
+
+The EEPROM address used is `0xA0` (device address `0x50`).
+
+## SFP EEPROM configuration on the Serial Console
+
+The following sub-commands are provided on the serial console for SFP EEPROM
+read/write operations:
+
+```
+> sfp <slot> dump
+  Dumps the full 256-byte EEPROM contents as a hex dump with ASCII side view.
+  Example output:
+  0000: 03 04 07 00 00 00 00 00  00 00 00 01 0d 00 00 00  ................
+  0010: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  ................
+
+> sfp <slot> save
+  Reads the full 256-byte EEPROM and saves it as a backup in flash memory
+  at address 0x54000 + slot * 256.
+
+> sfp <slot> restore
+  Restores the EEPROM from the flash backup at 0x54000 + slot * 256.
+  The checksum is automatically fixed after the restore.
+
+> sfp <slot> fix
+  Sets bit 0 of byte 3 (indicating the module is a 1x copper cable assembly)
+  and recalculates the checksum at byte 0x3F (CC_BASE). Use this to convert
+  a module's EEPROM to a copper/SFP-direct-attach type or to repair a
+  corrupted checksum.
+
+> sfp <slot> write <hex-offset> <hex-value> [--pw <hex8>]
+  Writes a single byte to the EEPROM at the given offset (0x00-0xFF).
+  The write is verified by reading back the value. If the offset is within
+  the base ID field (0x00-0x3E), a warning is printed suggesting to run
+  `sfp <slot> checksum --fix` afterwards to update CC_BASE. If the module
+  requires a write-protection password, provide it with --pw.
+
+> sfp <slot> bulk <512-hex-chars>
+  Writes all 256 bytes of the EEPROM at once using a hex string of exactly
+  512 characters (two hex chars per byte). The checksum is automatically
+  fixed after the write.
+
+> sfp <slot> describe
+  Displays formatted module information: identifier, connector type, vendor
+  name, part number, revision, serial, date code, signalling rate,
+  compliance codes (Ethernet/FC), and checksum validity (CC_BASE + CC_EXT).
+
+> sfp <slot> patch [--pw <hex8>]
+  Patches the EEPROM to convert a Fibre Channel module to Ethernet:
+  - Byte 3 = 0x20 (10GBase-LR)
+  - Byte 6 = 0x02 (1000BASE-LX)
+  - Byte 7 = 0x00 (clear FC link length)
+  - Byte 9 = 0x00 (clear FC speed)
+  - CC_BASE recalculated after patching
+  If the module requires a write-protection password, provide it with --pw.
+
+> sfp <slot> checksum [--fix] [--pw <hex8>]
+  Without --fix: displays current and expected values of CC_BASE (byte 0x3F)
+  and CC_EXT (byte 0x5F). With --fix: recalculates and writes both checksums.
+  If the module requires a write-protection password, provide it with --pw.
+
+> sfp <slot> clone [--pw <hex8>]
+  Writes the full 256-byte EEPROM from the flash buffer (pre-loaded via
+  `sfp <slot> restore` or other means). Checksum is auto-fixed after cloning.
+  If the module requires a write-protection password, provide it with --pw.
+```
+
+## SFP EEPROM Editor (Web Interface)
+
+A dedicated web page at `/sfp_eeprom` allows viewing and editing the SFP EEPROM
+in a graphical hex editor:
+
+
+Features:
+- Select SFP slot (1 or 2) and refresh to read the current EEPROM contents
+- Click any hex byte to edit it inline (sends `sfp write` via the CLI)
+- Download the current EEPROM as a `.bin` file
+- Upload a `.bin` file (exactly 256 bytes) to write the entire EEPROM
+- Vendor, part number, serial number and module type are displayed at the top
+
+The editor fetches data via the JSON endpoint:
+```
+GET /sfp_eeprom.json?slot=<n>
+Returns: {"slot":<n>,"data":"<256 hex bytes>"}
+```
+

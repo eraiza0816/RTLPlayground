@@ -49,7 +49,7 @@ static uint16_t gpio_direction_reg(uint8_t pin) __banked {
 
 
 /* Enable GPIO functions for pin */
-static void gpio_mux_setup(uint8_t pin) __banked
+void gpio_mux_setup(uint8_t pin) __banked
 {
 	// Some GPIOs require setting MUX registers to enable GPIO
 	switch (pin) {
@@ -79,6 +79,37 @@ static void gpio_mux_setup(uint8_t pin) __banked
 			sfr_mask_data(1, 0x80, 0x00);
 			sfr_mask_data(2, 0x01, 0x00);
 			reg_write_m(RTL837X_PIN_MUX_1);	
+			break;
+		case GPIO39_I2C_SDA4:
+			// Bit 5 -> 1 = GPIO (0 = I2C)
+			reg_read_m(RTL837X_PIN_MUX_1);
+			sfr_mask_data(3, 0x20, 0x20);
+			reg_write_m(RTL837X_PIN_MUX_1);
+			break;
+		case GPIO40_I2C_SCL3_MDC1:
+		case GPIO41_I2C_SDA3_MDIO1:
+			// Bits 29-30 0b00 -> GPIO
+			reg_read_m(RTL837X_PIN_MUX_1);
+			sfr_mask_data(0, 0x60, 0x00);
+			reg_write_m(RTL837X_PIN_MUX_1);
+			break;
+		case GPIO47_I2C_SDA0:
+			// Bits 9-10 0b00 -> GPIO
+			reg_read_m(RTL837X_PIN_MUX_1);
+			sfr_mask_data(1, 0x06, 0x00);
+			reg_write_m(RTL837X_PIN_MUX_1);
+			break;
+		case GPIO48_I2C_SCL1:
+			// Bits 11-12 0b00 -> GPIO
+			reg_read_m(RTL837X_PIN_MUX_1);
+			sfr_mask_data(1, 0x18, 0x00);
+			reg_write_m(RTL837X_PIN_MUX_1);
+			break;
+		case GPIO49_I2C_SDA1:
+			// Bits 13-14 0b00 -> GPIO
+			reg_read_m(RTL837X_PIN_MUX_1);
+			sfr_mask_data(1, 0x60, 0x00);
+			reg_write_m(RTL837X_PIN_MUX_1);
 			break;
 		case GPIO51_I2C_SDA2_UART1_RX:
 			// Bit 17-18 0b00 -> GPIO

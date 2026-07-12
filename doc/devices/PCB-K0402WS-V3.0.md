@@ -9,11 +9,13 @@ of the device just above the big label, might be covered by a QC sticker.
 
 ### Brands
 
-* Hisource Hi-K0402WS
+| Brand  | Type             |Managed| PCB              | Flash           | Chip RTL      |
+|--------|------------------|-------|------------------|-----------------|---------------|
+| Hisource | Hi-K0402WS | No    | SWTG018AS-A V2.0 | 2MB | BY25Q16BS |
+| FOXNEO | FNS-1200 | No    | SWTG018AS-A V2.0 | 2MB | BY25Q16BS |
+| Ztyuav | Z-QWYT0402  | No   | SWTG018AS-A V2.0 | 2MB | BY25Q16BS |
 
 <img src="photos/PCB-K0402WS-V3.0/HiSource_HI-K0402WS.jpg" width="300" />
-
-* Ztyuav Z-QWYT0402
 
 <img src="photos/PCB-K0402WS-V3.0/Ztyuav_Z-QWYT0402.jpg" width="300" />
 

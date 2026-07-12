@@ -144,16 +144,41 @@ read/write operations:
   a module's EEPROM to a copper/SFP-direct-attach type or to repair a
   corrupted checksum.
 
-> sfp <slot> write <hex-offset> <hex-value>
+> sfp <slot> write <hex-offset> <hex-value> [--pw <hex8>]
   Writes a single byte to the EEPROM at the given offset (0x00-0xFF).
   The write is verified by reading back the value. If the offset is within
   the base ID field (0x00-0x3E), a warning is printed suggesting to run
-  `sfp <slot> fix` afterwards to update CC_BASE.
+  `sfp <slot> checksum --fix` afterwards to update CC_BASE. If the module
+  requires a write-protection password, provide it with --pw.
 
 > sfp <slot> bulk <512-hex-chars>
   Writes all 256 bytes of the EEPROM at once using a hex string of exactly
   512 characters (two hex chars per byte). The checksum is automatically
   fixed after the write.
+
+> sfp <slot> describe
+  Displays formatted module information: identifier, connector type, vendor
+  name, part number, revision, serial, date code, signalling rate,
+  compliance codes (Ethernet/FC), and checksum validity (CC_BASE + CC_EXT).
+
+> sfp <slot> patch [--pw <hex8>]
+  Patches the EEPROM to convert a Fibre Channel module to Ethernet:
+  - Byte 3 = 0x20 (10GBase-LR)
+  - Byte 6 = 0x02 (1000BASE-LX)
+  - Byte 7 = 0x00 (clear FC link length)
+  - Byte 9 = 0x00 (clear FC speed)
+  - CC_BASE recalculated after patching
+  If the module requires a write-protection password, provide it with --pw.
+
+> sfp <slot> checksum [--fix] [--pw <hex8>]
+  Without --fix: displays current and expected values of CC_BASE (byte 0x3F)
+  and CC_EXT (byte 0x5F). With --fix: recalculates and writes both checksums.
+  If the module requires a write-protection password, provide it with --pw.
+
+> sfp <slot> clone [--pw <hex8>]
+  Writes the full 256-byte EEPROM from the flash buffer (pre-loaded via
+  `sfp <slot> restore` or other means). Checksum is auto-fixed after cloning.
+  If the module requires a write-protection password, provide it with --pw.
 ```
 
 ## SFP EEPROM Editor (Web Interface)

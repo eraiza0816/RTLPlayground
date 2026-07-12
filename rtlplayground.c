@@ -122,6 +122,7 @@ __xdata char hostname[32];
 __xdata uint8_t tx_seq;
 
 __xdata uint8_t stpEnabled;
+__xdata uint8_t telnet_enabled;
 
 __code uint16_t bit_mask[16] = {
 	0x0001, 0x0002, 0x0004, 0x0008, 0x0010, 0x0020, 0x0040, 0x0080,

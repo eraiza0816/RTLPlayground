@@ -16,4 +16,6 @@ uint8_t telnet_is_connected(void) __banked;
 uint8_t telnet_echo_enabled(void) __banked;
 void telnet_tx_enqueue(char c) __banked;
 
+extern __xdata uint8_t telnet_enabled;
+
 #endif

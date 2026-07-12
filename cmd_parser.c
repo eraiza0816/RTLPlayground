@@ -43,6 +43,7 @@ extern __xdata char hostname[32];
 
 extern __xdata struct dhcp_state dhcp_state;
 extern __xdata uint8_t telnet_enabled;
+extern __xdata uint8_t web_enabled;
 
 __xdata uint8_t vlan_names[VLAN_NAMES_SIZE];
 __xdata uint16_t vlan_ptr;
@@ -322,6 +323,7 @@ void parse_lag_hash(void)
 	__xdata uint8_t group;
 	__xdata uint8_t hash = 0;
 
+	// TODO: validate group range (0-3) before port_lag_hash_set call
 	group = cmd_buffer[cmd_words_b[1]] - '0';
 
 	uint8_t w = 2;
@@ -431,6 +433,7 @@ void parse_isolate(void)
 
 	print_string("\nISOLATE ");
 
+	// TODO: validate port with isnumber() before phys_to_log_port access
 	__xdata int8_t port_configured = cmd_buffer[cmd_words_b[1]] - '1';
 	port_configured = machine.phys_to_log_port[port_configured];
 	if (isnumber(cmd_buffer[cmd_words_b[1] + 1]))  // CPU-port, logical port 9
@@ -595,8 +598,8 @@ void parse_mirror(void)
 	mirroring_port = cmd_buffer[cmd_words_b[1]] - '1';
 	if (isnumber(cmd_buffer[cmd_words_b[1] + 1]))
 		mirroring_port = (mirroring_port + 1) * 10 + cmd_buffer[cmd_words_b[1] + 1] - '1';
+	// TODO: validate mirroring_port range after phys_to_log_port mapping
 	mirroring_port = machine.phys_to_log_port[mirroring_port];
-	
 
 	uint8_t w = 2;
 	while (w < cmd_words_len) {
@@ -744,6 +747,7 @@ void parse_mtu(void)
 			write_char(' '); print_short(mtu); write_char('\n');
 		}
 	}
+	// TODO: validate port with isnumber() before phys_to_log_port access
 	p = cmd_buffer[cmd_words_b[1]] - '1';
 	p = machine.phys_to_log_port[p];
 	print_byte(p);
@@ -751,6 +755,7 @@ void parse_mtu(void)
 		print_string("mtu [port] [size]\n");
 		return;
 	}
+	// TODO: validate atoi_short() return value; check min MTU >= 64
 	atoi_short(&mtu, cmd_words_b[2]);
 	if (mtu > 0x3fff) {
 		print_string("Maximum MTU is 16383\n");
@@ -1258,6 +1263,7 @@ void parse_eee(void)
 			// Word 2 is a speed (e.g., "2g5", "100m", "1g")
 			speed_word = 2;
 		} else if (cmd_buffer[idx] == ' ' || cmd_buffer[idx] == '\0') {
+			// TODO: validate port with isnumber() before phys_to_log_port access
 			// Word 2 is a port number
 			port = cmd_buffer[cmd_words_b[2]] - '1';
 			port = machine.phys_to_log_port[port];
@@ -1309,6 +1315,7 @@ void parse_bw(void)
 	if (cmd_words_len < 2) // Check for at least 2 arguments
 		goto err;
 
+	// TODO: validate cmd_words_len >= 3 before accessing cmd_words_b[2]
 	port = cmd_buffer[cmd_words_b[2]] - '1';
 	if (port > 9)
 		goto err;
@@ -1438,10 +1445,40 @@ void parse_telnet(void)
 		telnet_enabled = 1;
 		print_string("Telnet enabled\n");
 	} else if (cmd_compare(1, "off")) {
+		if (!web_enabled) {
+			print_string("Error: would disable all remote access (web is also off)\n");
+			return;
+		}
 		telnet_enabled = 0;
 		print_string("Telnet disabled\n");
 	} else {
 		print_string("Error: telnet [on|off]\n");
+	}
+}
+
+void parse_web(void)
+{
+	if (cmd_words_len < 2) {
+		print_string("Web: ");
+		if (web_enabled)
+			print_string("enabled\n");
+		else
+			print_string("disabled\n");
+		return;
+	}
+
+	if (cmd_compare(1, "on")) {
+		web_enabled = 1;
+		print_string("Web interface enabled\n");
+	} else if (cmd_compare(1, "off")) {
+		if (!telnet_enabled) {
+			print_string("Error: would disable all remote access (telnet is also off)\n");
+			return;
+		}
+		web_enabled = 0;
+		print_string("Web interface disabled (telnet still available)\n");
+	} else {
+		print_string("Error: web [on|off]\n");
 	}
 }
 
@@ -1589,6 +1626,8 @@ void cmd_parser(void) __banked
 			parse_syslog();
 		} else if (cmd_compare(0, "telnet")) {
 			parse_telnet();
+		} else if (cmd_compare(0, "web")) {
+			parse_web();
 		} else if (cmd_compare(0, "ip")) {
 			if (cmd_compare(1, "dhcp")) {
 				dhcp_start();
@@ -1676,6 +1715,7 @@ void cmd_parser(void) __banked
 		} else if (cmd_compare(0, "pvid") && cmd_words_len == 3) {
 			__xdata uint16_t pvid;
 			uint8_t port;
+			// TODO: validate port with isnumber() before phys_to_log_port access; validate PVID <= 4095
 			port = cmd_buffer[cmd_words_b[1]] - '1';
 			port = machine.phys_to_log_port[port];
 			if (!atoi_short(&pvid, cmd_words_b[2]))

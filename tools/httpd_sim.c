@@ -133,9 +133,12 @@ void send_vlan(int s, int vlan)
 		       "Content-Type: application/json; charset=UTF-8\r\n\r\n";
 
 	v = json_object_new_object();
-	
-	sprintf(num_buff, "0x%08x", 0x00060011);
+
+	sprintf(num_buff, "0x%08x", 0x0000003f);
 	json_object_object_add(v, "members", json_object_new_string(num_buff));
+	sprintf(num_buff, "0x%08x", 0x00000001);
+	json_object_object_add(v, "pvid", json_object_new_string(num_buff));
+	json_object_object_add(v, "name", json_object_new_string(vlan == 1 ? "Default" : "VLAN"));
 
         write(s, header, strlen(header));
 
@@ -473,11 +476,65 @@ void send_config(int s)
 {
         char *header = "HTTP/1.1 200 OK\r\n"
                          "Content-Type: text/plain; charset=UTF-8\r\n\r\n";
-	printf("Sending uploaded config\n");
         write(s, header, strlen(header));
-	printf("Uploaded config len: %d\n", uploaded_config_len);
-	printf(">%s<", uploaded_config);
-	write(s, uploaded_config, uploaded_config_len);
+
+	if (uploaded_config && uploaded_config_len) {
+		printf("Sending uploaded config\n");
+		printf("Uploaded config len: %d\n", uploaded_config_len);
+		printf(">%s<", uploaded_config);
+		write(s, uploaded_config, uploaded_config_len);
+	} else {
+		char *default_cfg = "ip 192.168.10.247\ngw 192.168.10.1\nnetmask 255.255.255.0\n";
+		write(s, default_cfg, strlen(default_cfg));
+	}
+}
+
+
+void send_vlanlist(int s)
+{
+	struct json_object *arr, *v;
+	const char *jstring;
+        char *header = "HTTP/1.1 200 OK\r\n"
+                       "Content-Type: application/json; charset=UTF-8\r\n\r\n";
+
+	arr = json_object_new_array();
+	v = json_object_new_object();
+	json_object_object_add(v, "id", json_object_new_string("1"));
+	json_object_object_add(v, "name", json_object_new_string("Default"));
+	json_object_array_add(arr, v);
+
+        write(s, header, strlen(header));
+	jstring = json_object_to_json_string_ext(arr, JSON_C_TO_STRING_PLAIN);
+        write(s, jstring, strlen(jstring));
+	json_object_put(arr);
+}
+
+void send_l2_delete(int s, int idx)
+{
+        char *response = "HTTP/1.1 200 OK\r\n"
+                       "Content-Type: application/json; charset=UTF-8\r\n\r\n"
+                       "{}";
+        write(s, response, strlen(response));
+}
+
+void send_sfp_eeprom(int s, int slot)
+{
+	struct json_object *v;
+	const char *jstring;
+        char *header = "HTTP/1.1 200 OK\r\n"
+                       "Content-Type: application/json; charset=UTF-8\r\n\r\n";
+
+	v = json_object_new_object();
+	// Return empty 256-byte EEPROM data (all zeros)
+	char data[513];
+	memset(data, '0', 512);
+	data[512] = '\0';
+	json_object_object_add(v, "data", json_object_new_string(data));
+
+        write(s, header, strlen(header));
+	jstring = json_object_to_json_string_ext(v, JSON_C_TO_STRING_PLAIN);
+        write(s, jstring, strlen(jstring));
+	json_object_put(v);
 }
 
 
@@ -499,6 +556,9 @@ struct Server serverConstructor(int port, void (*launch)(struct Server *server))
         perror("Failed to initialize/connect to socket...\n");
         exit(EXIT_FAILURE);
     }
+
+    int opt = 1;
+    setsockopt(server.socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
     if (bind(server.socket, (struct sockaddr*)&server.address, sizeof(server.address)) < 0) {
         perror("Failed to bind socket...\n");
@@ -554,8 +614,11 @@ char *scan_header(char *p)
 			break;
 		if (is_word(p, "\nContent-Type:"))
 			content_type = p + 15;
-		else if (is_word(p, "\nCookie:"))
-			session = p + 17;
+		else if (is_word(p, "\nCookie:")) {
+			char *cookie_val = p + 9;
+			char *s = strstr(cookie_val, "session=");
+			if (s) session = s + 8;
+		}
 	}
 	if (content_type && is_word(content_type, "multipart/form-data; boundary")) {
 		printf("Found multiplart\n");
@@ -610,6 +673,7 @@ void launch(struct Server *server)
     FILE *inptr;
 
     last_called = time(NULL);
+    last_session_use = time(NULL);
     for (int i=0; i < PORTS; i++)
 	    txG[i] = txB[i] = rxG[i] = rxB[i] = 0;
 
@@ -670,6 +734,14 @@ void launch(struct Server *server)
 					else
 						send_lag(new_socket);
 					goto done;
+				} else if (!strncmp(&buffer[4], "/l2_del.json?idx=", 17)) {
+					int idx = atoi(&buffer[21]);
+					printf("L2 del request for idx %d\n", idx);
+					if (!authenticated)
+						send_unauthorized(new_socket);
+					else
+						send_l2_delete(new_socket, idx);
+					goto done;
 				} else if (!strncmp(&buffer[4], "/l2.json?idx=", 13)) {
 					int idx = atoi(&buffer[17]);
 					printf("L2 request\n");
@@ -685,6 +757,13 @@ void launch(struct Server *server)
 					else
 						send_mtu(new_socket);
 					goto done;
+				} else if (!strncmp(&buffer[4], "/vlanlist", 9)) {
+					printf("VLAN list request\n");
+					if (!authenticated)
+						send_unauthorized(new_socket);
+					else
+						send_vlanlist(new_socket);
+					goto done;
 				} else if (!strncmp(&buffer[4], "/vlan.json?vid=", 15)) {
 					int vlan = atoi(&buffer[19]);
 					printf("VLAN request for %d\n", vlan);
@@ -693,6 +772,12 @@ void launch(struct Server *server)
 					else
 						send_vlan(new_socket, vlan);
 					goto done;
+				} else if (!strncmp(&buffer[4], "/cmd_log_clear", 14)) {
+					printf("Request cmd_log_clear\n");
+					cmd_ptr = 0;
+					char *response = "HTTP/1.1 200 OK\r\n\r\n";
+					write(new_socket, response, strlen(response));
+					goto done;
 				} else if (!strncmp(&buffer[4], "/cmd_log", 8)) {
 					printf("Request cmd_log\n");
 					if (!authenticated)
@@ -700,12 +785,25 @@ void launch(struct Server *server)
 					else
 						send_cmd_log(new_socket);
 					goto done;
-				} else if (!strncmp(&buffer[4], "/config ", 8) && uploaded_config) {
+				} else if (!strncmp(&buffer[4], "/config", 7)) {
 					printf("Request current config.\n");
 					if (!authenticated)
 						send_unauthorized(new_socket);
 					else
 						send_config(new_socket);
+					goto done;
+				} else if (!strncmp(&buffer[4], "/sfp_eeprom.json?slot=", 22)) {
+					int slot = atoi(&buffer[26]);
+					printf("SFP EEPROM request for slot %d\n", slot);
+					if (!authenticated)
+						send_unauthorized(new_socket);
+					else
+						send_sfp_eeprom(new_socket, slot);
+					goto done;
+				} else if (!strncmp(&buffer[4], "/reset", 6)) {
+					printf("Reset request\n");
+					char *response = "HTTP/1.1 200 OK\r\n\r\n";
+					write(new_socket, response, strlen(response));
 					goto done;
 				} else if (!strncmp(&buffer[4], "/counters.json?port=", 20)) {
 					int port = atoi(&buffer[24]);
@@ -716,7 +814,7 @@ void launch(struct Server *server)
 						send_counters(new_socket, port);
 					goto done;
 				}
-				if (!authenticated && !(!strncmp(&buffer[4], "/login.html", 11) || !strncmp(&buffer[4], "/style.css", 10))) {
+				if (!authenticated && strncmp(&buffer[4], "/login.html", 11) && strncmp(&buffer[4], "/main.js", 8) && strncmp(&buffer[4], "/i18n.js", 8)) {
 					send_to_login(new_socket);
 					goto done;
 				}
@@ -733,7 +831,7 @@ void launch(struct Server *server)
 				if (i > 1)
 					inptr = fopen(&buffer[5], "rb");
 				else
-					inptr = fopen("/index.html", "rb");
+					inptr = fopen("index.html", "rb");
 				if (inptr == NULL) {
 					printf("Cannot open input file %s\n", &buffer[5]);
 					send_not_found(new_socket);
@@ -792,14 +890,15 @@ void launch(struct Server *server)
 					goto done;
 				} else if (is_word(&buffer[5], "/login")) {
 					printf("POST login\n");
-					p += 4;
-					p += 4; // Read also over "pwd="
+					p += 4; // Skip \r\n\r\n after headers
+					p += 4; // Skip "pwd="
 					char *response;
-					if (is_word(p, PASSWORD)) {
+                    if (is_word(p, PASSWORD)) {
 						printf("Password accepted!\n");
 						response = "HTTP/1.1 302 Found\r\n"
 							   "Location: index.html\r\n"
-							   "Set-Cookie: session=" SESSION_ID "; SameSite=Strict\r\n";
+							   "Set-Cookie: session=" SESSION_ID "; SameSite=Lax\r\n"
+							   "\r\n";
 					} else {
 						response = "HTTP/1.1 302 Found\r\n"
 							   "Location: login.html\r\n\r\n";

@@ -1,1286 +1,432 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<style>
-h1, h2, h3 { color: #226; }
-ul { list-style-type: none; margin: 0; padding: 0; width: 12%; height: calc(100% - 50px); position: fixed; top: 50px; overflow: auto; }
-li a { background-color: #aaf; display: block; color: #000; padding: 8px 16px; text-decoration: none; cursor: pointer; }
-li a:hover { background-color: #226; color: white; }
-table, th, td { border: 1px solid #226; padding: 8px; }
-table { border-collapse: collapse; width: 60%; }
-td { text-align: right; }
-input[type=submit] { padding: 8px 16px; background-color: #aaf; color: #000; margin-bottom: 2em; border-radius: 15px; width: 100%; }
-input[type=submit]:hover { background-color: #226; color: white; }
-input[type=file] { padding: 8px 16px; background-color: #aaf; color: #000; margin-bottom: 2em; border-radius: 15px; width: 60%; }
-input[type=file]:hover { background-color: #226; color: white; }
-button { padding: 8px; background-color: #99f; color: #000; border-radius: 15px; }
-button:hover { background-color: #226; color: white; }
-.action { padding: 8px 16px; margin-top: 2em; margin-right: 3em; background-color: #aaf; color: #000; border-radius: 15px; width: 100%; }
-.action:hover { background-color: #226; color: white; }
-.psel { position: absolute; opacity: 0; width: 0; height: 0; margin-top: 1em; }
-.psel + img { cursor: pointer; opacity: 0.4; padding: 8px; }
-.psel:checked + img { opacity: 1.0; }
-object, img { margin: 0.5em 0.5em; }
-.cbgroup { display: inline-block; text-align: center; }
-.cbgroup label { display: block; }
-.disabled { opacity: .4; background-color: #f88; color: #000; }
-.isSFP { opacity: .4; background-color: #660; }
-.isNOK { color: #900; }
-.isOK { color: #090; }
-.ip { padding: 8px 16px; margin-bottom: 1em; margin-left: 1em; }
-.row { display: flex; }
-.rcol { flex: 90%; }
-.lcol { flex: 10%; }
-.tooltip { position: relative; display: inline-block; cursor: pointer; }
-.tooltiptext { visibility: hidden; width: 260px; background-color: #226; color: #fff; text-align: center; border-radius: 6px; padding: 5px 0; position: absolute; z-index: 1; top: 80%; left: 50%; margin-left: -130px; }
-.tooltiptext::after { content: ""; position: absolute; bottom: 100%; left: 50%; margin-left: -5px; border-width: 5px; border-style: solid; border-color: transparent transparent black transparent; }
-.tooltip:hover .tooltiptext { visibility: visible; opacity: 1; }
-.tt_table { width: 100%; font-size: 90%; }
-.tt_table td { text-align: left; }
-select { text-align-last: right; font-family: monospace; }
-option { direction: rtl; font-family: sans-serif; }
-#vlanTable td { text-align: left; }
-.popup { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; }
-.popup-content { background: #fff; padding: 20px; border-radius: 5px; text-align: center; height: 80%; overflow-y: scroll; }
-.tab-bar { display: flex; border-bottom: 2px solid #226; margin-bottom: 0; margin-left: 16%; padding: 1px 16px; padding-bottom: 0; }
-.tab-btn { padding: 10px 20px; background-color: #ddf; border: none; cursor: pointer; font-size: 1em; border-radius: 8px 8px 0 0; margin-right: 4px; }
-.tab-btn:hover { background-color: #aaf; }
-.tab-btn.active { background-color: #aaf; font-weight: bold; border-bottom: 2px solid #aaf; margin-bottom: -2px; }
-.tab-content { display: none; }
-.tab-content.active { display: block; }
-.section { display: none; }
-.section.active { display: block; }
-</style>
-<script>
-var txG = new BigInt64Array(10);
-var txB = new BigInt64Array(10);
-var rxG = new BigInt64Array(10);
-var rxB = new BigInt64Array(10);
-const linkS = ["Disabled", "Down", "10M", "100M", "1000M", "500M", "10G", "2.5G", "5G"];
-var pState = new Int8Array(10);
-var pIsSFP = new Int8Array(10);
-var pAdvertised = new Int8Array(10);
-var numPorts = 0;
-var logToPhysPort = new Int8Array(10);
-var physToLogPort = new Int8Array(10);
-var portNames = new Array(10);
-var currentRequests = [];
-var currentCallback;
-var mtus = new Int16Array(10);
-var clicked = new Int8Array(10);
-var l2Entries = [];
-var l2CurrentEntry = 0;
-var l2GetInterval;
-var vlanInterval = Number();
-var mirrorInterval = Number();
-var lagInterval = Number();
-var systemInterval = Number();
-var isSaving = false;
-var configInterval = Number();
-var configuration = [];
-const ips = ["ip", "netmask", "gw"];
-const mirrors = ["mPortsTX", "mPortsRX"];
-const conf_cmds = [
-  /^ip\s+(\d{1,3}\.){3}\d{1,3}$/, /^ip\s+dhcp$/, /^gw\s+(\d{1,3}\.){3}\d{1,3}$/,
-  /^netmask\s+(\d{1,3}\.){3}\d{1,3}$/, /^syslog\s+(on|off)$/, /^syslog\s+ip\s+(\d{1,3}\.){3}\d{1,3}$/,
-  /^passwd\s+\S+$/, /^vlan\s+\d{1,4}\s+d$/, /^vlan\s+\d{1,4}\s+mgmt$/,
-  /^vlan\s+\d{1,4}(\s+[a-zA-Z]\w*)?(\s+\d{1,2}[tu]?)+$/, /^pvid\s+\d{1,2}\s+\d{1,4}$/,
-  /^ingress(\s+\d{1,2}[tua])+$/, /^ingress\s+[tua]$/,
-  /^port\s+\d{1,2}\s+(10m|100m|1g|2g5|5g|10g|auto|on|off)(\s+(half|full))?$/,
-  /^port\s+\d{1,2}\s+name\s+\S+$/, /^eee(\s+\d{1,2})?\s+(on|off)$/,
-  /^mirror(\s+\d{1,2})(\s+\d{1,2}[tr]?)+$/,
-  /^mirror\s+off$/, /^lag\s+\d(\s+\d{1,2})+$/,
-  /^laghash\s+\d(\s+\w+)+$/, /^isolate\s+\d{1,2}(\s+(off|\d{1,2}))+$/,
-  /^stp\s+(on|off)$/, /^igmp\s+(on|off)$/, /^mtu\s+\d{1,2}\s+\d+$/, /^bw\s+(in|out)\s+\d{1,2}\s+\S+$/
-];
-const conf_overwrite = [
-  /^ip\b/, /^gw\b/, /^netmask\b/, /^syslog\s+ip\b/, /^syslog\b/, /^passwd\b/,
-  /^vlan\s+\d{1,4}\s+mgmt$/, /^vlan\s+\d{1,4}(?!\s+mgmt\b)/, /^pvid\s+\d{1,2}\b/,
-  /^ingress\b/, /^port\s+\d{1,2}(?!\s+name\b)/, /^port\s+\d{1,2}\s+name\b/,
-  /^eee\s+\d{1,2}\b/, /^eee\b/, /^mirror\b/, /^lag\s+\d+\b/, /^laghash\b/,
-  /^isolate\s+\d{1,2}\b/, /^stp\b/, /^igmp\b/, /^mtu\s+\d{1,2}\b/, /^bw\s+(in|out)\s+\d{1,2}\b/
-];
-
-function showSection(id) {
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  document.getElementById('section-' + id).classList.add('active');
-}
-
-function drawPorts() {
-  var f = document.getElementById('ports');
-  for (let i = 0; i < numPorts; i++) {
-    const d = document.createElement("div");
-    d.classList.add('tooltip');
-    const s = document.createElement("span");
-    s.classList.add("tooltiptext");
-    s.id = "tt_" + (i + 1);
-    const l = document.createElement("object");
-    d.appendChild(l);
-    d.appendChild(s);
-    l.type = "image/svg+xml";
-    l.data = pIsSFP[i] ? "sfp.svg" : "port.svg";
-    l.width = pIsSFP[i] ? "60" : "40";
-    l.height = pIsSFP[i] ? "60" : "40";
-    l.id = "port" + (i + 1);
-    f.appendChild(d);
-  }
-}
-
-function parseUint16(val) { return parseInt(val, 16) & 0xffff; }
-function parseInt16(val) { let v = parseInt(val, 16); let n = v & 0x7fff; return v & 0x8000 ? n - 0x8000 : n; }
-
-function applyCalibrationSlopeOffset(val, cal) {
-  if (typeof cal !== 'string') return val;
-  if (cal.startsWith("0x")) cal = cal.substring(2);
-  if (cal.length != 8) return val;
-  let s = parseUint16(cal.substring(0, 4)) / 256;
-  let o = parseInt16(cal.substring(4, 8));
-  return s * val + o;
-}
-
-function applyRxPowerCalibration(val, cal) {
-  if (typeof cal !== 'string') return val;
-  if (cal.startsWith("0x")) cal = cal.substring(2);
-  if (cal.length != 40) return val;
-  let bytes = cal.match(/.{1,2}/g).map(x => parseInt(x, 16));
-  let view = new DataView(new Uint8Array(bytes).buffer);
-  return view.getFloat32(0) * Math.pow(val, 4) + view.getFloat32(4) * Math.pow(val, 3) + view.getFloat32(8) * Math.pow(val, 2) + view.getFloat32(12) * val + view.getFloat32(16);
-}
-
-function decodeSfpTemp(val, cal) { return applyCalibrationSlopeOffset(parseInt16(val), cal) / 256; }
-function decodeSfpVcc(val, cal) { return applyCalibrationSlopeOffset(parseUint16(val), cal) / 10000; }
-function decodeSfpTxBias(val, cal) { return applyCalibrationSlopeOffset(parseUint16(val), cal) / 500; }
-function decodeSfpTxPower(val, cal) { return applyCalibrationSlopeOffset(parseUint16(val), cal) / 10000; }
-function decodeSfpRxPower(val, cal) { return applyRxPowerCalibration(parseUint16(val), cal) / 10000; }
-function convertPowerTodBm(val) { return 10 * Math.log10(val); }
-
-function rxLosHTML(pin, mod) {
-  if (mod !== null && pin !== null && mod !== pin) return "pin=" + pin + "<br/>mod=" + mod + "<br/>❗❗❗❗";
-  return mod ?? pin;
-}
-
-function callbackXHTTP() {
-  var x = currentRequests[0];
-  x.onreadystatechange = currentCallback;
-  x.onreadystatechange();
-  currentRequests.shift();
-  if (currentRequests.length === 0) return;
-  x = currentRequests[0];
-  currentCallback = x.onreadystatechange;
-  x.onreadystatechange = callbackXHTTP;
-  try { x.send(); } catch (error) { console.error("callback send failed"); }
-}
-
-function sendXHTTP(x) {
-  currentRequests.push(x);
-  if (currentRequests.length === 1) {
-    currentCallback = x.onreadystatechange;
-    x.onreadystatechange = callbackXHTTP;
-    try { x.send(); } catch (error) { console.error("send failed: " + error.message); }
-  }
-}
-
-function update(callback) {
-  var xhttp = new XMLHttpRequest();
-  xhttp.onreadystatechange = function() {
-    if (this.readyState == 4 && this.status == 401) document.location = "/login.html";
-    if (this.readyState == 4 && this.status == 200) {
-      const s = JSON.parse(xhttp.responseText);
-      if (!numPorts) {
-        numPorts = s.length;
-        for (let i = 0; i < s.length; i++) pIsSFP[s[i].portNum - 1] = s[i].isSFP;
-        drawPorts();
-      }
-      for (let i = 0; i < s.length; i++) {
-        p = s[i];
-        let n = p.portNum;
-        logToPhysPort[p.logPort] = n;
-        physToLogPort[n - 1] = p.logPort;
-        portNames[p.logPort] = p.name;
-        let pid = "port" + n;
-        let ttid = "tt_" + n;
-        n--;
-        txG[n] = BigInt(p.txG); txB[n] = BigInt(p.txB); rxG[n] = BigInt(p.rxG); rxB[n] = BigInt(p.rxB);
-        var psvg = document.getElementById(pid);
-        var tt = document.getElementById(ttid);
-        if (psvg == null || !psvg.contentDocument) continue;
-        var bgs = psvg.contentDocument.getElementsByClassName("bg");
-        var leds = psvg.contentDocument.getElementsByClassName("led");
-        if (leds[0] == null || leds[0].style == null) continue;
-        const portName = p.name || portNames[p.logPort] || '';
-        var iHTML = "<table border=\"0\" class=\"tt_table\">";
-        if (portName) iHTML += "<tr><td align=\"left\">Name</td><td>:</td><td>" + portName + "</td></tr>";
-        if (p.enabled == 0) {
-          pState[n] = -1;
-          bgs[0].style.fill = "red"; leds[0].style.fill = "black"; leds[1].style.fill = "black";
-          psvg.style.opacity = 0.4;
-          iHTML += "<tr><td align=\"left\">Status</td><td>:</td><td>Not enabled.</td></tr></table>";
-          tt.innerHTML = iHTML;
-        } else {
-          psvg.style.opacity = 1.0;
-          pState[n] = p.link;
-          if (p.link == 5 || p.link == 7) { leds[0].style.fill = "green"; leds[1].style.fill = "blue"; }
-          else if (p.link == 4 || p.link == 6) { leds[0].style.fill = "green"; leds[1].style.fill = "orange"; }
-          else if (p.link == 1 || p.link == 2 || p.link == 3) { leds[0].style.fill = "green"; leds[1].style.fill = "green"; }
-          else { leds[0].style.fill = "black"; leds[1].style.fill = "black"; psvg.style.opacity = 0.4; }
-          iHTML += "<tr><td align=\"left\">Link speed</td><td>:</td><td>" + linkS[p.link + 1] + "</td></tr>";
-          if (p.isSFP) {
-            pAdvertised[n] = 0;
-            const hasES = p.sfp_options & 0x40;
-            iHTML += "<tr><td>Vendor</td><td>:</td><td>" + p.sfp_vendor + "</td></tr>";
-            iHTML += "<tr><td>Model</td><td>:</td><td>" + p.sfp_model + "</td></tr>";
-            iHTML += "<tr><td>Serial</td><td>:</td><td>" + p.sfp_serial + "</td></tr>";
-            if (hasES) {
-              let txP = decodeSfpTxPower(p.sfp_txpower, p.sfp_txpower_cal);
-              let rxP = decodeSfpRxPower(p.sfp_rxpower, p.sfp_rxpower_cal);
-              iHTML += "<tr><td>Temp</td><td>:</td><td>" + decodeSfpTemp(p.sfp_temp, p.sfp_temp_cal).toFixed(2) + "&#8239;&#8451;</td></tr>";
-              iHTML += "<tr><td>Vcc</td><td>:</td><td>" + decodeSfpVcc(p.sfp_vcc, p.sfp_vcc_cal).toFixed(2) + "&#8239;V</td></tr>";
-              iHTML += "<tr><td>TX-Fault</td><td>:</td><td>" + Boolean(Number(p.sfp_state) & 0x4) + "</td></tr>";
-              iHTML += "<tr><td>TX-Disabled</td><td>:</td><td>" + Boolean(Number(p.sfp_state) & 0x80) + "</td></tr>";
-              iHTML += "<tr><td>TX-Bias</td><td>:</td><td>" + decodeSfpTxBias(p.sfp_txbias, p.sfp_txbias_cal).toFixed(1) + "&#8239;mA</td></tr>";
-              iHTML += "<tr><td>TX-Power</td><td>:</td><td>" + txP.toFixed(3) + "&#8239;mW / " + convertPowerTodBm(txP).toFixed(2) + "&#8239;dBm</td></tr>";
-              iHTML += "<tr><td>RX-Power</td><td>:</td><td>" + rxP.toFixed(3) + "&#8239;mW / " + convertPowerTodBm(rxP).toFixed(2) + "&#8239;dBm</td></tr>";
-            }
-            const rxLOSpin = p.sfp_los !== null ? Boolean(Number(p.sfp_los)) : null;
-            const rxLOSmod = hasES ? Boolean(Number(p.sfp_state) & 0x2) : null;
-            if (rxLOSmod !== null || rxLOSpin !== null) iHTML += "<tr><td>RX-LOS</td><td>:</td><td>" + rxLosHTML(rxLOSpin, rxLOSmod) + "</td></tr>";
-          } else {
-            pAdvertised[n] = parseInt(p.adv, 2);
-          }
-          iHTML += "</table>";
-          tt.innerHTML = iHTML;
-        }
-      }
-      if (callback) callback();
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title data-i18n="index_title">RTLPlayground</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --panel-bg: #fff;
+      --sidebar: #1e293b;
+      --sidebar-hover: #334155;
+      --sidebar-text: #f8fafc;
+      --heading: #0f172a;
+      --text: #334155;
+      --text-muted: #64748b;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --success: #10b981;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --border: #e2e8f0;
+      --table-header-bg: #f8fafc;
+      --table-header-text: #475569;
+      --input-bg: #fff;
+      --input-border: #cbd5e1;
+      --input-disabled-bg: #f1f5f9;
+      --input-disabled-text: #94a3b8;
+      --port-bg: #f8fafc;
+      --port-text: #64748b;
+      --port-border: #e2e8f0;
+      --port-up-bg: #f0fdf4;
+      --hover-bg: #f8fafc;
+      --divider: #eee;
+      --sfp-badge-bg: #cbd5e1;
+      --sfp-badge-text: #1e293b;
+      --sfp-badge-up-bg: #a7f3d0;
+      --sfp-badge-up-text: #065f46;
+      --modal-bg: #fff;
+      --toast-bg: #333;
+      --toast-text: #fff;
+      --accent-shadow: rgba(59,130,246,0.2);
+      --success-shadow: rgba(16,185,129,0.1);
     }
-  };
-  xhttp.open("GET", "/status.json", true);
-  xhttp.timeout = 5000;
-  sendXHTTP(xhttp);
-}
-
-function createPortTable() {
-  var tbl = document.getElementById('speedtable');
-  if (tbl.rows.length <= 2 && numPorts) {
-    const sSelect = '<select name="speed_sel" id="speed_sel">'
-      + '<option value="auto">Auto</option>'
-      + '<option value="2g5">2500MBit/Full</option>'
-      + '<option value="1g">1000MBit/Full</option>'
-      + '<option value="100m full">100MBit/Full</option>'
-      + '<option value="100m half">100MBit/Half</option>'
-      + '<option value="10m full">10MBit/Full</option>'
-      + '<option value="10m half">10MBit/Half</option>'
-      + '</select>';
-    const dSwitch = '<input type="checkbox" id="disable_port" onchange="portOnOff();">';
-    for (let i = 1; i <= numPorts; i++) {
-      if (pIsSFP[i - 1]) continue;
-      const tr = tbl.insertRow();
-      let td = tr.insertCell(); td.appendChild(document.createTextNode("Port " + i));
-      td = tr.insertCell(); td.appendChild(document.createTextNode(portNames[physToLogPort[i - 1]] || ''));
-      td = tr.insertCell(); td.innerHTML = linkS[pState[i - 1] + 1];
-      td = tr.insertCell(); td.innerHTML = sSelect.replaceAll("speed_sel", "speed_sel_" + i);
-      td = tr.insertCell(); td.innerHTML = dSwitch.replaceAll("disable_port", "disable_port_" + i).replace("portOnOff()", "portOnOff(" + i + ")");
-      td = tr.insertCell(); td.innerHTML = '<button type="button" style="margin: 0 0 0 24px" onclick="applySpeed(' + i + ');">Apply</button>';
+    .dark {
+      --bg: #121212;
+      --panel-bg: #1e1e1e;
+      --sidebar: #111;
+      --sidebar-hover: #2a2a2a;
+      --heading: #e0e0e0;
+      --text: #cccccc;
+      --text-muted: #888;
+      --border: #333;
+      --table-header-bg: #1a1a1a;
+      --table-header-text: #999;
+      --input-bg: #222;
+      --input-border: #444;
+      --input-disabled-bg: #111;
+      --input-disabled-text: #555;
+      --port-bg: #1a1a1a;
+      --port-text: #888;
+      --port-border: #333;
+      --port-up-bg: #0a2a1a;
+      --hover-bg: #222;
+      --divider: #333;
+      --sfp-badge-bg: #444;
+      --sfp-badge-text: #e0e0e0;
+      --sfp-badge-up-bg: #0a3a2a;
+      --sfp-badge-up-text: #6fcf97;
+      --modal-bg: #1e1e1e;
+      --toast-bg: #e0e0e0;
+      --toast-text: #121212;
     }
-  }
-  tbl = document.getElementById('mtutable');
-  if (tbl.rows.length <= 2 && numPorts) {
-    const mSelect = '<select name="mtu_sel" id="mtu_sel">'
-      + '<option value="16383">16383</option>'
-      + '<option value="1500">1500</option>'
-      + '<option value="1522">1522</option>'
-      + '<option value="1536">1536</option>'
-      + '<option value="1552">1552</option>'
-      + '<option value="9216">9216</option>'
-      + '</select>';
-    var tr = tbl.insertRow();
-    for (let i = 1; i <= numPorts; i++) {
-      let td = tr.insertCell();
-      td.innerHTML = '<object type="image/svg+xml" data="' + (pIsSFP[i - 1] ? "sfp.svg" : "port.svg") + '" width="' + (pIsSFP[i - 1] ? "60" : "40") + '"></object>';
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; display: flex; height: 100vh; color: var(--text); background: var(--bg); overflow: hidden; }
+    #nav { width: 240px; background: var(--sidebar); color: var(--sidebar-text); display: flex; flex-direction: column; transition: 0.3s; z-index: 10; flex-shrink: 0; }
+    #nav .brand { padding: 24px; font-weight: 800; font-size: 1.25rem; border-bottom: 1px solid rgba(255,255,255,0.1); letter-spacing: 0.5px; }
+    #nav ul { list-style: none; padding: 0; margin: 0; overflow-y: auto; }
+    #nav li { padding: 16px 24px; cursor: pointer; transition: 0.2s; border-left: 4px solid transparent; font-weight: 500; font-size: 14px; }
+    #nav li:hover, #nav li.active { background: var(--sidebar-hover); }
+    #nav li.active { border-left-color: var(--accent); color: var(--sidebar-text); }
+    #content { flex: 1; overflow-y: auto; padding: 40px; }
+    .panel { display: none; background: var(--panel-bg); padding: 32px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); max-width: 1100px; margin: 0 auto; animation: fadeIn 0.3s ease; }
+    .panel.active { display: block; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    h2 { margin-top: 0; color: var(--heading); border-bottom: 2px solid var(--bg); padding-bottom: 12px; margin-bottom: 24px; }
+    h3 { color: var(--heading); margin-top: 30px; border-bottom: 1px solid var(--divider); padding-bottom: 8px; }
+    .btn { background: var(--accent); color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px; transition: 0.2s; white-space: nowrap; }
+    .btn:hover:not(:disabled) { background: var(--accent-hover); transform: translateY(-1px); }
+    .btn:disabled { background: var(--input-border); color: var(--text-muted); cursor: not-allowed; }
+    .btn-danger { background: var(--danger); }
+    .btn-danger:hover:not(:disabled) { background: #dc2626; }
+    .btn-warning { background: var(--warning); color: #000; }
+    .btn-warning:hover:not(:disabled) { background: #d97706; }
+    .btn-success { background: var(--success); }
+    .btn-success:hover:not(:disabled) { background: #059669; }
+    .input-row { display: flex; gap: 10px; align-items: center; margin-bottom: 20px; flex-wrap: wrap; }
+    input[type="text"], input[type="number"], select, textarea { padding: 8px 12px; border: 1px solid var(--input-border); border-radius: 6px; font-size: 14px; outline: none; background: var(--input-bg); color: var(--text); }
+    input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-shadow); }
+    input:disabled, select:disabled { background: var(--input-disabled-bg); color: var(--input-disabled-text); cursor: not-allowed; }
+    .port-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 12px; margin-bottom: 32px; }
+    .port { border: 2px solid var(--port-border); border-radius: 8px; padding: 12px 6px; text-align: center; font-size: 12px; font-weight: 700; background: var(--port-bg); color: var(--port-text); position: relative; cursor: help; transition: 0.2s; }
+    .port:hover { border-color: var(--accent); }
+    .port.up { border-color: var(--success); color: var(--success); background: var(--port-up-bg); box-shadow: 0 2px 4px var(--success-shadow); }
+    .sfp-badge { display: inline-block; background: var(--sfp-badge-bg); color: var(--sfp-badge-text); font-size: 10px; padding: 2px 6px; border-radius: 4px; margin-bottom: 4px; font-weight: 800; letter-spacing: 0.5px; }
+    .port.up .sfp-badge { background: var(--sfp-badge-up-bg); color: var(--sfp-badge-up-text); }
+    .table-responsive { overflow-x: auto; width: 100%; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 20px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 600px; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    th { background: var(--table-header-bg); font-weight: 600; color: var(--table-header-text); position: sticky; top: 0; }
+    tr:hover td { background: var(--hover-bg); }
+    .cb-cell { text-align: center; }
+    .lag-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; }
+    .lag-group { border: 1px solid var(--border); padding: 15px; border-radius: 8px; background: var(--table-header-bg); }
+    .lag-group h4 { margin: 0 0 10px 0; color: var(--heading); font-size: 14px; border-bottom: 1px solid var(--input-border); padding-bottom: 5px; }
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 2000; align-items: center; justify-content: center; backdrop-filter: blur(2px); }
+    .modal-content { background: var(--modal-bg); padding: 24px; border-radius: 12px; width: 90%; max-width: 800px; max-height: 85vh; overflow-y: auto; box-shadow: 0 10px 25px rgba(0,0,0,0.2); position: relative; }
+    .modal-close { position: absolute; top: 16px; right: 20px; cursor: pointer; font-size: 28px; font-weight: bold; color: var(--text-muted); line-height: 1; }
+    .modal-close:hover { color: var(--danger); }
+    #toast { position: fixed; top: 24px; right: 24px; padding: 16px 24px; border-radius: 8px; background: var(--toast-bg); color: var(--toast-text); font-weight: 600; font-size: 14px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); transform: translateX(150%); transition: transform 0.3s; z-index: 1000; }
+    #toast.show { transform: translateX(0); }
+    #toast.success { background: var(--success); }
+    #toast.error { background: var(--danger); }
+    #toast.info { background: var(--accent); }
+    .cbgroup { display: inline-block; text-align: center; margin: 4px; }
+    .cbgroup label { display: block; font-size: 11px; }
+    .psel { margin: 4px; transform: scale(1.2); }
+    .tab-bar { display: flex; border-bottom: 2px solid var(--border); margin-bottom: 20px; }
+    .tab-btn { padding: 10px 20px; background: transparent; border: none; cursor: pointer; font-size: 14px; border-bottom: 2px solid transparent; margin-bottom: -2px; color: var(--text-muted); }
+    .tab-btn:hover { color: var(--accent); }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .narrow { width: auto; min-width: 0; }
+    #info-table td:first-child { font-weight: 600; width: 200px; color: var(--table-header-text); }
+    .mtu-grid { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .mtu-grid > * { flex: 0 0 auto; }
+    #hexdump table { font-size: 11px; min-width: 0; }
+    #hexdump td { padding: 2px 4px; text-align: center; font-size: 11px; }
+    #hexdump th { padding: 2px 4px; font-size: 10px; }
+    .inline-block { display: inline-block; }
+    @media (max-width: 768px) {
+      body { flex-direction: column; }
+      #nav { width: 100%; height: auto; flex-direction: row; align-items: center; overflow-x: auto; white-space: nowrap; }
+      #nav .brand { border-bottom: none; border-right: 1px solid rgba(255,255,255,0.1); padding: 16px; font-size: 1rem; }
+      #nav ul { display: flex; flex-direction: row; }
+      #nav li { padding: 12px; border-left: none; border-bottom: 4px solid transparent; font-size: 12px; }
+      #nav li.active { border-left: none; border-bottom-color: var(--accent); }
+      #content { padding: 16px; }
+      .panel { padding: 20px; }
+      .input-row { flex-direction: column; align-items: flex-start; }
+      .input-row > * { width: 100% !important; }
+      .btn { width: 100%; }
+      .port-grid { grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); }
     }
-    tr = tbl.insertRow();
-    for (let i = 1; i <= numPorts; i++) {
-      let td = tr.insertCell();
-      td.innerHTML = mSelect.replaceAll("mtu_sel", "mtu_sel_" + i);
-    }
-    tr = tbl.insertRow();
-    for (let i = 1; i <= numPorts; i++) {
-      let td = tr.insertCell();
-      td.innerHTML = '<button type="button" style="margin: 0 0 0 24px" onclick="applyMTU(' + i + ');">Apply</button>';
-    }
-  }
-}
-
-function updatePortTable() {
-  var tbl = document.getElementById('speedtable');
-  if (tbl.rows.length <= 2 || !numPorts) return;
-  for (let i = 1; i <= numPorts; i++) {
-    if (pIsSFP[i - 1]) continue;
-    tbl.rows[i].cells[2].innerHTML = "" + linkS[pState[i - 1] + 1];
-    if (!clicked[i] && pState[i - 1] < 0) {
-      document.getElementById('speed_sel_' + i).disabled = true;
-      document.getElementById('disable_port_' + i).checked = true;
-    }
-  }
-}
-
-async function applySpeed(port) {
-  var speed = document.getElementById('speed_sel_' + port).value;
-  var disabled = document.getElementById('disable_port_' + port).checked;
-  var cmd = "port " + port + " " + (disabled ? "off" : speed);
-  try { await fetch('/cmd', { method: 'POST', body: cmd }); } catch (err) { console.error("Error: " + err); }
-}
-
-async function portOnOff(p) {
-  document.getElementById('speed_sel_' + p).disabled = document.getElementById('disable_port_' + p).checked;
-  clicked[p] = 1;
-}
-
-async function applyMTU(port) {
-  var cmd = "mtu " + port + " " + document.getElementById('mtu_sel_' + port).value;
-  try { await fetch('/cmd', { method: 'POST', body: cmd }); getMTUs(); } catch (err) { console.error("Error: " + err); }
-}
-
-function getMTUs() {
-  var xhttp = new XMLHttpRequest();
-  xhttp.onreadystatechange = function() {
-    if (this.readyState == 4 && this.status == 200) {
-      const s = JSON.parse(xhttp.responseText);
-      for (let i = 0; i < s.length; i++) {
-        let n = s[i].portNum;
-        mtus[n] = parseInt(s[i].mtu, 16);
-        var mtu = document.getElementById('mtu_sel_' + n);
-        if (mtu) mtu.value = mtus[n];
-      }
-    }
-  };
-  xhttp.open("GET", "/mtu.json", true);
-  xhttp.timeout = 1500; sendXHTTP(xhttp);
-}
-
-function fillStats() {
-  var tbl = document.getElementById('statstable');
-  if (!numPorts) return;
-  if (tbl.rows.length > 1) {
-    for (let i = 0; i < numPorts; i++) {
-      tbl.rows[i + 1].cells[2].innerHTML = "" + linkS[pState[i] + 1];
-      tbl.rows[i + 1].cells[3].innerHTML = "" + txG[i] + " pkts";
-      tbl.rows[i + 1].cells[4].innerHTML = "" + txB[i] + " pkts";
-      tbl.rows[i + 1].cells[5].innerHTML = "" + rxG[i] + " pkts";
-      tbl.rows[i + 1].cells[6].innerHTML = "" + rxB[i] + " pkts";
-    }
-  } else {
-    for (let i = 0; i < numPorts; i++) {
-      const tr = tbl.insertRow();
-      let td = tr.insertCell(); td.appendChild(document.createTextNode("Port " + (i + 1)));
-      td = tr.insertCell(); td.appendChild(document.createTextNode(portNames[physToLogPort[i]] || ''));
-      td = tr.insertCell(); td.appendChild(document.createTextNode("" + linkS[pState[i] + 1]));
-      td = tr.insertCell(); td.appendChild(document.createTextNode("" + txG[i] + " pkts"));
-      td = tr.insertCell(); td.appendChild(document.createTextNode("" + txB[i] + " pkts"));
-      td = tr.insertCell(); td.appendChild(document.createTextNode("" + rxG[i] + " pkts"));
-      td = tr.insertCell(); td.appendChild(document.createTextNode("" + rxB[i] + " pkts"));
-      td = tr.insertCell(); td.innerHTML = '<button type="button" style="margin: 0 0 0 24px" onclick="getCounters(' + i + ');">Show</button>';
-    }
-  }
-}
-
-function getCounters(port) {
-  var xhttp = new XMLHttpRequest();
-  var popup = document.getElementById('popup');
-  xhttp.onreadystatechange = function() {
-    if (this.readyState == 4 && this.status == 200) {
-      const s = JSON.parse(xhttp.responseText);
-      var ptext = document.getElementById('popup_text');
-      var t = "<table style='width:100%'> <tr> <th>Counter</th> <th>Value</th> <th>Counter</th> <th>Value</th></tr> <tr>";
-      const mib = [
-        "Interface in Octets",8,"",0,"Interface out Octets",8,"",0,
-        "Interface in Unicast Pkts",8,"",0,"Interface in Multicast Pkts",8,"",0,
-        "Interface in Broadcast Pkts",8,"",0,"Interface out Unicast Pkts",8,"",0,
-        "Interface out Multicast Pkts",8,"",0,"Interface out Broadcast Pkts",8,"",0,
-        "Interface out discards",4,"802.1d Tp Port in discards",4,"802.3 Single collision frames",4,
-        "802.3 Multi collision frames",4,"802.3 Deferred transmissions",4,"802.3 Late collisions",4,
-        "802.3 Excessive collisions",4,"802.3 Symbol errors",4,"802.3 Control in unknown opcodes",4,
-        "802.3 In Pause frames",4,"802.3 Out Pause frames",4,"Ether drop events",4,
-        "TX Ether Broadcast Pkts",4,"TX Ether Multicast Pkts",4,"TX Ether CRC Align errors",4,
-        "RX Ether CRC Align errors",4,"TX Ether Undersized Pkts",4,"RX Ether Undersized Pkts",4,
-        "TX Ether Oversized Pkts",4,"RX Ether Oversized Pkts",4,"TX Ether Fragments",4,
-        "RX Ether fragments",4,"TX Ether Jabbers",4,"RX Ether Jabbers",4,"TX Ether Collisions",4,
-        "TX Ether Pkts 640 Octets",4,"RX Ether Pkts 640 Octets",4,"TX Ether 65-127 Octets",4,
-        "RX Ether 65-127 Octets",4,"TX Ether Pkts 128-255 Octets",4,"RX Ether Pkts 128-255 Octets",4,
-        "TX Ether Pkts 256-511 Octets",4,"RX Ether Pkts 256-511 Octets",4,"TX Ether Pkts 512-1023 Octets",4,
-        "RX Ether Pkts 512-1023 Octets",4,"TX Ether Pkts 1024-1518 Octets",4,"RX Ether Pkts 1024-1518 Octets",4,
-        "",4,"RX Ether Undersized Drop Pkts",4,"TX Ether Pkts >1518 Octets",4,"RX Ether Pkts >1518 Octets",4,
-        "TX Ether Pkts too large",4,"RX Ether Pkts too large",4,"TX Ether Flexible Octets Set 1",4,
-        "RX Ether Flexible Octets Set 1",4,"TX Ether Flexible Octets CRC Set 1",4,"RX Ether Flexible Octets CRC Set 1",4,
-        "TX Ether Flexible Octets Set 0",4,"RX Ether Flexible Octets Set 0",4,"TX Ether Flexible Octets CRC Set 0",4,
-        "RX Ether Flexible Octets CRC Set 0",4,"Lenth Field Errors",4,"False Carriers",4,"Undersized Octets",4,
-        "Framing Errors",4,"",4,"RX MAC Discards",4,"RX MAC IPG Short Drop",4,"",4,
-        "802.1d TP Learned Entry Discards",4,"Egress Queue 7 Dropped Pkts",4,"Egress Queue 6 Dropped Pkts",4,
-        "Egress Queue 5 Dropped Pkts",4,"Egress Queue 4 Dropped Pkts",4,"Egress Queue 3 Dropped Pkts",4,
-        "Egress Queue 2 Dropped Pkts",4,"Egress Queue 1 Dropped Pkts",4,"Egress Queue 0 Dropped Pkts",4,
-        "Egress Queue 7 Out Pkts",4,"Egress Queue 6 Out Pkts",4,"Egress Queue 5 Out Pkts",4,
-        "Egress Queue 4 Out Pkts",4,"Egress Queue 3 Out Pkts",4,"Egress Queue 2 Out Pkts",4,
-        "Egress Queue 1 Out Pkts",4,"Egress Queue 0 Out Pkts",4,"TX Good Counter",8,"",0,
-        "RX Good Counter",8,"",0,"RX Error Counter",4,"TX Error Counter",4,"TX Good Counter PHY",8,"",0,
-        "RX Good Counter PHY",8,"",0,"RX Error Counter PHY",4,"TX Error Counter PHY",4
-      ];
-      var c = 0;
-      for (var i = 0; i < mib.length; i += 4) {
-        if (mib[i] == "" && mib[i + 1] == 8) continue;
-        var count = BigInt(s[i / 4]);
-        if (mib[i + 1] == 8) { t += "<td>" + mib[i] + "</td><td>" + count.toString() + "</td>"; c += 1; }
-        else if (mib[i + 1] == 4) {
-          if (mib[i] != "") { t += "<td>" + mib[i] + "</td><td>" + (count >> 32n).toString() + "</td>"; c += 1; }
-          if (c == 2) { t += "</tr> <tr>"; c = 0; }
-          if (mib[i + 2] != "") { t += "<td>" + mib[i + 2] + "</td><td>" + (count & 4294967295n).toString() + "</td>"; c += 1; }
-        }
-        if (c == 2) { t += "</tr> <tr>"; c = 0; }
-      }
-      ptext.innerHTML = t + "</tr></table>";
-      popup.style.display = 'flex';
-    }
-  };
-  xhttp.open("GET", "/counters.json?port=" + port, true);
-  xhttp.timeout = 1500; sendXHTTP(xhttp);
-}
-
-function closePopup() { document.getElementById('popup').style.display = 'none'; }
-
-function vlanForm() {
-  if (!numPorts) return;
-  var t = document.getElementById('tPorts');
-  var u = document.getElementById('uPorts');
-  var p = document.getElementById('pPorts');
-  for (let i = 1; i <= numPorts; i++) {
-    const d = document.createElement("div");
-    d.classList.add("cbgroup");
-    const l = document.createElement("label");
-    l.innerHTML = "" + i; l.classList.add("cbgroup");
-    const inp = document.createElement("input");
-    inp.type = "checkbox"; inp.setAttribute("class", "psel");
-    inp.id = "tport" + i;
-    inp.setAttribute('onclick', 'setC("u", ' + i + ', false);');
-    const o = document.createElement("img");
-    o.src = pIsSFP[i - 1] ? "sfp.svg" : "port.svg";
-    o.width = pIsSFP[i - 1] ? "60" : "40";
-    o.height = o.width;
-    l.appendChild(inp); l.appendChild(o);
-    d.appendChild(l);
-    t.appendChild(d);
-    var d2 = d.cloneNode(true);
-    d2.children[0].children[0].id = "uport" + i;
-    d2.children[0].children[0].setAttribute('onclick', 'setC("t", ' + i + ', false);');
-    u.appendChild(d2);
-    var d3 = d.cloneNode(true);
-    d3.children[0].children[0].id = "pport" + i;
-    d3.children[0].children[0].removeAttribute('onclick');
-    p.appendChild(d3);
-  }
-}
-
-function setC(t, p, c) { document.getElementById(t + 'port' + p).checked = c; }
-
-function utClicked(t) { for (let i = 1; i <= numPorts; i++) { setC('t', i, t); setC('u', i, !t); } }
-
-function pvClicked(p) { for (let i = 1; i <= numPorts; i++) setC('p', i, p); }
-
-function fetchVLAN() {
-  var v = document.getElementById('vid').value;
-  if (!v) { alert("Set VLAN ID first"); return; }
-  var xhttp = new XMLHttpRequest();
-  xhttp.onreadystatechange = function() {
-    if (this.readyState == 4 && this.status == 200) {
-      const s = JSON.parse(xhttp.responseText);
-      var m = parseInt(s.members, 16);
-      document.getElementById('vname').value = s.name;
-      var members = m & 0x3FF;
-      var untag = (m >> 10) & 0x3FF;
-      var pvid = parseInt(s.pvid, 16);
-      for (let p = 1; p <= numPorts; p++) {
-        var bit = physToLogPort[p - 1];
-        var isMember = (members >> bit) & 1;
-        var isUntag = (untag >> bit) & 1;
-        setC('t', p, isMember && !isUntag);
-        setC('u', p, isMember && isUntag);
-        setC('p', p, (pvid >> bit) & 1);
-      }
-    }
-  };
-  xhttp.open("GET", "/vlan.json?vid=" + v, true);
-  sendXHTTP(xhttp);
-}
-
-async function vlanSub() {
-  var v = document.getElementById('vid').value;
-  if (!v) { alert("Set VLAN ID first"); return; }
-  var cmd = "vlan " + v;
-  if (document.getElementById('vname').value) cmd += ' ' + document.getElementById('vname').value;
-  for (let i = 1; i <= numPorts; i++) {
-    if (document.getElementById('tport' + i).checked) cmd += " " + i + "t";
-    else if (document.getElementById('uport' + i).checked) cmd += " " + i;
-  }
-  try {
-    await fetch('/cmd', { method: 'POST', body: cmd });
-    for (let i = 1; i <= numPorts; i++) {
-      if (document.getElementById('pport' + i).checked)
-        await fetch('/cmd', { method: 'POST', body: "pvid " + i + " " + v });
-    }
-    refreshVlanViews();
-  } catch (err) { console.error("Error: " + err); }
-}
-
-function portsToRange(mask, nPorts) {
-  var parts = [], start = -1, prev = -1;
-  for (var p = 1; p <= nPorts; p++) {
-    var bit = physToLogPort[p - 1];
-    if ((mask >> bit) & 1) { if (start < 0) start = p; prev = p; }
-    else { if (start >= 0) { parts.push(start === prev ? String(start) : start + '-' + prev); start = -1; prev = -1; } }
-  }
-  if (start >= 0) parts.push(start === prev ? String(start) : start + '-' + prev);
-  return parts.length ? parts.join(',') : '-';
-}
-
-async function loadVlanTable() {
-  var tbody = document.getElementById('vlanTableBody');
-  if (!tbody) return;
-  tbody.innerHTML = '';
-  var resp;
-  try { resp = await fetch('/vlanlist'); } catch (e) { return; }
-  if (!resp.ok) return;
-  var vlans;
-  try { vlans = await resp.json(); } catch (e) { return; }
-  for (var i = 0; i < vlans.length; i++) {
-    var v = vlans[i];
-    var vresp;
-    try { vresp = await fetch('/vlan.json?vid=' + v.id); } catch (e) { continue; }
-    if (!vresp.ok) continue;
-    var s;
-    try { s = await vresp.json(); } catch (e) { continue; }
-    var m = parseInt(s.members, 16);
-    var members = m & 0x3FF;
-    var untag = ((m >> 10) & 0x3FF) & members;
-    var tagged = members & ~untag;
-    var pvid = parseInt(s.pvid, 16) & 0x3FF;
-    var tr = document.createElement('tr');
-    var td, a, btn;
-    td = document.createElement('td');
-    a = document.createElement('a'); a.href = '#'; a.textContent = v.id;
-    (function(vid) { a.onclick = function(e) { e.preventDefault(); document.getElementById('vid').value = vid; fetchVLAN(); }; })(v.id);
-    td.appendChild(a); tr.appendChild(td);
-    td = document.createElement('td'); td.textContent = v.name || ''; tr.appendChild(td);
-    td = document.createElement('td'); td.textContent = portsToRange(members, numPorts); tr.appendChild(td);
-    td = document.createElement('td'); td.textContent = portsToRange(tagged, numPorts); tr.appendChild(td);
-    td = document.createElement('td'); td.textContent = portsToRange(untag, numPorts); tr.appendChild(td);
-    td = document.createElement('td'); td.textContent = portsToRange(pvid, numPorts); tr.appendChild(td);
-    td = document.createElement('td');
-    if (v.id !== 1) {
-      btn = document.createElement('button'); btn.textContent = '✕';
-      (function(vid) { btn.onclick = function() { deleteVlan(vid); }; })(v.id);
-      td.appendChild(btn);
-    }
-    tr.appendChild(td);
-    tbody.appendChild(tr);
-  }
-}
-
-function deleteVlan(id) {
-  if (!confirm('Delete VLAN ' + id + '?')) return;
-  fetch('/cmd', { method: 'POST', body: 'vlan ' + id + ' d' }).then(function() { refreshVlanViews(); });
-}
-
-function refreshVlanViews() { loadVlanList(); loadVlanTable(); }
-
-function loadVlanList() {
-  var xhttp = new XMLHttpRequest();
-  xhttp.onreadystatechange = function() {
-    if (this.readyState !== 4) return;
-    var sel = document.getElementById('vlanSelect');
-    if (this.status !== 200) { sel.style.display = 'none'; return; }
-    var vlans;
-    try { vlans = JSON.parse(this.responseText); } catch (e) { sel.style.display = 'none'; return; }
-    if (!vlans.length) { sel.style.display = 'none'; return; }
-    sel.options.length = 1;
-    for (var i = 0; i < vlans.length; i++) {
-      var opt = document.createElement('option');
-      opt.value = vlans[i].id;
-      opt.text = vlans[i].name ? vlans[i].id + ' — ' + vlans[i].name : String(vlans[i].id);
-      sel.appendChild(opt);
-    }
-  };
-  xhttp.open('GET', '/vlanlist', true);
-  sendXHTTP(xhttp);
-}
-
-function l2CMP(a, b) {
-  if (a.port < b.port) return -1;
-  if (a.port > b.port) return 1;
-  if (a.mac < b.mac) return -1;
-  if (a.mac > b.mac) return 1;
-  if (a.vlan < b.vlan) return -1;
-  if (a.vlan > b.vlan) return 1;
-  return 0;
-}
-
-function uniq(a) { return a.filter(function(item, pos, ary) { return !pos || item.idx != ary[pos - 1].idx; }); }
-
-function delL2(idx) {
-  var xhttp = new XMLHttpRequest();
-  xhttp.onreadystatechange = function() {
-    if (this.readyState == 4 && this.status == 200) { JSON.parse(xhttp.responseText); }
-  };
-  xhttp.open("GET", "/l2_del.json?idx=" + idx, true);
-  xhttp.timeout = 1500; xhttp.send();
-}
-
-function fillL2(s) {
-  var tbl = document.getElementById('l2table');
-  if (!s.length) return;
-  s.sort(l2CMP);
-  s = uniq(s);
-  s = s.map(function(e) { e.port = e.port != 9 ? e.port : "CPU"; return e; });
-  for (let i = 0; i < s.length; i++) {
-    var e = s[i];
-    if (tbl.rows[i + 1]) {
-      tbl.rows[i + 1].cells[0].innerHTML = "" + e.port;
-      tbl.rows[i + 1].cells[1].innerHTML = "" + e.mac;
-      tbl.rows[i + 1].cells[2].innerHTML = "" + e.vlan;
-      tbl.rows[i + 1].cells[4].innerHTML = '<button type="button" onclick="delL2(' + e.idx + ');">Delete</button>';
-    } else {
-      const tr = tbl.insertRow();
-      let td = tr.insertCell(); td.innerHTML = "" + e.port;
-      td = tr.insertCell(); td.innerHTML = "" + e.mac;
-      td = tr.insertCell(); td.innerHTML = "" + e.vlan;
-      td = tr.insertCell(); td.innerHTML = "" + e.type;
-      td = tr.insertCell(); td.innerHTML = '<button type="button" onclick="delL2(' + e.idx + ');">Delete</button>';
-    }
-  }
-  for (let i = tbl.rows.length - 1; i > s.length; i--) tbl.deleteRow(i);
-  l2Entries = [];
-}
-
-function getL2() {
-  var xhttp = new XMLHttpRequest();
-  xhttp.onreadystatechange = function() {
-    if (this.readyState == 4 && this.status == 200) {
-      var s = JSON.parse(xhttp.responseText);
-      s = s.map(function(e) {
-        e.vlan = parseInt(e.vlan, 16); e.idx = parseInt(e.idx, 16);
-        e.type = e.type == "s" ? "static" : "learned"; e.port = e.port == 9 ? 9 : logToPhysPort[e.port];
-        return e;
-      });
-      l2Entries.push(...s);
-      if (l2Entries >= 4096) { l2Entries = []; l2CurrentEntry = 0; clearInterval(l2GetInterval); return; }
-      var w = 0;
-      for (var i = l2Entries.length - 1; i > 0; i--) { if (l2Entries[0].idx == l2Entries[i].idx) { w = 1; break; } }
-      if (w) { l2CurrentEntry = 0; fillL2(l2Entries); } else { l2CurrentEntry = s[s.length - 1].idx + 1; }
-    }
-  };
-  xhttp.open("GET", "/l2.json?idx=" + l2CurrentEntry, true);
-  xhttp.timeout = 1500; sendXHTTP(xhttp);
-}
-
-function mirrorForm() {
-  if (!numPorts) return;
-  for (let j = 0; j < mirrors.length; j++) {
-    var m = document.getElementById(mirrors[j]);
-    for (let i = 1; i <= numPorts; i++) {
-      const d = document.createElement("div");
-      d.classList.add("cbgroup");
-      const l = document.createElement("label");
-      l.innerHTML = "" + i; l.classList.add("cbgroup");
-      const inp = document.createElement("input");
-      inp.type = "checkbox"; inp.setAttribute("class", "psel");
-      inp.id = mirrors[j] + i;
-      const o = document.createElement("img");
-      o.src = pIsSFP[i - 1] ? "sfp.svg" : "port.svg";
-      o.width = pIsSFP[i - 1] ? "60" : "40";
-      o.height = o.width;
-      l.appendChild(inp); l.appendChild(o);
-      d.appendChild(l);
-      m.appendChild(d);
-    }
-  }
-  fetchMirror();
-}
-
-function setM(p, c) { document.getElementById(p).checked = c; }
-
-function fetchMirror() {
-  var xhttp = new XMLHttpRequest();
-  xhttp.onreadystatechange = function() {
-    if (this.readyState == 4 && this.status == 200) {
-      const s = JSON.parse(xhttp.responseText);
-      document.getElementById('me').checked = s.enabled;
-      document.getElementById('mp').value = s.mPort;
-      let m_tx = parseInt(s.mirror_tx, 2);
-      let m_rx = parseInt(s.mirror_rx, 2);
-      for (let i = 1; i <= numPorts; i++) {
-        let p = i - 1;
-        if (numPorts < 9) p = physToLogPort[p];
-        setM("mPortsTX" + i, m_tx & (1 << p));
-        setM("mPortsRX" + i, m_rx & (1 << p));
-      }
-    }
-  };
-  xhttp.open("GET", "/mirror.json", true);
-  sendXHTTP(xhttp);
-}
-
-async function mirrorSub() {
-  var mp = document.getElementById('mp').value;
-  if (!mp) { alert("Set Mirroring Port first"); return; }
-  document.getElementById(mirrors[0] + mp).checked = false;
-  document.getElementById(mirrors[1] + mp).checked = false;
-  var cmd = "mirror " + mp;
-  for (let i = 1; i <= numPorts; i++) {
-    if (document.getElementById(mirrors[0] + i).checked && document.getElementById(mirrors[1] + i).checked)
-      cmd += " " + i;
-    else if (document.getElementById(mirrors[0] + i).checked)
-      cmd += " " + i + "t";
-    else if (document.getElementById(mirrors[1] + i).checked)
-      cmd += " " + i + "r";
-  }
-  if (cmd.length < 10) { alert("Select Mirrored Ports"); return; }
-  try { await fetch('/cmd', { method: 'POST', body: cmd }); } catch (err) { console.error("Error: " + err); }
-}
-
-async function mirrorDel() {
-  try { await fetch('/cmd', { method: 'POST', body: "mirror off" }); } catch (err) { console.error("Error: " + err); }
-}
-
-function lagForm() {
-  if (!numPorts) return;
-  for (let j = 0; j < 4; j++) {
-    var lag = "mLAG" + j;
-    var m = document.getElementById(lag);
-    for (let i = 1; i <= numPorts; i++) {
-      const d = document.createElement("div");
-      d.classList.add("cbgroup");
-      const l = document.createElement("label");
-      l.innerHTML = "" + i; l.classList.add("cbgroup");
-      const inp = document.createElement("input");
-      inp.type = "checkbox"; inp.setAttribute("class", "psel");
-      inp.id = "p_mLAG" + j + "_" + i;
-      const o = document.createElement("img");
-      o.src = pIsSFP[i - 1] ? "sfp.svg" : "port.svg";
-      o.width = pIsSFP[i - 1] ? "60" : "40";
-      o.height = o.width;
-      l.appendChild(inp); l.appendChild(o);
-      d.appendChild(l);
-      m.appendChild(d);
-    }
-  }
-  fetchLag();
-}
-
-function setL(p, c) { document.getElementById(p).checked = c; }
-
-function fetchLag() {
-  var xhttp = new XMLHttpRequest();
-  xhttp.onreadystatechange = function() {
-    if (this.readyState == 4 && this.status == 200) {
-      const s = JSON.parse(xhttp.responseText);
-      for (let l = 0; l < 4; l++) {
-        let members = parseInt(s[l].members, 2);
-        for (let i = 1; i <= numPorts; i++) {
-          let p = i - 1;
-          if (numPorts < 9) p = physToLogPort[p];
-          setL("p_mLAG" + l + "_" + i, members & (1 << p));
-        }
-      }
-    }
-  };
-  xhttp.open("GET", "/lag.json", true);
-  sendXHTTP(xhttp);
-}
-
-async function lagSub(l) {
-  var cmd = "lag " + l;
-  for (let i = 1; i <= numPorts; i++) {
-    if (document.getElementById("p_mLAG" + l + "_" + i).checked)
-      cmd += " " + i;
-  }
-  try { await fetch('/cmd', { method: 'POST', body: cmd }); } catch (err) { console.error("Error: " + err); }
-}
-
-function createEEE() {
-  var tbl = document.getElementById('eeetable');
-  if (tbl.rows.length <= 2 && numPorts) {
-    for (let i = 2; i < 2 + numPorts; i++) {
-      const tr = tbl.insertRow();
-      let td = tr.insertCell(); td.appendChild(document.createTextNode("Port " + (i - 1)));
-      for (let j = 0; j < 7; j++) { td = tr.insertCell(); td.appendChild(document.createTextNode(" ")); }
-    }
-  }
-}
-
-function getEEE() {
-  var xhttp = new XMLHttpRequest();
-  xhttp.onreadystatechange = function() {
-    if (this.readyState == 4 && this.status == 200) {
-      const s = JSON.parse(xhttp.responseText);
-      var tbl = document.getElementById('eeetable');
-      if (tbl.rows.length > 2 && numPorts) {
-        for (let i = 2; i < 2 + numPorts; i++) {
-          p = s[i - 2];
-          let n = p.portNum;
-          let tr = tbl.rows[n + 1];
-          if (!p.isSFP) {
-            let eee = parseInt(p.eee, 2); let lp = parseInt(p.eee_lp, 2);
-            tr.cells[1].innerHTML = "" + (eee & 4 ? "ON" : "OFF");
-            tr.cells[2].innerHTML = "" + (eee & 2 ? "ON" : "OFF");
-            tr.cells[3].innerHTML = "" + (eee & 1 ? "ON" : "OFF");
-            tr.cells[4].innerHTML = "" + (lp & 4 ? "ON" : "OFF");
-            tr.cells[5].innerHTML = "" + (lp & 2 ? "ON" : "OFF");
-            tr.cells[6].innerHTML = "" + (lp & 1 ? "ON" : "OFF");
-            tr.cells[7].innerHTML = "" + p.active;
-            tr.classList.toggle('disabled', pState[i - 2] < 0);
-            tr.classList.toggle('isNOK', !p.active);
-            tr.classList.toggle('isOK', p.active);
-          }
-          tr.classList.toggle('isSFP', p.isSFP);
-        }
-      }
-    }
-  };
-  xhttp.open("GET", "/eee.json", true);
-  xhttp.timeout = 1500; sendXHTTP(xhttp);
-}
-
-async function eeeSub(port, enable) {
-  try { await fetch('/cmd', { method: 'POST', body: "eee " + (port ? port + " " : "") + (enable ? "on" : "off") }); } catch (err) { console.error("Error: " + err); }
-}
-
-const iLayout = '" type="number" maxlength="10" size="10"  onfocus="inputFocus(';
-
-function createBW() {
-  var tbl = document.getElementById('bwtable');
-  const limit = '<input type="checkbox" id="limit_port" onchange="exec();">';
-  if (tbl.rows.length <= 2 && numPorts) {
-    for (let i = 2; i < 2 + numPorts; i++) {
-      const tr = tbl.insertRow();
-      let td = tr.insertCell(); td.appendChild(document.createTextNode("Port " + (i - 1)));
-      td = tr.insertCell(); td.innerHTML = limit.replaceAll("limit_port", "ilimit_port_" + i).replace("exec()", "iClicked(" + i + ")");
-      td = tr.insertCell(); td.innerHTML = 'UNLIMITED';
-      td = tr.insertCell(); td.innerHTML = limit.replaceAll("limit_port", "fc_port_" + i).replace("exec()", "document.getElementById('bwapply_" + i + "').disabled=false;");
-      td = tr.insertCell(); td.innerHTML = limit.replaceAll("limit_port", "elimit_port_" + i).replace("exec()", "eClicked(" + i + ")");
-      td = tr.insertCell(); td.innerHTML = 'UNLIMITED';
-      td = tr.insertCell(); td.innerHTML = '<button type="button" id="bwapply_' + i + '" style="margin: 0 0 0 24px" onclick="applyBandwidth(' + i + ');">Apply</button>';
-      document.getElementById("bwapply_" + i).disabled = true;
-    }
-  }
-}
-
-function iClicked(i) {
-  document.getElementById("bwapply_" + i).disabled = false;
-  var tbl = document.getElementById('bwtable');
-  var tr = tbl.rows[i];
-  if (!document.getElementById("ilimit_port_" + i).checked) {
-    tr.cells[2].innerHTML = "UNLIMITED"; document.getElementById("fc_port_" + i).disabled = true; document.getElementById("fc_port_" + i).checked = true;
-  } else {
-    tr.cells[2].innerHTML = '<input id="ibw_' + i + iLayout + i + ')" value="0"/>';
-    document.getElementById("fc_port_" + i).disabled = false; document.getElementById("fc_port_" + i).checked = true;
-  }
-}
-
-function eClicked(i) {
-  document.getElementById("bwapply_" + i).disabled = false;
-  var tbl = document.getElementById('bwtable');
-  if (!document.getElementById("elimit_port_" + i).checked) tbl.rows[i].cells[5].innerHTML = "UNLIMITED";
-  else tbl.rows[i].cells[5].innerHTML = '<input id="ebw_' + i + iLayout + i + ')" value="0"/>';
-}
-
-function inputFocus(i) { document.getElementById("bwapply_" + i).disabled = false; }
-
-async function applyBandwidth(i) {
-  var tbl = document.getElementById('bwtable');
-  var tr = tbl.rows[i];
-  if (document.getElementById("ilimit_port_" + i).checked) {
-    await fetch('/cmd', { method: 'POST', body: 'bw in ' + (i - 1) + ' ' + parseInt(document.getElementById("ibw_" + i).value).toString(16).padStart(4, "0") });
-    if (!document.getElementById("fc_port_" + i).checked)
-      await fetch('/cmd', { method: 'POST', body: "bw in " + (i - 1) + " drop" });
-  } else {
-    await fetch('/cmd', { method: 'POST', body: "bw in " + (i - 1) + " off" });
-  }
-  if (document.getElementById("elimit_port_" + i).checked)
-    await fetch('/cmd', { method: 'POST', body: 'bw out ' + (i - 1) + ' ' + parseInt(document.getElementById("ebw_" + i).value).toString(16).padStart(4, "0") });
-  else
-    await fetch('/cmd', { method: 'POST', body: "bw out " + (i - 1) + " off" });
-}
-
-function getBW() {
-  var xhttp = new XMLHttpRequest();
-  xhttp.onreadystatechange = function() {
-    if (this.readyState == 4 && this.status == 200) {
-      const s = JSON.parse(xhttp.responseText);
-      var tbl = document.getElementById('bwtable');
-      if (tbl.rows.length > 2 && numPorts) {
-        for (let i = 2; i < 2 + numPorts; i++) {
-          p = s[i - 2];
-          let n = p.portNum;
-          let tr = tbl.rows[n + 1];
-          if (!document.getElementById("bwapply_" + (n + 1)).disabled) continue;
-          let iBW = parseInt(p.iBW, 16) * 16;
-          let eBW = parseInt(p.eBW, 16) * 16;
-          document.getElementById("ilimit_port_" + (n + 1)).checked = p.iLimited;
-          document.getElementById("elimit_port_" + (n + 1)).checked = p.eLimited;
-          tr.cells[2].innerHTML = p.iLimited ? '<input id="ibw_' + (n + 1) + iLayout + (n + 1) + ')" value="' + iBW + '"/>' : "UNLIMITED";
-          tr.cells[5].innerHTML = p.eLimited ? '<input id="ebw_' + (n + 1) + iLayout + (n + 1) + ')" value="' + eBW + '"/>' : "UNLIMITED";
-          document.getElementById("fc_port_" + (n + 1)).checked = p.iFC == 1;
-          document.getElementById("fc_port_" + (n + 1)).disabled = !p.iLimited;
-        }
-      }
-    }
-  };
-  xhttp.open("GET", "/bandwidth.json", true);
-  xhttp.timeout = 1500; sendXHTTP(xhttp);
-}
-
-function checkIp(ip) {
-  if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) { alert("Invalid ip: " + ip); return false; }
-  return true;
-}
-
-async function ipSub() {
-  for (let i = 0; i < 3; i++) { if (!checkIp(document.getElementById(ips[i]).value)) return; }
-  var cmd = '';
-  for (let i = 0; i < 3; i++) cmd += ips[i] + ' ' + document.getElementById(ips[i]).value + '\n';
-  try { await fetch('/cmd', { method: 'POST', body: cmd }); fetchIP(); } catch (err) { console.error("Error: " + err); }
-}
-
-async function cmdSub() {
-  try { await fetch('/cmd', { method: 'POST', body: document.getElementById('console_cmd').value }); } catch (err) { console.error("Error: " + err); }
-}
-
-function parseConf(s) {
-  var a = s.split(/\r\n|\n/);
-  for (var l = 0; l < a.length; l++) {
-    var line = a[l].trim().replace(/\s+/g, ' ');
-    if (!line.length) continue;
-    var delMatch = line.match(/^vlan\s+(\d{1,4})\s+d$/);
-    if (delMatch) { configuration = configuration.filter(c => !c.startsWith("vlan " + delMatch[1] + " ")); continue; }
-    var ignore = true;
-    for (const x of conf_cmds) { if (x.test(line)) { ignore = false; break; } }
-    if (ignore) continue;
-    for (const x of conf_overwrite) {
-      if (x.test(line)) {
-        let m = line.match(x);
-        configuration = configuration.filter(item => !(item === m[0] || (item.startsWith(m[0] + " ") && !item.endsWith(" mgmt") && !item.startsWith(m[0] + " name "))));
-        break;
-      }
-    }
-    if (/^vlan\s+\d{1,4}\s+mgmt$/.test(line))
-      configuration = configuration.filter(item => !/^vlan\s+\d{1,4}\s+mgmt$/.test(item));
-    configuration.push(line);
-  }
-}
-
-async function fetchConfig() {
-  try { const r = await fetch('/config'); return await r.text(); } catch (err) { console.error("Error: " + err); }
-}
-
-async function fetchCmdLog() {
-  try { const r = await fetch('/cmd_log'); return await r.text(); } catch (err) { console.error("Error: " + err); return ""; }
-}
-
-async function sendConfig(c) {
-  if (isSaving) return;
-  isSaving = true;
-  clearInterval(systemInterval);
-  const form = new FormData();
-  form.append("MAX_FILE_SIZE", "4096");
-  form.append("configuration", new Blob([c], { type: "application/octet-stream" }), "config.txt");
-  try {
-    const r = await fetch('/config', { method: 'POST', body: form });
-    if (!r.ok) console.error("Config save returned " + r.status);
-  } catch (err) { console.error("Error: " + err); }
-  finally { isSaving = false; systemInterval = setInterval(fetchIP, 1000); }
-}
-
-async function flashSave() {
-  configuration = [];
-  const savedConfig = await fetchConfig();
-  const cmdLog = await fetchCmdLog();
-  if (savedConfig) parseConf(savedConfig);
-  if (cmdLog) parseConf(cmdLog);
-  const body = configuration.join('\n') + '\n';
-  await sendConfig(body);
-  setTimeout(() => { fetch('/cmd_log_clear', { method: 'GET' }).catch(() => {}); }, 1000);
-}
-
-async function flashStartupSave() {
-  sendConfig(document.getElementById("config_display").value);
-  setTimeout(() => { fetch('/cmd_log_clear', { method: 'GET' }).catch(() => {}); }, 1000);
-}
-
-function clearConfig() {
-  var lines = "";
-  for (let i = 0; i < 3; i++) {
-    if (!checkIp(document.getElementById(ips[i]).value)) return;
-    lines += ips[i] + ' ' + document.getElementById(ips[i]).value + "\n";
-  }
-  document.getElementById("config_display").value = lines;
-}
-
-function fetchIP() {
-  var xhttp = new XMLHttpRequest();
-  xhttp.onreadystatechange = function() {
-    if (this.readyState == 4 && this.status == 200) {
-      const s = JSON.parse(xhttp.responseText);
-      document.getElementById("ip").value = s.ip_address;
-      document.getElementById("netmask").value = s.ip_netmask;
-      document.getElementById("gw").value = s.ip_gateway;
-      clearInterval(systemInterval);
-      fetchConfig().then(function(configText) { document.getElementById("config_display").value = configText; });
-    }
-  };
-  xhttp.open("GET", "/information.json", true);
-  xhttp.send();
-}
-
-function resetSwitch() {
-  if (!confirm('Are you sure you want to reset the switch?')) return;
-  fetch('/reset', { method: 'GET' }).catch(() => {});
-  setTimeout(() => { alert('Switch is resetting. Please wait and refresh the page.'); }, 3000);
-}
-
-function openTab(evt, tabId) {
-  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById(tabId).classList.add('active');
-  evt.currentTarget.classList.add('active');
-}
-
-function loadInfo() {
-  fetch('/information.json').then(r => r.json()).then(data => {
-    var tbody = document.getElementById('infoTable').querySelector('tbody');
-    for (const [key, value] of Object.entries(data)) {
-      const row = document.createElement('tr');
-      var ck = document.createElement('td'); ck.textContent = key;
-      var cv = document.createElement('td'); cv.textContent = value;
-      row.appendChild(ck); row.appendChild(cv);
-      tbody.appendChild(row);
-    }
-  }).catch(e => console.error('Error fetching data:', e));
-}
-
-window.addEventListener("load", function() {
-  document.getElementById('sidebar').innerHTML =
-    "<ul><li><a onclick='showSection(\"overview\")'>Overview</a></li>"
-    + "<li><a onclick='showSection(\"ports\")'>Port Configuration</a></li>"
-    + "<li><a onclick='showSection(\"stat\")'>Port Statistics</a></li>"
-    + "<li><a onclick='showSection(\"vlan\")'>VLAN</a></li>"
-    + "<li><a onclick='showSection(\"l2\")'>L2 Configuration</a></li>"
-    + "<li><a onclick='showSection(\"mirror\")'>Mirroring</a></li>"
-    + "<li><a onclick='showSection(\"lag\")'>Link Aggregation</a></li>"
-    + "<li><a onclick='showSection(\"eee\")'>EEE</a></li>"
-    + "<li><a onclick='showSection(\"bandwidth\")'>Bandwidth Limits</a></li>"
-    + "<li><a onclick='showSection(\"system\")'>System Settings</a></li>"
-    + "<li><a href='update.html'>Firmware Update</a></li></ul>";
-  update(function() {
-    loadInfo();
-    createPortTable();
-    updatePortTable();
-    getMTUs();
-    createEEE();
-    getEEE();
-    createBW();
-    getBW();
-    vlanForm();
-    refreshVlanViews();
-    mirrorForm();
-    lagForm();
-    getL2();
-  });
-  systemInterval = setInterval(fetchIP, 1000);
-  setInterval(update, 2000);
-  setInterval(updatePortTable, 1000);
-  setInterval(getEEE, 2000);
-  l2GetInterval = setInterval(getL2, 1000);
-  document.getElementById('vlanSelect').onchange = function() {
-    document.getElementById('vid').value = this.value;
-    fetchVLAN();
-  };
-  document.getElementById('popup').addEventListener('click', function(e) { if (e.target === this) closePopup(); });
-});
-</script>
-<title>FreeSwitchOS</title>
+  </style>
+  <script src="/i18n.js"></script>
 </head>
 <body>
-<nav id="sidebar"></nav>
-<div style="margin-left:16%;padding:1px 16px;height:1000px;">
-<div id="ports"></div>
 
-<div id="section-overview" class="section active">
-  <h1>Switch Configuration</h1>
-  <table id="infoTable"><tr><th colspan="2">Settings</th></tr><tbody></tbody></table>
-</div>
+<div id="toast"></div>
 
-<div id="section-ports" class="section">
-  <h1>Port Configuration</h1>
-  <form id="vform">
-  <table id="speedtable">
-    <tr><th>Port</th><th>Name</th><th>Current Link Speed</th><th>Set Speed</th><th>Disabled</th><th>Apply</th></tr>
-  </table>
-  <h2 style="margin-top:3em">Configure Maximum Frame Size (MTU) forwarded at Port</h2>
-  <table id="mtutable" style="margin-top:1em"></table>
-  </form>
-</div>
-
-<div id="section-stat" class="section">
-  <div id="popup">
-    <div class="popup-content">
-      <h2>Detailed Port Statistics</h2>
-      <div id="popup_text"></div>
-      <button id="closePopup" class="action" onclick="closePopup();">Close</button>
-    </div>
-  </div>
-  <h1>Port Statistics</h1>
-  <table id="statstable">
-    <tr><th>Port</th><th>Name</th><th>link</th><th>TX Good</th><th>TX Bad</th><th>RX Good</th><th>RX Bad</th><th>All Counters</th></tr>
-  </table>
-</div>
-
-<div id="section-vlan" class="section">
-  <h1>VLAN Configuration</h1>
-  <form id="vlanform">
-    <div>
-      <label for="vlanSelect">Select VLAN:</label>
-      <select id="vlanSelect" style="margin: 0 0 0 8px">
-        <option value="" disabled selected>— Select VLAN —</option>
-      </select>
-    </div>
-    <br/>
-    <div>
-      <label for="vid">VLAN ID:</label>
-      <input type="number" min="1" max="4094" id="vid" name="vid">
-      <button type="button" style="margin: 0 0 0 24px" onclick="fetchVLAN();">Get Configuration</button>
-    </div>
-    <br/><br/>
-    <label for="vname">VLAN Name:</label>
-    <input type="text" id="vname" name="vname"><br><br>
-    <br/>
-    <h2>Tagged Ports</h2>
-    <div id="tPorts"><button type="button" style="transform: translateY(-100%);margin: 0 50px 0 0" onclick="utClicked(true);">Select all</button></div>
-    <h2>Untagged Ports</h2>
-    <div id="uPorts"><button type="button" style="transform: translateY(-100%); margin: 0 50px 0 0" onclick="utClicked(false);">Select all</button></div>
-    <h2>Use as default VLAN for incoming traffic (PVID)</h2>
-    <div id="pPorts"><button type="button" style="transform: translateY(-100%); margin: 0 50px 0 0" onclick="pvClicked(true);">Select all</button></div>
-    <br/><input style="width:40%;" class="action" id="vlan_sub" onclick="vlanSub();" type="button" value="Update / Create">
-  </form>
-  <h2>Configured VLANs</h2>
-  <table id="vlanTable" style="width:90%">
-    <thead>
-      <tr><th>VLAN</th><th>Name</th><th>Member Ports</th><th>Tagged Ports</th><th>Untagged Ports</th><th>PVID Ports</th><th>Delete</th></tr>
-    </thead>
-    <tbody id="vlanTableBody"></tbody>
-  </table>
-</div>
-
-<div id="section-l2" class="section">
-  <h1>L2 Configuration</h1>
-  <table id="l2table">
-    <tr><th>Port</th><th>MAC</th><th>VLAN</th><th>Type</th><th>Remove Entry</th></tr>
-  </table>
-</div>
-
-<div id="section-mirror" class="section">
-  <h1>Mirror Configuration</h1>
-  <label class="tswitch">Enabled: <input id="me" type="checkbox"></label><br/>
-  <label for="mp">Mirroring Port:</label> <input type="number" id="mp" name="mp" min="1" max="9"/>
-  <h2>Mirrored Ports (TX)</h2>
-  <div id="mPortsTX"></div>
-  <br/>
-  <h2>Mirrored Ports (RX)</h2>
-  <div id="mPortsRX"></div>
-  <br/><input style="width:15%;" class="action" onclick="mirrorSub();" type="button" value="Update / Create">
-  <input style="width:15%;" class="action" onclick="mirrorDel();" type="button" value="Disable Mirroring">
-</div>
-
-<div id="section-lag" class="section">
-  <h1>Link Aggregation Groups Configuration</h1>
-  <h2>LAG 1 <input style="width:15%;margin-left: 3em;" class="action" onclick="lagSub(0);" type="button" value="Update / Create"></h2>
-  <div id="mLAG0"></div>
-  <br/>
-  <h2>LAG 2 <input style="width:15%;margin-left: 3em;" class="action" onclick="lagSub(1);" type="button" value="Update / Create"></h2>
-  <div id="mLAG1"></div>
-  <br/>
-  <h2>LAG 3 <input style="width:15%;margin-left: 3em;" class="action" onclick="lagSub(2);" type="button" value="Update / Create"></h2>
-  <div id="mLAG2"></div>
-  <br/>
-  <h2>LAG 4 <input style="width:15%;margin-left: 3em;" class="action" onclick="lagSub(3);" type="button" value="Update / Create"></h2>
-  <div id="mLAG3"></div>
-</div>
-
-<div id="section-eee" class="section">
-  <h1>EEE Status</h1>
-  <table id="eeetable">
-    <tr><th></th><th colspan="3">Advertising</th><th colspan="3">Link-Partner advertises</th><th></th></tr>
-    <tr><th>Port</th><th>2.5G</th><th>1G</th><th>100M</th><th>2.5G</th><th>1G</th><th>100M</th><th>Active?</th></tr>
-  </table>
-  <div>
-    <input style="width:20%;" class="action" onclick="eeeSub(0, 1);" type="button" value="Enable EEE">
-    <input style="width:20%;" class="action" onclick="eeeSub(0, 0);" type="button" value="Disable EEE">
+<div id="statsModal" class="modal-overlay" onclick="if(event.target===this) closeCounters()">
+  <div class="modal-content">
+    <span class="modal-close" onclick="closeCounters()">&times;</span>
+    <h2 id="statsModalTitle" style="margin-top:0; border-bottom:none;">Detailed Port Counters</h2>
+    <div id="statsModalBody" class="table-responsive">Loading MIB counters...</div>
   </div>
 </div>
 
-<div id="section-bandwidth" class="section">
-  <h1>Ingress and Egress Bandwidth</h1>
-  <table id="bwtable">
-    <tr><th></th><th colspan="3">Ingress</th><th colspan="2">Egress</th><th></th></tr>
-    <tr><th>Port</th><th>Limit</th><th>Bandwidth [kBit/s]</th><th>Flow Control</th><th>Limit</th><th>Bandwidth [kBit/s]</th><th>Apply</th></tr>
-  </table>
+<nav id="nav">
+  <div class="brand">RTLPlayground</div>
+  <ul>
+    <li onclick="nav('dash')" id="nav-dash" class="active" data-i18n="nav_overview">Overview</li>
+    <li onclick="nav('port')" id="nav-port" data-i18n="nav_port_config">Port Configuration</li>
+    <li onclick="nav('vlan')" id="nav-vlan">VLAN Config</li>
+    <li onclick="nav('l2')" id="nav-l2" data-i18n="nav_l2">L2 Configuration</li>
+    <li onclick="nav('stat')" id="nav-stat" data-i18n="nav_port_stat">Port Statistics</li>
+    <li onclick="nav('mirror')" id="nav-mirror" data-i18n="nav_mirror">Mirroring</li>
+    <li onclick="nav('lag')" id="nav-lag" data-i18n="nav_lag">Link Aggregation</li>
+    <li onclick="nav('eee')" id="nav-eee" data-i18n="nav_eee">EEE</li>
+    <li onclick="nav('bw')" id="nav-bw" data-i18n="nav_bandwidth">Bandwidth Limits</li>
+    <li onclick="nav('sfp')" id="nav-sfp">SFP EEPROM</li>
+    <li onclick="nav('sys')" id="nav-sys" data-i18n="nav_system">System Settings</li>
+    <li onclick="nav('update')" id="nav-update" data-i18n="nav_fw_update">Firmware Update</li>
+  </ul>
+</nav>
+
+<main id="content">
+
+<!-- DASHBOARD -->
+<div id="dash" class="panel active">
+  <h2 data-i18n="index_heading">Switch Configuration</h2>
+  <div class="port-grid" id="port-grid">Loading ports...</div>
+  <div class="table-responsive">
+    <table id="info-table"><tr><td style="color:#94a3b8;text-align:center;">Loading system information...</td></tr></table>
+  </div>
 </div>
 
-<div id="section-system" class="section">
+<!-- PORT CONFIG -->
+<div id="port" class="panel">
+  <h2 data-i18n="port_heading">Port Configuration</h2>
+  <div class="table-responsive">
+    <table id="speedtable">
+      <thead><tr><th data-i18n="port_col_port">Port</th><th data-i18n="port_col_name">Name</th><th data-i18n="port_col_speed">Current Link Speed</th><th data-i18n="port_col_set_speed">Set Speed</th><th data-i18n="port_col_disabled">Disabled</th><th style="width:80px;"><span data-i18n="port_col_apply">Apply</span></th></tr></thead>
+      <tbody id="speedbody"><tr><td colspan="6" style="text-align:center;">Loading...</td></tr></tbody>
+    </table>
+  </div>
+  <h3 data-i18n="port_mtu_heading">Configure Maximum Frame Size (MTU) forwarded at Port</h3>
+  <div class="table-responsive">
+    <table id="mtutable" class="narrow"></table>
+  </div>
+  <div class="input-row" id="mtu-apply-row"></div>
+</div>
+
+<!-- VLAN -->
+<div id="vlan" class="panel">
+  <h2 data-i18n="vlan_heading">VLAN Configuration</h2>
+  <div class="input-row">
+    <label style="font-weight:600;" data-i18n="vlan_select">Select VLAN:</label>
+    <select id="vlanSelect" style="min-width:200px;"><option value="" disabled selected data-i18n="vlan_choose">— VLAN Choose —</option></select>
+  </div>
+  <div class="input-row">
+    <label style="font-weight:600;" data-i18n="vlan_id">VLAN ID:</label>
+    <input type="number" id="vid" min="1" max="4094" style="width:100px;">
+    <button class="btn" onclick="fetchVLAN()" data-i18n="vlan_get_config">Get Configuration</button>
+  </div>
+  <div class="input-row">
+    <label style="font-weight:600;" data-i18n="vlan_name">VLAN Name:</label>
+    <input type="text" id="vname" style="width:250px;">
+  </div>
+  <div class="table-responsive">
+    <table id="vlan-edit-table">
+      <thead><tr><th data-i18n="port_col_port">Port</th><th class="cb-cell" data-i18n="vlan_tagged">Tagged (Member)</th><th class="cb-cell" data-i18n="vlan_untagged">Untagged (Member)</th><th class="cb-cell" data-i18n="vlan_pvid">Default PVID</th></tr></thead>
+      <tbody id="vlan-edit-body"></tbody>
+    </table>
+  </div>
+  <div class="input-row" style="margin-top:20px;">
+    <button class="btn btn-accent" onclick="applyVLAN()" data-i18n="vlan_update">Save VLAN Settings</button>
+    <span style="color:#64748b;font-size:12px;">(Remember to 'Save UI Changes to Flash' in System tab to persist reboots)</span>
+  </div>
+  <h3 data-i18n="vlan_configured">Configured VLANs</h3>
+  <div class="table-responsive">
+    <table id="vlanTable" style="width:100%">
+      <thead><tr><th>VLAN</th><th data-i18n="vlan_col_name">Name</th><th data-i18n="vlan_col_member">Member Ports</th><th data-i18n="vlan_col_tagged">Tagged Ports</th><th data-i18n="vlan_col_untagged">Untagged Ports</th><th data-i18n="vlan_col_pvid">PVID Ports</th><th data-i18n="vlan_col_delete">Delete</th></tr></thead>
+      <tbody id="vlanTableBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- L2 -->
+<div id="l2" class="panel">
+  <h2 data-i18n="l2_heading">L2 Configuration</h2>
+  <div class="input-row" style="margin-bottom:15px;">
+    <label style="font-weight:600;">IGMP Snooping:</label>
+    <input type="checkbox" id="igmp-en" style="transform:scale(1.5);margin:0 15px;">
+    <button class="btn" style="padding:6px 12px;font-size:12px;" onclick="applyIGMP()">Save IGMP</button>
+  </div>
+  <h3>MAC Address Table</h3>
+  <div class="table-responsive">
+    <table id="l2table">
+      <thead><tr><th data-i18n="l2_col_port">Port</th><th>MAC</th><th>VLAN</th><th data-i18n="l2_col_type">Type</th><th data-i18n="l2_col_remove">Remove Entry</th></tr></thead>
+      <tbody id="l2body"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- STATISTICS -->
+<div id="stat" class="panel">
+  <h2 data-i18n="stat_heading">Port Statistics</h2>
+  <div class="table-responsive">
+    <table id="stat-table">
+      <thead><tr><th data-i18n="stat_col_port">Port</th><th data-i18n="stat_col_name">Name</th><th data-i18n="stat_col_link">Link</th><th data-i18n="stat_col_tx_good">Tx Good</th><th data-i18n="stat_col_tx_bad">Tx Bad</th><th data-i18n="stat_col_rx_good">Rx Good</th><th data-i18n="stat_col_rx_bad">Rx Bad</th><th style="width:80px;"><span data-i18n="stat_col_all">Details</span></th></tr></thead>
+      <tbody id="stat-body"><tr><td colspan="8" style="text-align:center;">Loading statistics...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- MIRROR -->
+<div id="mirror" class="panel">
+  <h2 data-i18n="mirror_heading">Mirror Configuration</h2>
+  <div class="input-row">
+    <label style="font-weight:600;" data-i18n="mirror_enabled">Enabled:</label>
+    <input type="checkbox" id="mirror-en" style="transform:scale(1.5);margin:0 15px;">
+    <label style="font-weight:600;margin-left:20px;" data-i18n="mirror_port">Mirroring Port:</label>
+    <input type="number" id="mirror-port" min="1" max="9" style="width:80px;">
+  </div>
+  <h3 data-i18n="mirror_tx">Mirrored Ports (TX)</h3>
+  <div id="mirror-tx-ports" style="margin-bottom:15px;"></div>
+  <h3 data-i18n="mirror_rx">Mirrored Ports (RX)</h3>
+  <div id="mirror-rx-ports" style="margin-bottom:15px;"></div>
+  <div class="input-row">
+    <button class="btn" onclick="applyMirror()" data-i18n="mirror_update">Update / Create</button>
+    <button class="btn btn-danger" onclick="disableMirror()" data-i18n="mirror_disable">Disable Mirroring</button>
+  </div>
+</div>
+
+<!-- LAG -->
+<div id="lag" class="panel">
+  <h2 data-i18n="lag_heading">Link Aggregation Groups Configuration</h2>
+  <div class="lag-container" id="lag-container"></div>
+</div>
+
+<!-- EEE -->
+<div id="eee" class="panel">
+  <h2 data-i18n="eee_heading">EEE Status</h2>
+  <div class="table-responsive">
+    <table id="eeetable">
+      <thead><tr><th></th><th colspan="3" data-i18n="eee_advertising">Advertising</th><th colspan="3" data-i18n="eee_partner">Link-Partner advertises</th><th></th></tr>
+      <tr><th data-i18n="eee_port">Port</th><th>2.5G</th><th>1G</th><th>100M</th><th>2.5G</th><th>1G</th><th>100M</th><th data-i18n="eee_active">Active?</th></tr></thead>
+      <tbody id="eeebody"></tbody>
+    </table>
+  </div>
+  <div class="input-row">
+    <button class="btn btn-success" onclick="eeeSub(0,1)" data-i18n="eee_enable">Enable EEE</button>
+    <button class="btn btn-danger" onclick="eeeSub(0,0)" data-i18n="eee_disable">Disable EEE</button>
+  </div>
+</div>
+
+<!-- BANDWIDTH -->
+<div id="bw" class="panel">
+  <h2 data-i18n="bw_heading">Ingress and Egress Bandwidth</h2>
+  <div class="table-responsive">
+    <table id="bwtable">
+      <thead><tr><th></th><th colspan="3" data-i18n="bw_ingress">Ingress</th><th colspan="2" data-i18n="bw_egress">Egress</th><th></th></tr>
+      <tr><th data-i18n="bw_col_port">Port</th><th data-i18n="bw_col_limit">Limit</th><th data-i18n="bw_col_bandwidth">Bandwidth [kBit/s]</th><th data-i18n="bw_col_flow">Flow Control</th><th data-i18n="bw_col_limit">Limit</th><th data-i18n="bw_col_bandwidth">Bandwidth [kBit/s]</th><th data-i18n="bw_col_apply">Apply</th></tr></thead>
+      <tbody id="bw-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- SFP EEPROM -->
+<div id="sfp" class="panel">
+  <h2>SFP EEPROM Editor</h2>
+  <div class="input-row">
+    <label style="font-weight:600;">Slot:</label>
+    <select id="slotsel" onchange="loadEeprom()">
+      <option value="0">SFP 1</option>
+      <option value="1">SFP 2</option>
+    </select>
+    <button class="btn" onclick="loadEeprom()">Refresh</button>
+    <button class="btn" onclick="downloadBin()">Download .bin</button>
+    <input type="file" id="uploadfile" accept=".bin" style="display:none" onchange="uploadBin(this)">
+    <button class="btn" onclick="document.getElementById('uploadfile').click()">Upload .bin</button>
+    <button class="btn btn-success" onclick="saveBackup()">Save Backup</button>
+    <button class="btn btn-danger" onclick="restoreBackup()">Restore Backup</button>
+    <button class="btn" style="background:#48a;" onclick="patchEeprom()">Patch FC→Eth</button>
+    <button class="btn" style="background:#a8a;" onclick="fixChecksum()">Fix Checksum</button>
+    <span style="margin-left:1em">PW: <input type="text" id="pwinput" size="8" maxlength="8" placeholder="00000000" style="font-family:monospace;width:80px;"></span>
+  </div>
+  <div id="info" style="margin-top:1em;font-family:monospace;font-size:13px;"></div>
+  <div id="hexdump" style="margin-top:1em;font-family:monospace;font-size:12px;"></div>
+</div>
+
+<!-- SYSTEM -->
+<div id="sys" class="panel">
+  <h2 data-i18n="sys_heading">System Settings</h2>
   <div class="tab-bar">
-    <button class="tab-btn active" onclick="openTab(event, 'system-tab')">System</button>
-    <button class="tab-btn" onclick="openTab(event, 'advanced-tab')">Advanced</button>
-    <button class="tab-btn" onclick="openTab(event, 'console-tab')">Console</button>
+    <button class="tab-btn active" onclick="openTab(event, 'sys-tab-main')" data-i18n="sys_tab_system">System</button>
+    <button class="tab-btn" onclick="openTab(event, 'sys-tab-advanced')" data-i18n="sys_tab_advanced">Advanced</button>
+    <button class="tab-btn" onclick="openTab(event, 'sys-tab-console')" data-i18n="sys_tab_console">Console</button>
   </div>
-  <div id="system-tab" class="tab-content active">
-    <h1>System Settings</h1>
-    <div class="row">
-      <div class="lcol"><label for="ip">IP address:</label></div>
-      <div class="rcol"><input id="ip" class="ip" type="text" minlength="7" maxlength="15" size="15"/></div>
+
+  <div id="sys-tab-main" class="tab-content active">
+    <div class="input-row"><label style="width:120px;font-weight:600;" data-i18n="sys_ip">IP address:</label><input type="text" id="sys-ip" style="width:200px;"></div>
+    <div class="input-row"><label style="width:120px;font-weight:600;" data-i18n="sys_netmask">Netmask:</label><input type="text" id="sys-mask" style="width:200px;"></div>
+    <div class="input-row"><label style="width:120px;font-weight:600;" data-i18n="sys_gateway">Gateway:</label><input type="text" id="sys-gw" style="width:200px;"></div>
+    <div class="input-row">
+      <label style="width:120px;font-weight:600;" data-i18n="sys_language">Language:</label>
+      <select id="lang-select" onchange="changeLang()" style="width:120px;">
+        <option value="en">English</option>
+        <option value="ja">日本語</option>
+      </select>
+      <label style="font-weight:600;margin-left:20px;">Dark Theme:</label>
+      <input type="checkbox" id="theme-toggle" onchange="toggleTheme()" style="transform:scale(1.5);">
     </div>
-    <div class="row">
-      <div class="lcol"><label for="netmask">Netmask:</label></div>
-      <div class="rcol"><input id="netmask" class="ip" type="text" minlength="7" maxlength="15" size="15"/></div>
+    <div class="input-row">
+      <button class="btn" onclick="applyIP()" data-i18n="sys_update">Update Settings</button>
+      <span style="color:#64748b;font-size:12px;margin-left:15px;" data-i18n="sys_ip_note">Remember to point your browser to the new IP afterwards.</span>
     </div>
-    <div class="row">
-      <div class="lcol"><label for="gw">Gateway:</label></div>
-      <div class="rcol"><input id="gw" class="ip" type="text" minlength="7" maxlength="15" size="15"/></div>
+    <div class="input-row">
+      <button class="btn btn-success" onclick="flashSaveConfig()" data-i18n="sys_save">Save Settings to Flash</button>
+      <span style="color:#64748b;font-size:12px;margin-left:15px;" data-i18n="sys_save_label">Save all current settings to Flash.</span>
     </div>
-    <br/>
-    When updating the above settings, remember to point your browser to the new IP afterwards:<br/>
-    <input style="width:40%;" class="action" onclick="ipSub();" type="button" value="Update Settings"><br/>
-    <br/>
-    Save all current settings to Flash:<br/>
-    <input style="width:40%;" class="action" onclick="flashSave();" type="button" value="Save Settings to Flash">
   </div>
-  <div id="advanced-tab" class="tab-content">
-    <h1>Advanced Settings</h1>
-    <div class="lcol"><label for="config_display">Startup configuration:</label></div>
-    <textarea id="config_display" rows="8" cols="60"></textarea>
-    <br/><br/>
-    Be careful when saving the directly edited startup configuration, you can lock yourself out:<br/>
-    <input style="width:40%;" class="action" onclick="clearConfig();" type="button" value="Clear Startup Config">
-    <br/>
-    <input style="width:40%;" class="action" onclick="flashStartupSave();" type="button" value="Save Startup Settings to Flash">
-    <br/>
-    <input style="width:40%;" class="action" onclick="resetSwitch();" type="button" value="Reset Switch">
+
+  <div id="sys-tab-advanced" class="tab-content">
+    <h3 data-i18n="sys_advanced">Advanced Settings</h3>
+    <div class="input-row">
+      <label style="font-weight:600;" data-i18n="sys_startup_config">Startup configuration:</label>
+    </div>
+    <textarea id="config-window" rows="10" style="width:100%;font-family:monospace;font-size:12px;"></textarea>
+    <div class="input-row" style="margin-top:15px;">
+      <button class="btn btn-warning" onclick="clearStartupConfig()" data-i18n="sys_clear_config">Clear Startup Config</button>
+      <button class="btn btn-success" onclick="saveManualConfig()" data-i18n="sys_save_startup">Save Startup Settings to Flash</button>
+      <button class="btn btn-danger" onclick="rebootSwitch()" data-i18n="sys_reset">Reset Switch</button>
+    </div>
+    <p style="color:#64748b;font-size:12px;" data-i18n="sys_startup_warn">Be careful — you can lock yourself out!</p>
   </div>
-  <div id="console-tab" class="tab-content">
-    <h1>Console Command</h1>
-    <label for="console_cmd">Enter command:</label>
-    <input type="text" id="console_cmd" name="console_cmd" style="width:40%;">
-    <input style="width:20%;" class="action" onclick="cmdSub();" type="button" value="Send Command"><br/>
-    <br/><br/>
-    Be careful when entering console commands, you can lock yourself out!<br/>
+
+  <div id="sys-tab-console" class="tab-content">
+    <h3 data-i18n="sys_console">Console Command</h3>
+    <div class="input-row">
+      <label style="font-weight:600;" data-i18n="sys_enter_cmd">Enter command:</label>
+      <input type="text" id="console-cmd" style="width:400px;font-family:monospace;">
+      <button class="btn" onclick="sendConsoleCmd()" data-i18n="sys_send_cmd">Send Command</button>
+    </div>
+    <p style="color:#64748b;font-size:12px;" data-i18n="sys_console_warn">Be careful — you can lock yourself out!</p>
   </div>
 </div>
 
+<!-- FIRMWARE UPDATE -->
+<div id="update" class="panel">
+  <h2 data-i18n="update_heading">Firmware Update</h2>
+  <p data-i18n="update_instruction">Choose a firmware update file to upload:</p>
+  <div class="input-row">
+    <input type="file" id="binFile" accept=".bin">
+    <button class="btn btn-danger" id="flashBtn" onclick="startFlash()" data-i18n="update_upload">Upload File</button>
+  </div>
+  <div id="progress-wrap" style="display:none;margin-top:20px;">
+    <div style="background:#e2e8f0;border-radius:8px;overflow:hidden;height:24px;">
+      <div id="fBar" style="height:100%;width:0%;background:var(--accent);transition:width 0.3s;"></div>
+    </div>
+    <p id="fText" style="text-align:center;font-weight:600;">0%</p>
+    <p id="fStatus" style="color:#64748b;font-size:13px;">Preparing...</p>
+  </div>
 </div>
+
+</main>
+<script src="/main.js"></script>
 </body>
 </html>

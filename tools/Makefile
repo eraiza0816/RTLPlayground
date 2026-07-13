@@ -3,7 +3,7 @@ CCFLAGS = -Wall -o
 BUILDDIR = output
 
 all: create_build_dir $(BUILDDIR)/injector $(BUILDDIR)/fileadder $(BUILDDIR)/httpd_sim\
-	$(BUILDDIR)/crc_calculator $(BUILDDIR)/imagebuilder
+	$(BUILDDIR)/crc_calculator $(BUILDDIR)/imagebuilder $(BUILDDIR)/rtlplayground_exporter
 
 create_build_dir:
 	mkdir -p $(BUILDDIR)
@@ -25,3 +25,6 @@ $(BUILDDIR)/httpd_sim: httpd_sim.c httpd_sim.h
 
 $(BUILDDIR)/imagebuilder: imagebuilder.c
 	gcc $^ $(CCFLAGS) $@
+
+$(BUILDDIR)/rtlplayground_exporter: rtlplayground_exporter/main.go rtlplayground_exporter/go.mod
+	cd rtlplayground_exporter && go build -o ../$@ .

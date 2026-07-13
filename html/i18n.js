@@ -30,7 +30,7 @@ var LANG = {
     speed_disabled: 'Disabled',
     speed_down: 'Down',
 
-    port_title: 'FreeSwitchOS Port Configuration',
+    port_title: 'Port Configuration',
     port_heading: 'Port Configuration',
     port_col_port: 'Port',
     port_col_name: 'Name',
@@ -48,7 +48,7 @@ var LANG = {
     port_10m_h: '10MBit/Half',
     port_apply: 'Apply',
 
-    stat_title: 'FreeSwitchOS Port Statistics',
+    stat_title: 'Port Statistics',
     stat_heading: 'Port Statistics',
     stat_detailed: 'Detailed Port Statistics',
     stat_close: 'Close',
@@ -64,7 +64,7 @@ var LANG = {
     stat_value: 'Value',
     stat_show: 'Show',
 
-    vlan_title: 'FreeSwitchOS VLAN Configuration',
+    vlan_title: 'VLAN Configuration',
     vlan_heading: 'VLAN Configuration',
     vlan_select: 'VLAN Select:',
     vlan_choose: '— VLAN Choose —',
@@ -112,7 +112,7 @@ var LANG = {
     eee_on: 'ON',
     eee_off: 'OFF',
 
-    l2_title: 'FreeSwitchOS L2 Configuration',
+    l2_title: 'L2 Configuration',
     l2_heading: 'L2 Configuration',
     l2_col_port: 'Port',
     l2_col_type: 'Type',
@@ -157,6 +157,7 @@ var LANG = {
     sys_invalid_ip: 'Invalid ip:',
     sys_reset_confirm: 'Are you sure you want to reset the switch?',
     sys_resetting: 'Switch is resetting. Please wait and refresh the page.',
+    sys_language: 'Language:',
 
     login_title: 'RTL Switch Login',
     login_heading: 'RTL Switch Login',
@@ -164,7 +165,7 @@ var LANG = {
     login_password: 'Password',
     login_login: 'Login',
 
-    index_title: 'FreeSwitchOS Main Page',
+    index_title: 'RTLPlayground',
     index_heading: 'Switch Configuration',
     index_settings: 'Settings',
 
@@ -208,7 +209,7 @@ var LANG = {
     speed_disabled: '無効',
     speed_down: 'リンクダウン',
 
-    port_title: 'FreeSwitchOS ポート設定',
+    port_title: 'ポート設定',
     port_heading: 'ポート設定',
     port_col_port: 'ポート',
     port_col_name: '名前',
@@ -226,7 +227,7 @@ var LANG = {
     port_10m_h: '10Mbps/半二重',
     port_apply: '適用',
 
-    stat_title: 'FreeSwitchOS ポート統計',
+    stat_title: 'ポート統計',
     stat_heading: 'ポート統計',
     stat_detailed: '詳細ポート統計',
     stat_close: '閉じる',
@@ -242,7 +243,7 @@ var LANG = {
     stat_value: '値',
     stat_show: '表示',
 
-    vlan_title: 'FreeSwitchOS VLAN 設定',
+    vlan_title: 'VLAN 設定',
     vlan_heading: 'VLAN 設定',
     vlan_select: 'VLAN 選択:',
     vlan_choose: '— VLAN 選択 —',
@@ -290,7 +291,7 @@ var LANG = {
     eee_on: 'オン',
     eee_off: 'オフ',
 
-    l2_title: 'FreeSwitchOS L2 設定',
+    l2_title: 'L2 設定',
     l2_heading: 'L2 設定',
     l2_col_port: 'ポート',
     l2_col_type: 'タイプ',
@@ -335,6 +336,7 @@ var LANG = {
     sys_invalid_ip: '無効な IP: ',
     sys_reset_confirm: 'スイッチを再起動してもよろしいですか？',
     sys_resetting: 'スイッチを再起動中です。しばらく待ってからページをリロードしてください。',
+    sys_language: '言語:',
 
     login_title: 'RTL スイッチ ログイン',
     login_heading: 'RTL スイッチ ログイン',
@@ -342,7 +344,7 @@ var LANG = {
     login_password: 'パスワード',
     login_login: 'ログイン',
 
-    index_title: 'FreeSwitchOS メインページ',
+    index_title: 'RTLPlayground',
     index_heading: 'スイッチ設定',
     index_settings: '設定',
 

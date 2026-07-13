@@ -157,6 +157,7 @@ var LANG = {
     sys_invalid_ip: 'Invalid ip:',
     sys_reset_confirm: 'Are you sure you want to reset the switch?',
     sys_resetting: 'Switch is resetting. Please wait and refresh the page.',
+    sys_language: 'Language:',
 
     login_title: 'RTL Switch Login',
     login_heading: 'RTL Switch Login',
@@ -335,6 +336,7 @@ var LANG = {
     sys_invalid_ip: '無効な IP: ',
     sys_reset_confirm: 'スイッチを再起動してもよろしいですか？',
     sys_resetting: 'スイッチを再起動中です。しばらく待ってからページをリロードしてください。',
+    sys_language: '言語:',
 
     login_title: 'RTL スイッチ ログイン',
     login_heading: 'RTL スイッチ ログイン',

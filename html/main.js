@@ -1161,8 +1161,18 @@ function initI18n() {
   });
 }
 
+function changeLang() {
+  var lang = document.getElementById('lang-select').value;
+  setLang(lang);
+  initI18n();
+  var activePanel = document.querySelector('.panel.active');
+  if (activePanel) nav(activePanel.id);
+}
+
 window.addEventListener('load', function() {
   initI18n();
+  var langSel = document.getElementById('lang-select');
+  if (langSel) langSel.value = rtlLang;
   nav('dash');
   document.getElementById('vlanSelect').onchange = function() {
     document.getElementById('vid').value = this.value;

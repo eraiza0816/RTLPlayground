@@ -301,6 +301,13 @@
     <div class="input-row"><label style="width:120px;font-weight:600;" data-i18n="sys_netmask">Netmask:</label><input type="text" id="sys-mask" style="width:200px;"></div>
     <div class="input-row"><label style="width:120px;font-weight:600;" data-i18n="sys_gateway">Gateway:</label><input type="text" id="sys-gw" style="width:200px;"></div>
     <div class="input-row">
+      <label style="width:120px;font-weight:600;" data-i18n="sys_language">Language:</label>
+      <select id="lang-select" onchange="changeLang()" style="width:120px;">
+        <option value="en">English</option>
+        <option value="ja">日本語</option>
+      </select>
+    </div>
+    <div class="input-row">
       <button class="btn" onclick="applyIP()" data-i18n="sys_update">Update Settings</button>
       <span style="color:#64748b;font-size:12px;margin-left:15px;" data-i18n="sys_ip_note">Remember to point your browser to the new IP afterwards.</span>
     </div>

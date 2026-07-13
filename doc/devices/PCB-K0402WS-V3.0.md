@@ -9,11 +9,13 @@ of the device just above the big label, might be covered by a QC sticker.
 
 ### Brands
 
-* Hisource Hi-K0402WS
+| Brand  | Type             |Managed| PCB              | Flash           | Chip RTL      |
+|--------|------------------|-------|------------------|-----------------|---------------|
+| Hisource | Hi-K0402WS | No    | SWTG018AS-A V2.0 | 2MB | BY25Q16BS |
+| FOXNEO | FNS-1200 | No    | SWTG018AS-A V2.0 | 2MB | BY25Q16BS |
+| Ztyuav | Z-QWYT0402  | No   | SWTG018AS-A V2.0 | 2MB | BY25Q16BS |
 
 <img src="photos/PCB-K0402WS-V3.0/HiSource_HI-K0402WS.jpg" width="300" />
-
-* Ztyuav Z-QWYT0402
 
 <img src="photos/PCB-K0402WS-V3.0/Ztyuav_Z-QWYT0402.jpg" width="300" />
 
@@ -26,6 +28,8 @@ Using SPI clamp in-board is the only method for initial installation.
 The board has two flash chips `BY25Q16BS` with 16M-bit size. The front switch, switches between the two flash chips.
 These can be programed independently by using said switch - so it is e.g. possible to run the original and new firmware in parallel.
 The switch actually controls the HOLD line of each flash chip, and toggling the switch results in a reboot.
+
+Programming the front-side chip writes to the "S-side", while programming the back-side chip writes to the "V-side".
 
 If the programming clip keeps HOLD not connected, the flashing will commence on whatever the switch selected, regardless on which chip was clipped.
 

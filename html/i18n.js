@@ -165,7 +165,7 @@ var LANG = {
     login_password: 'Password',
     login_login: 'Login',
 
-    index_title: 'FreeSwitchOS Main Page',
+    index_title: 'RTLPlayground',
     index_heading: 'Switch Configuration',
     index_settings: 'Settings',
 
@@ -344,7 +344,7 @@ var LANG = {
     login_password: 'パスワード',
     login_login: 'ログイン',
 
-    index_title: 'FreeSwitchOS メインページ',
+    index_title: 'RTLPlayground',
     index_heading: 'スイッチ設定',
     index_settings: '設定',
 

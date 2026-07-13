@@ -614,8 +614,11 @@ char *scan_header(char *p)
 			break;
 		if (is_word(p, "\nContent-Type:"))
 			content_type = p + 15;
-		else if (is_word(p, "\nCookie:"))
-			session = p + 17;
+		else if (is_word(p, "\nCookie:")) {
+			char *cookie_val = p + 9;
+			char *s = strstr(cookie_val, "session=");
+			if (s) session = s + 8;
+		}
 	}
 	if (content_type && is_word(content_type, "multipart/form-data; boundary")) {
 		printf("Found multiplart\n");
@@ -887,14 +890,14 @@ void launch(struct Server *server)
 					goto done;
 				} else if (is_word(&buffer[5], "/login")) {
 					printf("POST login\n");
-					p += 4;
-					p += 4; // Read also over "pwd="
+					p += 4; // Skip \r\n\r\n after headers
+					p += 4; // Skip "pwd="
 					char *response;
                     if (is_word(p, PASSWORD)) {
 						printf("Password accepted!\n");
 						response = "HTTP/1.1 302 Found\r\n"
 							   "Location: index.html\r\n"
-							   "Set-Cookie: session=" SESSION_ID "; SameSite=Strict\r\n"
+							   "Set-Cookie: session=" SESSION_ID "; SameSite=Lax\r\n"
 							   "\r\n";
 					} else {
 						response = "HTTP/1.1 302 Found\r\n"

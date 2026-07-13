@@ -1169,10 +1169,25 @@ function changeLang() {
   if (activePanel) nav(activePanel.id);
 }
 
+function toggleTheme() {
+  var enabled = document.getElementById('theme-toggle').checked;
+  document.documentElement.classList.toggle('dark', enabled);
+  localStorage.setItem('rtl_theme', enabled ? 'dark' : 'light');
+}
+
+function applyTheme() {
+  var saved = localStorage.getItem('rtl_theme');
+  var dark = saved === 'dark';
+  var toggle = document.getElementById('theme-toggle');
+  if (toggle) toggle.checked = dark;
+  document.documentElement.classList.toggle('dark', dark);
+}
+
 window.addEventListener('load', function() {
   initI18n();
   var langSel = document.getElementById('lang-select');
   if (langSel) langSel.value = rtlLang;
+  applyTheme();
   nav('dash');
   document.getElementById('vlanSelect').onchange = function() {
     document.getElementById('vid').value = this.value;

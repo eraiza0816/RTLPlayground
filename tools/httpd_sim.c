@@ -500,6 +500,9 @@ struct Server serverConstructor(int port, void (*launch)(struct Server *server))
         exit(EXIT_FAILURE);
     }
 
+    int opt = 1;
+    setsockopt(server.socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
     if (bind(server.socket, (struct sockaddr*)&server.address, sizeof(server.address)) < 0) {
         perror("Failed to bind socket...\n");
         exit(EXIT_FAILURE);
@@ -610,6 +613,7 @@ void launch(struct Server *server)
     FILE *inptr;
 
     last_called = time(NULL);
+    last_session_use = time(NULL);
     for (int i=0; i < PORTS; i++)
 	    txG[i] = txB[i] = rxG[i] = rxB[i] = 0;
 
@@ -716,7 +720,7 @@ void launch(struct Server *server)
 						send_counters(new_socket, port);
 					goto done;
 				}
-				if (!authenticated && !(!strncmp(&buffer[4], "/login.html", 11) || !strncmp(&buffer[4], "/style.css", 10))) {
+				if (!authenticated && !(!strncmp(&buffer[4], "/login.html", 11) || !strncmp(&buffer[4], "/style.css", 10) || !strncmp(&buffer[4], "/main.js", 8) || !strncmp(&buffer[4], "/i18n.js", 8))) {
 					send_to_login(new_socket);
 					goto done;
 				}
@@ -733,7 +737,7 @@ void launch(struct Server *server)
 				if (i > 1)
 					inptr = fopen(&buffer[5], "rb");
 				else
-					inptr = fopen("/index.html", "rb");
+					inptr = fopen("index.html", "rb");
 				if (inptr == NULL) {
 					printf("Cannot open input file %s\n", &buffer[5]);
 					send_not_found(new_socket);
@@ -795,11 +799,12 @@ void launch(struct Server *server)
 					p += 4;
 					p += 4; // Read also over "pwd="
 					char *response;
-					if (is_word(p, PASSWORD)) {
+                    if (is_word(p, PASSWORD)) {
 						printf("Password accepted!\n");
 						response = "HTTP/1.1 302 Found\r\n"
 							   "Location: index.html\r\n"
-							   "Set-Cookie: session=" SESSION_ID "; SameSite=Strict\r\n";
+							   "Set-Cookie: session=" SESSION_ID "; SameSite=Strict\r\n"
+							   "\r\n";
 					} else {
 						response = "HTTP/1.1 302 Found\r\n"
 							   "Location: login.html\r\n\r\n";

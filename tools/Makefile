@@ -3,7 +3,7 @@ CCFLAGS = -Wall -o
 BUILDDIR = output
 
 all: create_build_dir $(BUILDDIR)/injector $(BUILDDIR)/fileadder $(BUILDDIR)/httpd_sim\
-	$(BUILDDIR)/crc_calculator $(BUILDDIR)/imagebuilder $(BUILDDIR)/rtlplayground_exporter
+	$(BUILDDIR)/crc_calculator $(BUILDDIR)/imagebuilder
 
 create_build_dir:
 	mkdir -p $(BUILDDIR)

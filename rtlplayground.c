@@ -24,7 +24,6 @@
 #include "uip/uip_arp.h"
 #include "machine.h"
 #include "phy.h"
-#include "syslog.h"
 #include "telnetd/telnetd.h"
 
 extern __code const struct machine machine;
@@ -2126,8 +2125,6 @@ void main(void)
 	delay(1000);
 
 	check_and_flash_update_image();
-
-	// syslog removed
 
 #ifdef DEBUG
 	// This register seems to work on the RTL8373 only if also the SDS

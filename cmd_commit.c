@@ -6,7 +6,6 @@
 #include "rtl837x_regs.h"
 #include "rtl837x_sfr.h"
 #include "uip/uip.h"
-#include "syslog.h"
 
 extern __xdata uint8_t flash_buf[FLASH_BUF_SIZE];
 extern __xdata struct flash_region_t flash_region;
@@ -15,7 +14,6 @@ extern __xdata char passwd[21];
 extern __xdata uip_ipaddr_t uip_hostaddr, uip_draddr, uip_netmask;
 extern __xdata uint8_t stpEnabled;
 extern __xdata uint16_t management_vlan;
-extern __xdata struct syslog_state syslog_state;
 extern __xdata uint8_t telnet_enabled;
 extern __xdata uint8_t web_enabled;
 extern __xdata uint8_t sfr_data[4];
@@ -109,17 +107,6 @@ void parse_commit(void) __banked
 		COMMIT_BYTE((management_vlan / 10) % 10);
 		COMMIT_BYTE(management_vlan % 10);
 		COMMIT_PUTS(" mgmt\n");
-	}
-
-	COMMIT_PUTS("syslog ");
-	if (syslog_state.enabled) {
-		COMMIT_PUTS("on\nsyslog ip ");
-		COMMIT_BYTE(syslog_state.server_ip[0]); COMMIT_PUTC('.');
-		COMMIT_BYTE(syslog_state.server_ip[1]); COMMIT_PUTC('.');
-		COMMIT_BYTE(syslog_state.server_ip[2]); COMMIT_PUTC('.');
-		COMMIT_BYTE(syslog_state.server_ip[3]); COMMIT_PUTC('\n');
-	} else {
-		COMMIT_PUTS("off\n");
 	}
 
 	COMMIT_PUTS("telnet ");

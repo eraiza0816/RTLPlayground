@@ -13,7 +13,6 @@
 #include "version.h"
 #include "machine.h"
 #include "page_impl.h"
-#include "syslog.h"
 
 // #define DEBUG
 #include "debug.h"
@@ -265,11 +264,6 @@ void send_basic_info(void)
 		char_to_html('1');
 	else
 		char_to_html('0');
-	slen += strtox(outbuf + slen, "\",\"syslog_server_ip\":\"");
-	itoa_html(syslog_state.server_ip[0]); char_to_html('.');
-	itoa_html(syslog_state.server_ip[1]); char_to_html('.');
-	itoa_html(syslog_state.server_ip[2]); char_to_html('.');
-	itoa_html(syslog_state.server_ip[3]);
 	slen += strtox(outbuf + slen, "\",\"mac_address\":\"");
 	byte_to_html(uip_ethaddr.addr[0]); char_to_html(':');
 	byte_to_html(uip_ethaddr.addr[1]); char_to_html(':');

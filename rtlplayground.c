@@ -258,13 +258,6 @@ void write_char_no_syslog(char c)
 void write_char(char c)
 {
 	write_char_no_syslog(c);
-
-	if (syslog_state.enabled) {
-		logbuf[syslog_state.writeptr++] = c;
-		syslog_state.writeptr &= (LOGBUF_SIZE - 1);
-		if (c == '\n')
-			syslog_state.line_available = 1;
-	}
 }
 
 void itoa(uint8_t v)
@@ -2134,7 +2127,7 @@ void main(void)
 
 	check_and_flash_update_image();
 
-	syslog_init();
+	// syslog removed
 
 #ifdef DEBUG
 	// This register seems to work on the RTL8373 only if also the SDS

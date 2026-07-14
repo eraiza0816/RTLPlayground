@@ -25,6 +25,7 @@
 #include "machine.h"
 #include "phy.h"
 #include "syslog.h"
+#include "telnetd/telnetd.h"
 
 extern __code const struct machine machine;
 extern __xdata uint32_t flash_size;
@@ -119,7 +120,11 @@ __xdata uint16_t rx_packet_vlan;
 __xdata uint16_t management_vlan;
 __xdata uint8_t tx_seq;
 
+__xdata char hostname[32];
+
 __xdata uint8_t stpEnabled;
+__xdata uint8_t telnet_enabled;
+__xdata uint8_t web_enabled;
 
 __code uint16_t bit_mask[16] = {
 	0x0001, 0x0002, 0x0004, 0x0008, 0x0010, 0x0020, 0x0040, 0x0080,
@@ -231,19 +236,23 @@ void isr_serial(void) __interrupt(4)
 	}
 }
 
+static void uart_putc(char c)
+{
+	do {} while (tx_buf_empty == 0);
+	tx_buf_empty = 0;
+	SBUF = c;
+}
 
 void write_char_no_syslog(char c)
 {
-	do {
-	} while (tx_buf_empty == 0);
 	if (c =='\n') {
-		tx_buf_empty = 0;
-		SBUF = '\r';
-		do {
-		} while (tx_buf_empty == 0);
+		uart_putc('\r');
+		if (telnet_is_connected() && telnet_echo_enabled())
+			telnet_tx_enqueue('\r');
 	}
-	tx_buf_empty = 0;
-	SBUF = c;
+	uart_putc(c);
+	if (telnet_is_connected() && telnet_echo_enabled())
+		telnet_tx_enqueue(c);
 }
 
 void write_char(char c)
@@ -400,7 +409,14 @@ void print_byte(uint8_t a)
 
 void print_cmd_prompt(void)
 {
-	print_string_no_syslog("\n> ");
+	print_string_no_syslog("\n");
+	if (hostname[0]) {
+		write_char_no_syslog('[');
+		__xdata char *p = hostname;
+		while (*p) write_char_no_syslog(*p++);
+		write_char_no_syslog(']');
+	}
+	print_string_no_syslog("> ");
 }
 
 /*
@@ -664,9 +680,6 @@ void nic_tx_packet(uint16_t ring_ptr)
 	if (management_vlan) {
 		SFR_NIC_DATA_U16LE = (uint16_t) uip_buf;
 		len = FRAME_Q->len;
-		/*
-		(__xdata struct rtl_dot1q_frame *)uip_buf
-#define FRAME (((__xdata struct rtl_dot1q_frame *)&uip_buf[0]).nonq_frame)*/
 	} else {
 		SFR_NIC_DATA_U16LE = (uint16_t) uip_buf + VLAN_TAG_SIZE;
 		len = FRAME->len;
@@ -2149,6 +2162,7 @@ void main(void)
 	uip_init();
 	uip_arp_init();
 	httpd_init();
+	telnetd_init();
 
 	management_vlan = 1; // Default management VLAN is 1
 

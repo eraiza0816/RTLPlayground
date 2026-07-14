@@ -11,7 +11,7 @@ extern __xdata uint8_t err_status;
 
 void cmd_tokenize(void) __banked;
 void cmd_parser(void) __banked;
-void execute_config(void) __banked;
+void execute_config(void) __banked __reentrant;
 void execute_commands(__xdata uint8_t *p) __banked;
 void print_sw_version(void) __banked;
 void clear_command_history(void) __banked;

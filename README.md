@@ -7,7 +7,8 @@ features also for unmanaged devices with additional features such as Management 
 dhcp servers, multi-language support, IPv6 and TLS-encrypted web-pages. At present, however
 only the following features are provided:
 - A modern web-interface with mouse-over to display further information
-- A serial console interface to configure all features
+- A serial console (UART) and Telnet interface to configure all features
+- CLI commands to save settings to flash (`commit`) and display current config (`show`)
 - IGMP to configure Multicast streaming
 - Port configuration showing detailed informtion about own and Link-partner advertised
   Speed settins and configuration of these settings on the local side
@@ -21,7 +22,7 @@ only the following features are provided:
 - Mirror configuration
 - Link Aggregation Groups can be set up
 - Detailed information on port packet statistics
-- Configuration saved to flash via the web-interface
+- Configuration saved to flash via the web-interface or CLI `commit`
 - Firmware updates via the web
 - Installation as a firmware upgrade from the original web-interface
 
@@ -292,10 +293,67 @@ If you want to modify settings after the flash is done, go to the Advanced Setti
 ip xxx.xxx.xxx.xxx      = IP adress of the switch
 gw yyy.yyy.yyy.yyy      = IP adress of the gateway
 netmask zzz.zzz.zzz.zzz = Network mask of the switch 
+hostname name           = Hostname of the switch (defaults to machine name)
 port x name xxx         = Name xxx the port number x
 port z 1g               = Set 1g speed for port z
 igmp on/off             = Turn IGMP on or off
 ```
+All CLI commands are available via the serial console (UART, 115200 8N1) or Telnet (port 23).
+
+### System commands
+```
+hostname [name]         = Show or set hostname
+passwd <password>       = Set password (min 4 chars)
+commit                  = Save current settings to flash
+show                    = Display all current settings
+telnet on|off           = Enable or disable Telnet access
+syslog on|off|ip [addr] = Configure syslog
+```
+
+### Network configuration
+```
+ip [addr|dhcp]          = Show or set IP address
+gw [addr]               = Show or set gateway
+netmask [addr]          = Show or set netmask
+```
+
+### Port and switching features
+```
+port <n> show|on|off|<speed> [half|full]
+port <n> name <name>
+mtu show|<n> <size>
+l2 [forget|learned|del <idx>]
+stp on|off
+igmp on|off|show
+```
+
+### VLAN
+```
+vlan show|<id> [d|mgmt|name [ports][t/u]...]
+pvid <port> <vlan>
+ingress [p]<t|u|a>...
+```
+
+### Other features
+```
+mirror status|off|<mp> [port][t/r]
+lag show|<group> [port]
+laghash <group> [hash options]
+eee on|off|status [port] [speed]
+bw in|out|status <port> [value]
+isolate <port> show|off [port]
+sfp [slot] [speed]
+stat
+version
+```
+
+### Telnet access
+When Telnet is enabled (`telnet on`), connect via:
+```
+telnet 192.168.10.247
+```
+Default password is `1234`. Telnet is disabled by default for security.
+
 [To be continue]
 
 Enjoy playing!
@@ -308,6 +366,7 @@ The following documents give further documentation on specific features of the R
 - [L2 learning](doc/l2.md) 
 - [IGMP (IP-MC streaming)](doc/igmp.md)
 - [SFP+ ports](doc/sfp.md) 
+- [Telnet access](doc/telnet.md)
 - [Trunking aka. port aggregation](doc/trunking.md)
 - [VLAN](doc/vlan.md)
 - [Modifications and Flash replacement](doc/mods.md)

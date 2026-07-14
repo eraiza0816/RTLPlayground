@@ -20,7 +20,7 @@ jobs:
       - name: Install dependencies
         run: |
           apt update
-          apt install make gcc sdcc xxd python-is-python3 libjson-c-dev -y
+          apt install make gcc sdcc xxd python-is-python3 libjson-c-dev git golang -y
 
       - name: Check if machine.c can be compiled for all machines
         run: make machine_check

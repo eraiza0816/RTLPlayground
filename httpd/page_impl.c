@@ -13,7 +13,6 @@
 #include "version.h"
 #include "machine.h"
 #include "page_impl.h"
-#include "syslog.h"
 
 // #define DEBUG
 #include "debug.h"
@@ -34,6 +33,9 @@ extern __xdata uip_ipaddr_t uip_hostaddr, uip_draddr, uip_netmask;
 extern __xdata uint8_t sfr_data[4];
 extern __xdata uint8_t sfp_pins_last;
 extern __xdata uint8_t vlan_names[VLAN_NAMES_SIZE];
+
+extern __xdata uint8_t telnet_enabled;
+extern __xdata uint8_t web_enabled;
 
 extern __xdata uint8_t cmd_history[CMD_HISTORY_SIZE];
 extern __xdata uint16_t cmd_history_ptr;
@@ -252,11 +254,16 @@ void send_basic_info(void)
 	itoa_html(uip_netmask[0] >> 8); char_to_html('.');
 	itoa_html(uip_netmask[1]); char_to_html('.');
 	itoa_html(uip_netmask[1] >> 8);
-	slen += strtox(outbuf + slen, "\",\"syslog_server_ip\":\"");
-	itoa_html(syslog_state.server_ip[0]); char_to_html('.');
-	itoa_html(syslog_state.server_ip[1]); char_to_html('.');
-	itoa_html(syslog_state.server_ip[2]); char_to_html('.');
-	itoa_html(syslog_state.server_ip[3]);
+	slen += strtox(outbuf + slen, "\",\"telnet_enabled\":\"");
+	if (telnet_enabled)
+		char_to_html('1');
+	else
+		char_to_html('0');
+	slen += strtox(outbuf + slen, "\",\"web_enabled\":\"");
+	if (web_enabled)
+		char_to_html('1');
+	else
+		char_to_html('0');
 	slen += strtox(outbuf + slen, "\",\"mac_address\":\"");
 	byte_to_html(uip_ethaddr.addr[0]); char_to_html(':');
 	byte_to_html(uip_ethaddr.addr[1]); char_to_html(':');

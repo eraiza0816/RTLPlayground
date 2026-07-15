@@ -36,10 +36,22 @@ void cmd_editor_init(void) __banked
  * sudo interceptty -s 'ispeed 115200 ospeed 115200' /dev/ttyUSB0 /dev/tmpS
  * picocom -b 115200 /dev/tmpS
  */
+#ifdef NO_WEB
+extern __xdata uint8_t xmodem_active;
+#endif
+
 void cmd_edit(void) __banked
 {
 	while (l != sbuf_ptr) {
+#ifdef NO_WEB
+		if (xmodem_active)
+			break;
+#endif
 		if (sbuf[l] >= ' ' && sbuf[l] < 127) { // A printable character, copy to command line
+			if (sbuf[l] == '?' && (cursor == 0 || cmd_buffer[cursor-1] == ' ')) {
+				cmd_help();
+				continue;
+			}
 			if (cmd_line_len >= CMD_BUF_SIZE)
 				continue;
 			write_char(sbuf[l]);
@@ -55,6 +67,8 @@ void cmd_edit(void) __banked
 			// Move backwards
 			for (uint8_t i = cursor; i < cmd_line_len; i++)
 				write_char('\010'); // BS works like cursor-left
+		} else if (sbuf[l] == '\t') {
+			cmd_complete();
 		} else if (sbuf[l] == '\033') { // ESC-Sequence
 			// Wait until we have at least 3 characters including the ESC character in the serial buffer
 			if (((sbuf_ptr + SBUF_SIZE - l) & SBUF_MASK) < 3)

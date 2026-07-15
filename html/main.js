@@ -63,7 +63,8 @@ var mtus = [];
 
 const sysLabels = {
   ip_address: "IP Address", ip_netmask: "Subnet Mask", ip_gateway: "Default Gateway",
-  sw_ver: "Firmware Version", hw_ver: "Hardware Version", mac_addr: "MAC Address", uptime: "System Uptime"
+  sw_ver: "Firmware Version", hw_ver: "Hardware Version", mac_addr: "MAC Address", uptime: "System Uptime",
+  telnet_enabled: "Telnet", web_enabled: "Web"
 };
 
 /** NAVIGATION & SMART POLLING **/
@@ -278,6 +279,10 @@ function pollInfo() {
           el.value = data[keyMap[id]] || '';
         }
       });
+      if (data.telnet_enabled !== undefined)
+        updateTelnetLabel(data.telnet_enabled === '1');
+      if (data.web_enabled !== undefined)
+        updateWebLabel(data.web_enabled === '1');
     } catch (e) {}
   });
 }
@@ -859,6 +864,30 @@ function rebootSwitch() {
   fetchAPI('GET', '/reset', function() { notify('Switch rebooting...', 'info'); });
 }
 
+function telnetToggle() {
+  var cmd = 'telnet ' + (document.getElementById('telnet_toggle').checked ? 'on' : 'off');
+  fetchAPI('POST', '/cmd', function() { notify('Telnet toggled.', 'success'); }, cmd + '\n');
+}
+
+function updateTelnetLabel(enabled) {
+  var cb = document.getElementById('telnet_toggle');
+  var lb = document.getElementById('telnet_label');
+  if (cb) cb.checked = enabled;
+  if (lb) lb.textContent = enabled ? 'enabled' : 'disabled';
+}
+
+function webToggle() {
+  var cmd = 'web ' + (document.getElementById('web_toggle').checked ? 'on' : 'off');
+  fetchAPI('POST', '/cmd', function() { notify('Web toggled.', 'success'); }, cmd + '\n');
+}
+
+function updateWebLabel(enabled) {
+  var cb = document.getElementById('web_toggle');
+  var lb = document.getElementById('web_label');
+  if (cb) cb.checked = enabled;
+  if (lb) lb.textContent = enabled ? 'enabled' : 'disabled';
+}
+
 function openTab(evt, tabId) {
   var parent = evt.currentTarget.parentElement;
   parent.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
@@ -888,8 +917,6 @@ function getKey(line) {
   if (line.match(/^ip\s+/)) return 'ip';
   if (line.match(/^gw\s+/)) return 'gw';
   if (line.match(/^netmask\s+/)) return 'netmask';
-  if (line.match(/^syslog\s+ip\s+/)) return 'syslog ip';
-  if (line.match(/^syslog\s+/)) return 'syslog';
   if (line.match(/^passwd\s+/)) return 'passwd';
   if (line.match(/^eee\s+\d+/)) return line.match(/^eee\s+\d+/)[0];
   if (line.match(/^eee\s+(on|off)/)) return 'eee';
@@ -909,6 +936,11 @@ function getKey(line) {
   if (line.match(/^port\s+\d+\s+name/)) return line.match(/^port\s+\d+\s+name/)[0];
   if (line.match(/^port\s+\d+/)) return line.match(/^port\s+\d+/)[0];
   if (line.match(/^mtu\s+\d+/)) return line.match(/^mtu\s+\d+/)[0];
+  if (line.match(/^hostname\s+/)) return 'hostname';
+  if (line.match(/^telnet\s+/)) return 'telnet';
+  if (line.match(/^web\s+/)) return 'web';
+  if (line.match(/^commit$/)) return 'commit';
+  if (line.match(/^show$/)) return 'show';
   return null;
 }
 

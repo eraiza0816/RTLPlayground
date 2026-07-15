@@ -529,8 +529,23 @@ bad_request:
 }
 
 
+extern void telnetd_appcall(void) __banked;
+extern __xdata uint8_t telnet_enabled;
+extern __xdata uint8_t web_enabled;
+
 void httpd_appcall(void)
 {
+	if (uip_conn->lport == HTONS(23)) {
+		if (telnet_enabled)
+			telnetd_appcall();
+		else
+			uip_close();
+		return;
+	}
+	if (!web_enabled) {
+		uip_close();
+		return;
+	}
 	__xdata struct httpd_state * __xdata s = &(uip_conn->appstate);
 
 	dbg_char('P');
@@ -647,9 +662,11 @@ void httpd_appcall(void)
 			} else if (!strcmp(q, "/information.json")) {
 				send_basic_info();
 			} else if (!strcmp(q, "/vlan.json")) {
+			// TODO: validate short_parsed <= 4095 before send_vlan
 				parse_short(q + 15);
 				send_vlan(short_parsed);
 			} else if (is_word(q, "/counters.json")) {
+			// TODO: validate q[20] is a digit before send_counters
 				send_counters(q[20]-'0');
 			} else if (is_word(q, "/eee.json")) {
 				send_eee();
@@ -659,6 +676,7 @@ void httpd_appcall(void)
 				parse_short(q + 13); // e.g.: /l2.json?idx=10
 				send_l2(short_parsed);
 			} else if (is_word(q, "/l2_del.json")) {
+			// TODO: validate short_parsed <= 4095 before l2_delete
 				parse_short(q + 17);
 				l2_delete(short_parsed);
 			} else if (is_word(q, "/mirror.json")) {

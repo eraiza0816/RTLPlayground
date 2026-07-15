@@ -16,4 +16,7 @@ void execute_commands(__xdata uint8_t *p) __banked;
 void print_sw_version(void) __banked;
 void clear_command_history(void) __banked;
 
+void cmd_complete(void) __banked;
+void cmd_help(void) __banked;
+
 #endif

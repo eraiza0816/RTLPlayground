@@ -1,0 +1,8 @@
+# Compiled test binaries
+test_cmd_parser
+test_cmd_help
+test_cmd_editor
+test_xmodem_crc
+test_xmodem_full
+test_noweb
+test_parse_xxx

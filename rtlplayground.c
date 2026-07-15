@@ -244,15 +244,17 @@ static void uart_putc(char c)
 	SBUF = c;
 }
 
+__xdata uint8_t telnet_active;
+
 void write_char_no_syslog(char c)
 {
 	if (c =='\n') {
 		uart_putc('\r');
-		if (telnet_is_connected() && telnet_echo_enabled())
+		if (telnet_active && telnet_is_connected() && telnet_echo_enabled())
 			telnet_tx_enqueue('\r');
 	}
 	uart_putc(c);
-	if (telnet_is_connected() && telnet_echo_enabled())
+	if (telnet_active && telnet_is_connected() && telnet_echo_enabled())
 		telnet_tx_enqueue(c);
 }
 
@@ -2157,6 +2159,7 @@ void main(void)
 	httpd_init();
 #endif
 	telnetd_init();
+	telnet_active = 1;
 
 	management_vlan = 1; // Default management VLAN is 1
 

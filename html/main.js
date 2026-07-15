@@ -917,8 +917,6 @@ function getKey(line) {
   if (line.match(/^ip\s+/)) return 'ip';
   if (line.match(/^gw\s+/)) return 'gw';
   if (line.match(/^netmask\s+/)) return 'netmask';
-  if (line.match(/^syslog\s+ip\s+/)) return 'syslog ip';
-  if (line.match(/^syslog\s+/)) return 'syslog';
   if (line.match(/^passwd\s+/)) return 'passwd';
   if (line.match(/^eee\s+\d+/)) return line.match(/^eee\s+\d+/)[0];
   if (line.match(/^eee\s+(on|off)/)) return 'eee';

@@ -1,4 +1,7 @@
 VERSION=0.1.0
+
+# WebUI option: WEB=1 (default) to enable, WEB=0 to disable
+WEB ?= 1
 IMAGESIZE = 524288
 DEFAULT_CONFIG_LOCATION = 454656
 CONFIG_LOCATION = 458752
@@ -45,12 +48,25 @@ SRCS += httpd/httpd.c httpd/page_impl.c
 SRCS += sfp_bitbang.c
 SRCS += telnetd/telnetd.c
 SRCS += cmd_commit.c
+SRCS += cmd_help.c
+SRCS += cmd_xmodem.c
+
+ifeq ($(WEB),0)
+	CC_FLAGS += -DNO_WEB
+	SRCS := $(filter-out httpd/httpd.c httpd/page_impl.c, $(SRCS))
+	SRCS := $(filter-out html_data.c, $(SRCS))
+else
+	SRCS := $(filter-out cmd_xmodem.c, $(SRCS))
+endif
+
 OBJS = ${SRCS:%.c=$(BUILDDIR)/%.rel}
 DEPS := ${SRCS:%.c=$(BUILDDIR)/%.d}
 HTML := $(shell find $(html) -name '*.js' -or -name '*.html' -or -name '*.svg')
 
+ifeq ($(WEB),1)
 html_data.c html_data.h: $(HTML) tools/output/fileadder
 	tools/output/fileadder -a $(HTML_LOCATION) -s $(IMAGESIZE) -b BANK1 -d html -p html_data
+endif
 
 $(VERSION_HEADER):
 	@echo "#ifndef VERSION_H" > $(VERSION_HEADER)
@@ -59,7 +75,9 @@ $(VERSION_HEADER):
 	@echo "#define BUILD_DATE \"$(shell date +"%Y-%m-%d %H:%M:%S")\"" >> $(VERSION_HEADER)
 	@echo "#endif" >> $(VERSION_HEADER)
 
+ifeq ($(WEB),1)
 httpd: html_data.h
+endif
 
 $(SUBDIRS):
 	$(MAKE) -C $@
@@ -95,7 +113,9 @@ $(BUILDDIR)/rtlplayground-$(FILENAME_EXTENSION).bin: $(BUILDDIR)/rtlplayground.i
 	tools/output/imagebuilder -i $^ $@
 	tools/output/fileadder -a $(DEFAULT_CONFIG_LOCATION) -s $(IMAGESIZE) -d config.txt $@
 	tools/output/fileadder -a $(CONFIG_LOCATION) -s $(IMAGESIZE) -d config.txt $@
+ifeq ($(WEB),1)
 	tools/output/fileadder -a $(HTML_LOCATION) -s $(IMAGESIZE) -d html -p html_data -b BANK1 $@
+endif
 	tools/output/crc_calculator -u $@
 	ln -sf $(MACHINE)/rtlplayground-$(FILENAME_EXTENSION).bin output/rtlplayground.bin
 

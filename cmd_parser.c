@@ -37,12 +37,18 @@ extern __code uint8_t * __code hex;
 extern __xdata uint8_t flash_buf[FLASH_BUF_SIZE];
 extern __xdata struct flash_region_t flash_region;
 
+#ifdef NO_WEB
+__xdata char passwd[21];
+#else
 extern __xdata char passwd[21];
+#endif
 
 extern __xdata struct dhcp_state dhcp_state;
 extern __xdata char hostname[32];
 extern __xdata uint8_t telnet_enabled;
+#ifndef NO_WEB
 extern __xdata uint8_t web_enabled;
+#endif
 
 __xdata uint8_t vlan_names[VLAN_NAMES_SIZE];
 __xdata uint16_t vlan_ptr;
@@ -1415,6 +1421,9 @@ void parse_hostname(void)
 
 
 extern void parse_commit(void) __banked;
+#ifdef NO_WEB
+extern void parse_xmodem(void) __banked;
+#endif
 
 
 void parse_show(void)
@@ -1474,10 +1483,12 @@ void parse_telnet(void)
 		telnet_enabled = 1;
 		print_string("Telnet enabled\n");
 	} else if (cmd_compare(1, "off")) {
+#ifndef NO_WEB
 		if (!web_enabled) {
 			print_string("Error: would disable all remote access (web is also off)\n");
 			return;
 		}
+#endif
 		telnet_enabled = 0;
 		print_string("Telnet disabled\n");
 	} else {
@@ -1485,6 +1496,7 @@ void parse_telnet(void)
 	}
 }
 
+#ifndef NO_WEB
 void parse_web(void)
 {
 	if (cmd_words_len < 2) {
@@ -1510,6 +1522,7 @@ void parse_web(void)
 		print_string("Error: web [on|off]\n");
 	}
 }
+#endif
 
 
 void parse_eee(void)
@@ -1916,10 +1929,16 @@ void cmd_parser(void) __banked
 			parse_bw();
 		} else if (cmd_compare(0, "telnet")) {
 			parse_telnet();
+#ifndef NO_WEB
 		} else if (cmd_compare(0, "web")) {
 			parse_web();
+#endif
 		} else if (cmd_compare(0, "commit")) {
 			parse_commit();
+#ifdef NO_WEB
+		} else if (cmd_compare(0, "xmodem")) {
+			parse_xmodem();
+#endif
 		} else if (cmd_compare(0, "show")) {
 			parse_show();
 		} else if (cmd_compare(0, "hostname")) {

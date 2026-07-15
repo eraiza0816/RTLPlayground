@@ -123,7 +123,9 @@ __xdata char hostname[32];
 
 __xdata uint8_t stpEnabled;
 __xdata uint8_t telnet_enabled;
+#ifndef NO_WEB
 __xdata uint8_t web_enabled;
+#endif
 
 __code uint16_t bit_mask[16] = {
 	0x0001, 0x0002, 0x0004, 0x0008, 0x0010, 0x0020, 0x0040, 0x0080,
@@ -2151,7 +2153,9 @@ void main(void)
 	bandwidth_setup();
 	uip_init();
 	uip_arp_init();
+#ifndef NO_WEB
 	httpd_init();
+#endif
 	telnetd_init();
 
 	management_vlan = 1; // Default management VLAN is 1

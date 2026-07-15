@@ -599,8 +599,7 @@ void httpd_appcall(void)
 			dbg_string("cont_addr: "); dbg_char('\n');
 			flash_region.addr = cont_addr;
 			flash_region.len = slen;
-			dbg_string("Reading: "); dbg_short(slen); dbg_char('\n');
-			flash_read_bulk(outbuf + slen + 100);
+			flash_read_bulk(outbuf);
 			cont_len -= slen;
 			cont_addr += slen;
 			s->tstate = TSTATE_TX;

@@ -54,7 +54,6 @@ void print_string(const char *s)
 void print_cmd_prompt(void)
 {
     prompt_printed = 1;
-    fputs("[prompt] ", stderr);
 }
 
 /* Stub for some hardware functions (may be referenced but not called in tests) */

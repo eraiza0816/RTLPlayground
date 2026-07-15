@@ -50,23 +50,24 @@ void cmd_edit(void) __banked
 		if (sbuf[l] >= ' ' && sbuf[l] < 127) { // A printable character, copy to command line
 			if (sbuf[l] == '?' && (cursor == 0 || cmd_buffer[cursor-1] == ' ')) {
 				cmd_help();
-				continue;
+				/* '?' is not inserted; fall through to l++ at end of loop */
+			} else {
+				if (cmd_line_len >= CMD_BUF_SIZE)
+					continue;
+				write_char(sbuf[l]);
+				// Shift buffer to right
+				for (uint8_t i = cmd_line_len; i > cursor; i--)
+					cmd_buffer[i] = cmd_buffer[i-1];
+				// Insert char in comand buffer
+				cmd_buffer[cursor++] = sbuf[l];
+				cmd_line_len++;
+				// Print rest of line
+				for (uint8_t i = cursor; i < cmd_line_len; i++)
+					write_char(cmd_buffer[i]);
+				// Move backwards
+				for (uint8_t i = cursor; i < cmd_line_len; i++)
+					write_char('\010'); // BS works like cursor-left
 			}
-			if (cmd_line_len >= CMD_BUF_SIZE)
-				continue;
-			write_char(sbuf[l]);
-			// Shift buffer to right
-			for (uint8_t i = cmd_line_len; i > cursor; i--)
-				cmd_buffer[i] = cmd_buffer[i-1];
-			// Insert char in comand buffer
-			cmd_buffer[cursor++] = sbuf[l];
-			cmd_line_len++;
-			// Print rest of line
-			for (uint8_t i = cursor; i < cmd_line_len; i++)
-				write_char(cmd_buffer[i]);
-			// Move backwards
-			for (uint8_t i = cursor; i < cmd_line_len; i++)
-				write_char('\010'); // BS works like cursor-left
 		} else if (sbuf[l] == '\t') {
 			cmd_complete();
 		} else if (sbuf[l] == '\033') { // ESC-Sequence

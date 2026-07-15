@@ -1,6 +1,6 @@
 CFLAGS = -g -O0 -Wall -Wno-unused-function -Wno-unknown-pragmas
 
-TEST_TARGETS = test_cmd_parser test_cmd_help test_xmodem_crc test_noweb
+TEST_TARGETS = test_cmd_parser test_cmd_help test_cmd_editor test_xmodem_crc test_noweb
 
 .PHONY: all clean build $(TEST_TARGETS)
 
@@ -27,6 +27,9 @@ test_cmd_parser: test_cmd_parser.c
 	gcc $(CFLAGS) -o $@ $^
 
 test_cmd_help: test_cmd_help.c
+	gcc $(CFLAGS) -o $@ $^
+
+test_cmd_editor: test_cmd_editor.c
 	gcc $(CFLAGS) -o $@ $^
 
 test_xmodem_crc: test_xmodem_crc.c

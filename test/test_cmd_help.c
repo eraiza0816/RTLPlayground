@@ -86,7 +86,7 @@ static void setup(void)
 
 /* ── Tests for command table integrity ── */
 
-TEST(table_top_level_entries_have_names) {
+TEST(table_all_entries_have_names) {
     for (const struct cmd_group __code *g = top_cmds; g->name; g++)
         ASSERT(g->name[0] != '\0');
 }
@@ -196,7 +196,8 @@ TEST(help_subcommand_port) {
     cursor = 5;
     cmd_help();
     ASSERT_STR_CONTAINS(test_out, "show");
-    ASSERT_STR_CONTAINS(test_out, "speed");
+    ASSERT_STR_CONTAINS(test_out, "1g");
+    ASSERT_STR_CONTAINS(test_out, "off");
 }
 
 TEST(help_subcommand_unknown) {
@@ -217,13 +218,93 @@ TEST(help_subcommand_no_subcommands) {
     ASSERT_STR_CONTAINS(test_out, "no sub-commands");
 }
 
+/* ── Subcommand table completeness ── */
+
+/* Helper: verify that a command's subcommand table contains key entries */
+static int subtable_has(const struct cmd_group __code *group,
+                         const char *expected[], int n)
+{
+    const struct cmd_entry __code *e = group->subcmds;
+    if (!e) return 0;
+    for (int i = 0; i < n; i++) {
+        int found = 0;
+        for (const struct cmd_entry __code *p = e; p->name; p++) {
+            int j = 0;
+            while (p->name[j] && expected[i][j] && p->name[j] == expected[i][j]) j++;
+            if (p->name[j] == '\0' && expected[i][j] == '\0') { found = 1; break; }
+        }
+        if (!found) return 0;
+    }
+    return 1;
+}
+
+TEST(subcmds_port_has_key_entries) {
+    const char *keys[] = {"show","name","10m","100m","1g","2g5","auto","on","off","duplex"};
+    int found = 0;
+    for (const struct cmd_group __code *g = top_cmds; g->name; g++) {
+        if (g->name[0]=='p'&&g->name[1]=='o'&&g->name[2]=='r'&&g->name[3]=='t'&&g->name[4]=='\0') {
+            found = subtable_has(g, keys, 10);
+            break;
+        }
+    }
+    ASSERT(found);
+}
+
+TEST(subcmds_sfp_has_key_entries) {
+    const char *keys[] = {"1g","2g5","10g","100m","auto","describe","dump","save","restore"};
+    int found = 0;
+    for (const struct cmd_group __code *g = top_cmds; g->name; g++) {
+        if (g->name[0]=='s'&&g->name[1]=='f'&&g->name[2]=='p'&&g->name[3]=='\0') {
+            found = subtable_has(g, keys, 9);
+            break;
+        }
+    }
+    ASSERT(found);
+}
+
+TEST(subcmds_vlan_has_show_mgmt) {
+    const char *keys[] = {"show","mgmt","d"};
+    int found = 0;
+    for (const struct cmd_group __code *g = top_cmds; g->name; g++) {
+        if (g->name[0]=='v'&&g->name[1]=='l'&&g->name[2]=='a'&&g->name[3]=='n'&&g->name[4]=='\0') {
+            found = subtable_has(g, keys, 3);
+            break;
+        }
+    }
+    ASSERT(found);
+}
+
+TEST(subcmds_eee_has_on_off) {
+    const char *keys[] = {"on","off","status"};
+    int found = 0;
+    for (const struct cmd_group __code *g = top_cmds; g->name; g++) {
+        if (g->name[0]=='e'&&g->name[1]=='e'&&g->name[2]=='e'&&g->name[3]=='\0') {
+            found = subtable_has(g, keys, 3);
+            break;
+        }
+    }
+    ASSERT(found);
+}
+
+TEST(subcmds_l2_has_forget_del) {
+    const char *keys[] = {"forget","del"};
+    int found = 0;
+    for (const struct cmd_group __code *g = top_cmds; g->name; g++) {
+        if (g->name[0]=='l'&&g->name[1]=='2'&&g->name[2]=='\0') {
+            found = subtable_has(g, keys, 2);
+            break;
+        }
+    }
+    ASSERT(found);
+}
+
 /* ── Main ── */
 
 int main(void)
 {
     printf("cmd_help / cmd_complete tests\n\n");
 
-    RUN_TEST(table_top_level_entries_have_names);
+    RUN_TEST(table_all_entries_have_names);
     RUN_TEST(table_top_level_entries_have_descs);
     RUN_TEST(table_sfp_cmds_have_names);
 
@@ -239,6 +320,12 @@ int main(void)
     RUN_TEST(help_subcommand_port);
     RUN_TEST(help_subcommand_unknown);
     RUN_TEST(help_subcommand_no_subcommands);
+
+    RUN_TEST(subcmds_port_has_key_entries);
+    RUN_TEST(subcmds_sfp_has_key_entries);
+    RUN_TEST(subcmds_vlan_has_show_mgmt);
+    RUN_TEST(subcmds_eee_has_on_off);
+    RUN_TEST(subcmds_l2_has_forget_del);
 
     REPORT();
 }

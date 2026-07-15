@@ -28,6 +28,15 @@ jobs:
       - name: Build firmware
         run: make MACHINE="${{ matrix.machine }}"
 
+      - name: Build CLI firmware (no web)
+        run: |
+          make MACHINE="${{ matrix.machine }}" clean
+          make WEB=0 MACHINE="${{ matrix.machine }}"
+          cd output/${{ matrix.machine }}
+          for f in rtlplayground-v*.bin; do
+            mv "$f" "rtlplayground-CLI-${f#rtlplayground-}"
+          done
+
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v7
         with:

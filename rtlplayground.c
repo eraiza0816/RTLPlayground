@@ -403,6 +403,8 @@ void print_byte(uint8_t a)
 	write_char(low);
 }
 
+extern __xdata uint8_t cli_mode;
+
 void print_cmd_prompt(void)
 {
 	print_string_no_syslog("\n");
@@ -412,7 +414,14 @@ void print_cmd_prompt(void)
 		while (*p) write_char_no_syslog(*p++);
 		write_char_no_syslog(']');
 	}
-	print_string_no_syslog("> ");
+	switch (cli_mode) {
+	case 0:  print_string_no_syslog("> ");  break;
+	case 1:  print_string_no_syslog("# ");  break;
+	case 2:  print_string_no_syslog("(config)# ");  break;
+	case 3:  print_string_no_syslog("(config-if)# ");  break;
+	case 4:  print_string_no_syslog("(config-vlan)# "); break;
+	default: print_string_no_syslog("> ");  break;
+	}
 }
 
 /*
@@ -2178,7 +2187,9 @@ void main(void)
 
 	early_boot_handle_button();
 
+	cli_mode = MODE_CONFIG; /* boot config runs in config mode */
 	execute_config();
+	cli_mode = MODE_EXEC;
 	print_cmd_prompt();
 	idle_ready = 1;
 

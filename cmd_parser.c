@@ -1421,6 +1421,12 @@ void parse_hostname(void)
 
 
 extern void parse_commit(void) __banked;
+extern void parse_enable(void) __banked;
+extern void parse_disable(void) __banked;
+extern void parse_configure_terminal(void) __banked;
+extern void parse_exit(void) __banked;
+extern void parse_end(void) __banked;
+extern uint8_t cmd_mode_allowed(uint8_t start) __banked;
 #ifdef NO_WEB
 extern void parse_xmodem(void) __banked;
 #endif
@@ -1766,7 +1772,22 @@ void cmd_parser(void) __banked
 	print_byte(cmd_words_b[6]); write_char('\n');
 #endif
 	if (cmd_words_len >= 1) {
-		if (cmd_compare(0, "reset")) {
+		/* Mode transition commands (always allowed) */
+		if (cmd_compare(0, "enable")) {
+			parse_enable();
+		} else if (cmd_compare(0, "disable")) {
+			parse_disable();
+		} else if (cmd_compare(0, "configure") && cmd_compare(1, "terminal")) {
+			parse_configure_terminal();
+		} else if (cmd_compare(0, "configure")) {
+			print_string("Usage: configure terminal\n");
+		} else if (cmd_compare(0, "exit")) {
+			parse_exit();
+		} else if (cmd_compare(0, "end")) {
+			parse_end();
+		} else if (!cmd_mode_allowed(cmd_words_b[0])) {
+			print_string("Command not available in this mode\n");
+		} else if (cmd_compare(0, "reset")) {
 			print_string("\nRESET\n\n");
 			reset_chip();
 		} else if (cmd_compare(0, "sfp")) {

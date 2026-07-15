@@ -49,6 +49,7 @@ SRCS += sfp_bitbang.c
 SRCS += telnetd/telnetd.c
 SRCS += cmd_commit.c
 SRCS += cmd_help.c
+SRCS += cmd_mode.c
 SRCS += cmd_xmodem.c
 
 ifeq ($(WEB),0)

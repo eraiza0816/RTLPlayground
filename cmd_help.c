@@ -17,6 +17,7 @@ struct cmd_group {
     char __code *name;
     char __code *desc;
     struct cmd_entry __code *subcmds;
+    uint8_t mode_mask;
 };
 
 static uint8_t find_word_idx(__xdata uint8_t *buf, uint8_t cur,
@@ -212,51 +213,56 @@ __code struct cmd_entry mtu_cmds[] = {
 };
 
 __code struct cmd_group top_cmds[] = {
-    {"reset",   "Perform software reset of the switch",               0},
-    {"sfp",     "SFP module control and configuration",               sfp_cmds},
-    {"stat",    "Show port statistics and packet counters",           0},
-    {"flash",   "Read flash metadata (security/JEDEC/UID)",           flash_cmds},
-    {"port",    "Port speed, duplex, and name configuration",         port_cmds},
-    {"mtu",     "Per-port maximum frame size (MTU)",                  mtu_cmds},
-    {"ip",      "Show or set IP address, enable DHCP",                0},
-    {"gw",      "Show or set default gateway",                        0},
-    {"netmask", "Show or set network mask",                           0},
-    {"l2",      "L2 MAC address table show, forget, delete",          l2_cmds},
-    {"igmp",    "IGMP snooping control",                              igmp_cmds},
-    {"stp",     "Spanning Tree Protocol control",                     stp_cmds},
-    {"pvid",    "Set port VLAN ID (PVID)",                            0},
-    {"vlan",    "VLAN create, delete, show, and management",          vlan_cmds},
-    {"isolate", "Port isolation configuration",                       isolate_cmds},
-    {"ingress", "Ingress VLAN filter mode",                           ingress_cmds},
-    {"mirror",  "Port mirroring configuration",                       mirror_cmds},
-    {"lag",     "Link Aggregation Group configuration",               lag_cmds},
-    {"laghash", "LAG hash algorithm selection",                       laghash_cmds},
-    {"sds",     "Show SerDes mode register",                          0},
-    {"gpio",    "Read and print GPIO input status",                   0},
-    {"regget",  "Read switch register by address (hex)",              0},
-    {"regset",  "Write switch register by address (hex)",             0},
-    {"sdsget",  "Read SerDes register",                               0},
-    {"sdsset",  "Write SerDes register",                              0},
-    {"phyget",  "Read PHY register (Clause-45)",                      0},
-    {"physet",  "Write PHY register (Clause-45)",                     0},
-    {"rnd",     "Generate hardware random number",                    0},
-    {"passwd",  "Set web interface password",                         0},
-    {"hostname","Show or set device hostname",                        0},
-    {"eee",     "Energy Efficient Ethernet control",                  eee_cmds},
-    {"bw",      "Per-port bandwidth control",                         bw_cmds},
-    {"telnet",  "Telnet server control",                              telnet_cmds},
+    {"reset",   "Perform software reset of the switch",               0, (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+    {"sfp",     "SFP module control and configuration",               sfp_cmds, (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+    {"stat",    "Show port statistics and packet counters",           0, (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+    {"flash",   "Read flash metadata (security/JEDEC/UID)",           flash_cmds, (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+    {"port",    "Port speed, duplex, and name configuration",         port_cmds, (1<<MODE_CONFIG)|(1<<MODE_CONFIG_IF)},
+    {"mtu",     "Per-port maximum frame size (MTU)",                  mtu_cmds, (1<<MODE_CONFIG)},
+    {"ip",      "Show or set IP address, enable DHCP",                0, (1<<MODE_CONFIG)},
+    {"gw",      "Show or set default gateway",                        0, (1<<MODE_CONFIG)},
+    {"netmask", "Show or set network mask",                           0, (1<<MODE_CONFIG)},
+    {"l2",      "L2 MAC address table show, forget, delete",          l2_cmds, (1<<MODE_CONFIG)},
+    {"igmp",    "IGMP snooping control",                              igmp_cmds, (1<<MODE_CONFIG)},
+    {"stp",     "Spanning Tree Protocol control",                     stp_cmds, (1<<MODE_CONFIG)},
+    {"pvid",    "Set port VLAN ID (PVID)",                            0, (1<<MODE_CONFIG)},
+    {"vlan",    "VLAN create, delete, show, and management",          vlan_cmds, (1<<MODE_CONFIG)},
+    {"isolate", "Port isolation configuration",                       isolate_cmds, (1<<MODE_CONFIG)},
+    {"ingress", "Ingress VLAN filter mode",                           ingress_cmds, (1<<MODE_CONFIG)},
+    {"mirror",  "Port mirroring configuration",                       mirror_cmds, (1<<MODE_CONFIG)},
+    {"lag",     "Link Aggregation Group configuration",               lag_cmds, (1<<MODE_CONFIG)},
+    {"laghash", "LAG hash algorithm selection",                       laghash_cmds, (1<<MODE_CONFIG)},
+    {"sds",     "Show SerDes mode register",                          0, (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+    {"gpio",    "Read and print GPIO input status",                   0, (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+    {"regget",  "Read switch register by address (hex)",              0, (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+    {"regset",  "Write switch register by address (hex)",             0, (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+    {"sdsget",  "Read SerDes register",                               0, (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+    {"sdsset",  "Write SerDes register",                              0, (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+    {"phyget",  "Read PHY register (Clause-45)",                      0, (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+    {"physet",  "Write PHY register (Clause-45)",                     0, (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+    {"rnd",     "Generate hardware random number",                    0, (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+    {"passwd",  "Set web interface password",                         0, (1<<MODE_CONFIG)},
+    {"hostname","Show or set device hostname",                        0, (1<<MODE_CONFIG)},
+    {"eee",     "Energy Efficient Ethernet control",                  eee_cmds, (1<<MODE_CONFIG)},
+    {"bw",      "Per-port bandwidth control",                         bw_cmds, (1<<MODE_CONFIG)},
+    {"telnet",  "Telnet server control",                              telnet_cmds, (1<<MODE_CONFIG)},
 #ifndef NO_WEB
-    {"web",     "Web interface control",                              web_cmds},
+    {"web",     "Web interface control",                              web_cmds, (1<<MODE_CONFIG)},
 #endif
-    {"commit",  "Save running configuration to flash",                0},
-    {"show",    "Show system information",                            0},
-    {"version", "Print software version and build info",              0},
-    {"time",    "Show internal tick and hardware counters",           0},
-    {"history", "Show command history",                               0},
+    {"commit",  "Save running configuration to flash",                0, (1<<MODE_PRIVILEGED)},
+    {"show",    "Show system information",                            0, (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+    {"version", "Print software version and build info",              0, (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+    {"time",    "Show internal tick and hardware counters",           0, (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+    {"history", "Show command history",                               0, (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
 #ifdef NO_WEB
-    {"xmodem",  "Receive firmware update via XMODEM (serial)",         0},
+    {"xmodem",  "Receive firmware update via XMODEM (serial)",         0, (1<<MODE_PRIVILEGED)},
 #endif
-    {0, 0, 0}
+    {"enable",  "Enter privileged mode",                              0, (1<<MODE_EXEC)},
+    {"disable", "Return to user EXEC mode",                           0, (1<<MODE_PRIVILEGED)},
+    {"configure","Enter global configuration mode (configure terminal)",0, (1<<MODE_PRIVILEGED)},
+    {"exit",    "Exit current mode (back one level)",                 0, (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)|(1<<MODE_CONFIG_IF)|(1<<MODE_CONFIG_VLAN)},
+    {"end",     "Return to privileged EXEC mode",                     0, (1<<MODE_CONFIG)|(1<<MODE_CONFIG_IF)|(1<<MODE_CONFIG_VLAN)},
+    {0, 0, 0, 0}
 };
 
 void cmd_complete(void) __banked __reentrant
@@ -270,7 +276,8 @@ void cmd_complete(void) __banked __reentrant
         uint8_t n = 0;
 
         while (g->name) {
-            if (is_prefix(cmd_buffer, word_start, word_len, g->name)) {
+            if ((g->mode_mask & (1 << cli_mode)) &&
+                is_prefix(cmd_buffer, word_start, word_len, g->name)) {
                 if (++n == 1) last_match = g->name;
             }
             g++;
@@ -301,7 +308,8 @@ void cmd_complete(void) __banked __reentrant
 
         g = top_cmds;
         while (g->name) {
-            if (is_prefix(cmd_buffer, word_start, word_len, g->name)) {
+            if ((g->mode_mask & (1 << cli_mode)) &&
+                is_prefix(cmd_buffer, word_start, word_len, g->name)) {
                 write_char(' '); write_char(' ');
                 print_string(g->name);
                 write_char('\n');
@@ -385,6 +393,7 @@ void cmd_help(void) __banked __reentrant
     if (word_idx == 0) {
         struct cmd_group __code *g = top_cmds;
         while (g->name) {
+            if (!(g->mode_mask & (1 << cli_mode))) { g++; continue; }
             write_char(' '); write_char(' ');
             uint8_t i = 0;
             while (g->name[i]) { write_char(g->name[i]); i++; }

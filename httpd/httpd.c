@@ -592,15 +592,15 @@ void httpd_appcall(void)
 			dbg_string("Sending B: "); dbg_short(slen); dbg_char('\n');
 			uip_send(outbuf + o_idx, slen);
 			s->tstate = TSTATE_TX;
-		} else if (cont_len) {
+	} else if (cont_len) {
 			dbg_string("CONT cont_len: "); dbg_short(cont_len);
 			slen = cont_len > uip_mss() ? uip_mss() : cont_len;
-			if (slen > TCP_OUTBUF_SIZE)
-				slen = TCP_OUTBUF_SIZE;
+
+			dbg_string("cont_addr: "); dbg_char('\n');
 			flash_region.addr = cont_addr;
 			flash_region.len = slen;
-			flash_read_bulk(outbuf);
-			uip_send(outbuf, slen);
+			dbg_string("Reading: "); dbg_short(slen); dbg_char('\n');
+			flash_read_bulk(outbuf + slen + 100);
 			cont_len -= slen;
 			cont_addr += slen;
 			s->tstate = TSTATE_TX;

@@ -600,6 +600,7 @@ void httpd_appcall(void)
 			flash_region.addr = cont_addr;
 			flash_region.len = slen;
 			flash_read_bulk(outbuf);
+			uip_send(outbuf, slen);
 			cont_len -= slen;
 			cont_addr += slen;
 			s->tstate = TSTATE_TX;

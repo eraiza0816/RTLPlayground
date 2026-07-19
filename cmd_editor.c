@@ -36,20 +36,17 @@ void cmd_editor_init(void) __banked
  * sudo interceptty -s 'ispeed 115200 ospeed 115200' /dev/ttyUSB0 /dev/tmpS
  * picocom -b 115200 /dev/tmpS
  */
-#ifdef NO_WEB
 extern __xdata uint8_t xmodem_active;
-#endif
 
 void cmd_edit(void) __banked
 {
 	while (l != sbuf_ptr) {
-#ifdef NO_WEB
 		if (xmodem_active)
 			break;
-#endif
 		if (sbuf[l] >= ' ' && sbuf[l] < 127) { // A printable character, copy to command line
 			if (sbuf[l] == '?' && (cursor == 0 || cmd_buffer[cursor-1] == ' ')) {
 				cmd_help();
+				print_cmd_prompt();
 				/* '?' consumed, not inserted; fall through to l++ at end of loop */
 			} else {
 				if (cmd_line_len >= CMD_BUF_SIZE)

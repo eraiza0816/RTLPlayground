@@ -4,11 +4,15 @@
 #include <stdint.h>
 #include "telnetd.h"
 #include "uip.h"
+#include "cmd_parser.h"
+extern __xdata uint8_t cli_mode;
+extern __xdata uint8_t cmd_line_len;
+extern __xdata uint8_t cursor;
 
 extern __xdata uint8_t uip_buf[UIP_BUFSIZE + 2];
 extern __xdata uint16_t uip_slen;
 
-#define TX_BUF 512
+#define TX_BUF 2048
 #define RX_BUF 256
 #define RING_ADVANCE(ptr, amount) (((ptr) + (amount)) & (TX_BUF - 1))
 #define UIP_APPBUF_OFFSET 66
@@ -16,7 +20,6 @@ extern __xdata uint16_t uip_slen;
 #define AUTH_WAIT 0
 #define AUTH_OK   1
 
-extern volatile __xdata uint8_t cmd_available;
 extern __xdata uint8_t cmd_buffer[128];
 extern __xdata char passwd[21];
 
@@ -123,25 +126,39 @@ static void process_input(__xdata uint8_t *data, uint16_t len)
             continue;
         }
 
+        if (c == '\t') {
+            /* Tab completion */
+            if (auth_state == AUTH_OK) {
+                uint8_t j;
+                for (j = 0; j < rx_pos && j < 127; j++)
+                    cmd_buffer[j] = rx_buf[j];
+                cmd_buffer[j] = '\0';
+                cmd_line_len = rx_pos;
+                cursor = rx_pos;
+                cmd_complete();
+                rx_pos = 0;
+                for (j = 0; j < cmd_line_len && j < 127; j++)
+                    rx_buf[rx_pos++] = cmd_buffer[j];
+            }
+            continue;
+        }
+
         if (c == '\r' || c == '\n') {
             if (rx_pos == 0) {
                 if (auth_state == AUTH_OK && telnet_echo) {
                     telnet_tx_enqueue('\r');
                     telnet_tx_enqueue('\n');
-                    telnet_tx_enqueue('>'); telnet_tx_enqueue(' ');
+                    print_cmd_prompt();
                 }
                 continue;
-            }
-
-            if (telnet_echo) {
-                telnet_tx_enqueue('\r');
-                telnet_tx_enqueue('\n');
             }
 
             uint8_t j;
             for (j = 0; j < rx_pos && j < 127; j++)
                 cmd_buffer[j] = rx_buf[j];
             cmd_buffer[j] = '\0';
+            cmd_line_len = j;
+            cursor = j;
             rx_pos = 0;
 
             if (auth_state == AUTH_WAIT) {
@@ -151,11 +168,11 @@ static void process_input(__xdata uint8_t *data, uint16_t len)
                     if (passwd[pc] == '\0') break;
                 }
                 if (ok) {
-                    auth_state = AUTH_OK;
-                    telnet_echo = 1;
                     telnet_tx_enqueue('\r');
                     telnet_tx_enqueue('\n');
-                    telnet_tx_enqueue('>'); telnet_tx_enqueue(' ');
+                    auth_state = AUTH_OK;
+                    telnet_echo = 1;
+                    cli_mode = MODE_EXEC;
                 } else {
                     telnet_tx_enqueue('\r');
                     telnet_tx_enqueue('\n');
@@ -166,6 +183,8 @@ static void process_input(__xdata uint8_t *data, uint16_t len)
                     telnet_tx_enqueue(':'); telnet_tx_enqueue(' ');
                 }
             } else {
+                telnet_tx_enqueue('\r');
+                telnet_tx_enqueue('\n');
                 cmd_available = 1;
             }
         } else if (c >= 0x20 && c <= 0x7E) {

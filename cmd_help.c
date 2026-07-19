@@ -68,7 +68,6 @@ static uint8_t word_exact_match(__xdata uint8_t *buf, uint8_t start, uint8_t len
 
 static void redraw_line(void)
 {
-    print_cmd_prompt();
     for (uint8_t i = 0; i < cmd_line_len; i++)
         write_char(cmd_buffer[i]);
     uint8_t back = cmd_line_len - cursor;
@@ -254,9 +253,7 @@ __code struct cmd_group top_cmds[] = {
     {"version", "Print software version and build info",              0, (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
     {"time",    "Show internal tick and hardware counters",           0, (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
     {"history", "Show command history",                               0, (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
-#ifdef NO_WEB
     {"xmodem",  "Receive firmware update via XMODEM (serial)",         0, (1<<MODE_PRIVILEGED)},
-#endif
     {"enable",  "Enter privileged mode",                              0, (1<<MODE_EXEC)},
     {"disable", "Return to user EXEC mode",                           0, (1<<MODE_PRIVILEGED)},
     {"configure","Enter global configuration mode (configure terminal)",0, (1<<MODE_PRIVILEGED)},
@@ -265,6 +262,14 @@ __code struct cmd_group top_cmds[] = {
     {0, 0, 0, 0}
 };
 
+static uint8_t common_prefix_len(__code uint8_t *first, __code uint8_t *second)
+{
+    uint8_t i = 0;
+    while (first[i] && first[i] == second[i])
+        i++;
+    return i;
+}
+
 void cmd_complete(void) __banked __reentrant
 {
     uint8_t word_start, word_len;
@@ -272,13 +277,13 @@ void cmd_complete(void) __banked __reentrant
 
     if (word_idx == 0) {
         struct cmd_group __code *g = top_cmds;
-        char __code *last_match = 0;
+        char __code *matches[16];
         uint8_t n = 0;
 
-        while (g->name) {
+        while (g->name && n < 16) {
             if ((g->mode_mask & (1 << cli_mode)) &&
                 is_prefix(cmd_buffer, word_start, word_len, g->name)) {
-                if (++n == 1) last_match = g->name;
+                matches[n++] = g->name;
             }
             g++;
         }
@@ -286,7 +291,7 @@ void cmd_complete(void) __banked __reentrant
         if (n == 0) return;
 
         if (n == 1) {
-            char __code *match = last_match;
+            char __code *match = matches[0];
             uint8_t ml = 0;
             while (match[ml]) ml++;
             int8_t d = ml - word_len;
@@ -306,16 +311,36 @@ void cmd_complete(void) __banked __reentrant
             return;
         }
 
-        g = top_cmds;
-        while (g->name) {
-            if ((g->mode_mask & (1 << cli_mode)) &&
-                is_prefix(cmd_buffer, word_start, word_len, g->name)) {
-                write_char(' '); write_char(' ');
-                print_string(g->name);
-                write_char('\n');
-            }
-            g++;
+        /* Find longest common prefix */
+        uint8_t cp = 0xff;
+        for (uint8_t i = 1; i < n; i++) {
+            uint8_t l = common_prefix_len(matches[0], matches[i]);
+            if (l < cp) cp = l;
         }
+
+        /* Extend to common prefix if longer than current word */
+        if (cp > word_len) {
+            int8_t d = cp - word_len;
+            for (uint8_t i = cmd_line_len; i > word_start + word_len; i--)
+                cmd_buffer[i + d - 1] = cmd_buffer[i - 1];
+            for (uint8_t i = 0; i < cp; i++)
+                cmd_buffer[word_start + i] = matches[0][i];
+            cmd_line_len += d;
+            cursor = word_start + cp;
+            write_char('\r');
+            print_string("\033[K");
+            redraw_line();
+            return;
+        }
+
+        /* List matches */
+        write_char('\n');
+        for (uint8_t i = 0; i < n; i++) {
+            write_char(' '); write_char(' ');
+            print_string(matches[i]);
+            write_char('\n');
+        }
+        print_cmd_prompt();
         redraw_line();
         return;
     }
@@ -336,18 +361,18 @@ void cmd_complete(void) __banked __reentrant
         if (!table) return;
 
         struct cmd_entry __code *e = table;
-        char __code *last_match = 0;
+        char __code *matches[16];
         uint8_t n = 0;
-        while (e->name) {
+        while (e->name && n < 16) {
             if (is_prefix(cmd_buffer, word_start, word_len, e->name)) {
-                if (++n == 1) last_match = e->name;
+                matches[n++] = e->name;
             }
             e++;
         }
         if (n == 0) return;
 
         if (n == 1) {
-            char __code *match = last_match;
+            char __code *match = matches[0];
             uint8_t ml = 0;
             while (match[ml]) ml++;
             int8_t d = ml - word_len;
@@ -361,21 +386,42 @@ void cmd_complete(void) __banked __reentrant
                 cmd_buffer[word_start + i] = match[i];
             cmd_line_len += d;
             cursor = word_start + ml;
-            write_char('\r');
-            print_string("\033[K");
+            write_char('\n');
+            print_cmd_prompt();
             redraw_line();
             return;
         }
 
-        e = table;
-        while (e->name) {
-            if (is_prefix(cmd_buffer, word_start, word_len, e->name)) {
-                write_char(' '); write_char(' ');
-                print_string(e->name);
-                write_char('\n');
-            }
-            e++;
+        /* Find longest common prefix */
+        uint8_t cp = 0xff;
+        for (uint8_t i = 1; i < n; i++) {
+            uint8_t l = common_prefix_len(matches[0], matches[i]);
+            if (l < cp) cp = l;
         }
+
+        /* Extend to common prefix if longer than current word */
+        if (cp > word_len) {
+            int8_t d = cp - word_len;
+            for (uint8_t i = cmd_line_len; i > word_start + word_len; i--)
+                cmd_buffer[i + d - 1] = cmd_buffer[i - 1];
+            for (uint8_t i = 0; i < cp; i++)
+                cmd_buffer[word_start + i] = matches[0][i];
+            cmd_line_len += d;
+            cursor = word_start + cp;
+            write_char('\n');
+            print_cmd_prompt();
+            redraw_line();
+            return;
+        }
+
+        /* List matches */
+        write_char('\n');
+        for (uint8_t i = 0; i < n; i++) {
+            write_char(' '); write_char(' ');
+            print_string(matches[i]);
+            write_char('\n');
+        }
+        print_cmd_prompt();
         redraw_line();
     }
 }

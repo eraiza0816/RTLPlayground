@@ -173,6 +173,7 @@ static void process_input(__xdata uint8_t *data, uint16_t len)
                     auth_state = AUTH_OK;
                     telnet_echo = 1;
                     cli_mode = MODE_EXEC;
+                    print_cmd_prompt();
                 } else {
                     telnet_tx_enqueue('\r');
                     telnet_tx_enqueue('\n');

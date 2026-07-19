@@ -85,6 +85,16 @@ type VLANEntry struct {
 	Name string `json:"name"`
 }
 
+type SfpDiagEntry struct {
+	PortNum    int    `json:"portNum"`
+	SfpOptions string `json:"sfp_options,omitempty"`
+	SfpTemp    string `json:"sfp_temp,omitempty"`
+	SfpVcc     string `json:"sfp_vcc,omitempty"`
+	SfpTxBias  string `json:"sfp_txbias,omitempty"`
+	SfpTxPower string `json:"sfp_txpower,omitempty"`
+	SfpRxPower string `json:"sfp_rxpower,omitempty"`
+}
+
 type MirrorConfig struct {
 	Enabled  int    `json:"enabled"`
 	MPort    int    `json:"mPort"`
@@ -412,32 +422,46 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		ch <- prometheus.MustNewConstMetric(portRxBadDesc, prometheus.CounterValue,
 			float64(parseHex64(p.RxB)), port, p.Name, logPort)
 
-		if p.IsSFP != 0 && p.SfpOptions != "" {
-			if temp := parseHex16(p.SfpTemp); temp != nil {
-				ch <- prometheus.MustNewConstMetric(sfpTempDesc, prometheus.GaugeValue,
-					float64(int16(*temp))*0.0625, port, p.SfpVendor, p.SfpModel)
-			}
-			if vcc := parseHex16(p.SfpVcc); vcc != nil {
-				ch <- prometheus.MustNewConstMetric(sfpVoltageDesc, prometheus.GaugeValue,
-					float64(*vcc)*0.0001, port)
-			}
-			if txbias := parseHex16(p.SfpTxBias); txbias != nil {
-				ch <- prometheus.MustNewConstMetric(sfpTxBiasDesc, prometheus.GaugeValue,
-					float64(*txbias)*0.01/1000.0, port)
-			}
-			if txpw := parseHex16(p.SfpTxPower); txpw != nil {
-				if mW := float64(*txpw) * 0.0001; mW > 0 {
-					ch <- prometheus.MustNewConstMetric(sfpTxPowerDesc, prometheus.GaugeValue,
-						10*math.Log10(mW), port)
+		if p.IsSFP != 0 && p.SfpVendor != "" {
+			ch <- prometheus.MustNewConstMetric(sfpTempDesc, prometheus.GaugeValue,
+				0, port, p.SfpVendor, p.SfpModel)
+		}
+	}
+
+	// SFP diagnostics from /sfp_diag.json
+	sfpDiag, err := fetchJSON[[]SfpDiagEntry](e, "/sfp_diag.json")
+	if err == nil {
+		for _, d := range *sfpDiag {
+			port := strconv.Itoa(d.PortNum)
+			if d.SfpOptions != "" {
+				if temp := parseHex16(d.SfpTemp); temp != nil {
+					ch <- prometheus.MustNewConstMetric(sfpTempDesc, prometheus.GaugeValue,
+						float64(int16(*temp))*0.0625, port, "", "")
 				}
-			}
-			if rxpw := parseHex16(p.SfpRxPower); rxpw != nil {
-				if mW := float64(*rxpw) * 0.0001; mW > 0 {
-					ch <- prometheus.MustNewConstMetric(sfpRxPowerDesc, prometheus.GaugeValue,
-						10*math.Log10(mW), port)
+				if vcc := parseHex16(d.SfpVcc); vcc != nil {
+					ch <- prometheus.MustNewConstMetric(sfpVoltageDesc, prometheus.GaugeValue,
+						float64(*vcc)*0.0001, port)
+				}
+				if txbias := parseHex16(d.SfpTxBias); txbias != nil {
+					ch <- prometheus.MustNewConstMetric(sfpTxBiasDesc, prometheus.GaugeValue,
+						float64(*txbias)*0.01/1000.0, port)
+				}
+				if txpw := parseHex16(d.SfpTxPower); txpw != nil {
+					if mW := float64(*txpw) * 0.0001; mW > 0 {
+						ch <- prometheus.MustNewConstMetric(sfpTxPowerDesc, prometheus.GaugeValue,
+							10*math.Log10(mW), port)
+					}
+				}
+				if rxpw := parseHex16(d.SfpRxPower); rxpw != nil {
+					if mW := float64(*rxpw) * 0.0001; mW > 0 {
+						ch <- prometheus.MustNewConstMetric(sfpRxPowerDesc, prometheus.GaugeValue,
+							10*math.Log10(mW), port)
+					}
 				}
 			}
 		}
+	} else {
+		log.Printf("Error fetching sfp_diag: %v", err)
 	}
 
 	// MIB counters (parallel per port)

@@ -299,6 +299,14 @@ function pollInfo() {
           el.value = data[keyMap[id]] || '';
         }
       });
+      var brand = document.getElementById('brand-title');
+      if (brand) {
+        brand.textContent = data.hostname || data.hw_ver || 'RTLPlayground';
+      }
+      var verEl = document.getElementById('brand-version');
+      if (verEl) {
+        verEl.textContent = data.sw_ver || '';
+      }
       if (data.telnet_enabled !== undefined)
         updateTelnetLabel(data.telnet_enabled === '1');
       if (data.web_enabled !== undefined)

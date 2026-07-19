@@ -74,7 +74,7 @@
     * { box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; display: flex; height: 100vh; color: var(--text); background: var(--bg); overflow: hidden; }
     #nav { width: 240px; background: var(--sidebar); color: var(--sidebar-text); display: flex; flex-direction: column; transition: 0.3s; z-index: 10; flex-shrink: 0; }
-    #nav .brand { padding: 24px; font-weight: 800; font-size: 1.25rem; border-bottom: 1px solid rgba(255,255,255,0.1); letter-spacing: 0.5px; }
+    #nav .brand { padding: 24px; font-weight: 800; font-size: 0.95rem; border-bottom: 1px solid rgba(255,255,255,0.1); letter-spacing: 0.5px; }
     #nav ul { list-style: none; padding: 0; margin: 0; overflow-y: auto; }
     #nav li { padding: 16px 24px; cursor: pointer; transition: 0.2s; border-left: 4px solid transparent; font-weight: 500; font-size: 14px; }
     #nav li:hover, #nav li.active { background: var(--sidebar-hover); }
@@ -142,7 +142,7 @@
     @media (max-width: 768px) {
       body { flex-direction: column; }
       #nav { width: 100%; height: auto; flex-direction: row; align-items: center; overflow-x: auto; white-space: nowrap; }
-      #nav .brand { border-bottom: none; border-right: 1px solid rgba(255,255,255,0.1); padding: 16px; font-size: 1rem; }
+      #nav .brand { border-bottom: none; border-right: 1px solid rgba(255,255,255,0.1); padding: 16px; font-size: 0.85rem; }
       #nav ul { display: flex; flex-direction: row; }
       #nav li { padding: 12px; border-left: none; border-bottom: 4px solid transparent; font-size: 12px; }
       #nav li.active { border-left: none; border-bottom-color: var(--accent); }
@@ -169,7 +169,7 @@
 </div>
 
 <nav id="nav">
-  <div class="brand">RTLPlayground</div>
+  <div class="brand"><span id="brand-title">RTLPlayground</span><br><span id="brand-version" style="font-size:10px;opacity:0.6"></span></div>
   <ul>
     <li onclick="nav('dash')" id="nav-dash" class="active" data-i18n="nav_overview">Overview</li>
     <li onclick="nav('port')" id="nav-port" data-i18n="nav_port_config">Port Configuration</li>

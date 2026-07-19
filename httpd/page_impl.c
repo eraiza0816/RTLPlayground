@@ -46,6 +46,7 @@ extern __xdata char sfp_module_vendor[2][17];
 extern __xdata char sfp_module_model[2][17];
 extern __xdata char sfp_module_serial[2][17];
 extern __xdata uint8_t sfp_options[2];
+extern __xdata char hostname[32];
 
 __code uint8_t * __code HTTP_RESPONCE_JSON = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n";
 __code uint8_t * __code HTTP_RESPONCE_TXT = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
@@ -279,6 +280,12 @@ void send_basic_info(void)
 	slen += strtox(outbuf + slen, machine.machine_name);
 	slen += strtox(outbuf + slen, "\",\"flash_size\":\"");
 	string_to_html(get_flash_size_str());
+
+	slen += strtox(outbuf + slen, "\",\"hostname\":\"");
+	if (hostname[0]) {
+		for (uint8_t i = 0; hostname[i]; i++)
+			char_to_html(hostname[i]);
+	}
 
 	if (machine.n_sfp) {
 		slen += strtox(outbuf + slen, "\",\"sfp_slot_0\":\"");

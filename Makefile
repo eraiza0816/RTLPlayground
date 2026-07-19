@@ -1,4 +1,4 @@
-VERSION=0.2.17
+VERSION=0.2.18
 
 # WebUI option: WEB=1 (default) to enable, WEB=0 to disable
 WEB ?= 1
@@ -56,8 +56,6 @@ ifeq ($(WEB),0)
 	CC_FLAGS += -DNO_WEB
 	SRCS := $(filter-out httpd/httpd.c httpd/page_impl.c, $(SRCS))
 	SRCS := $(filter-out html_data.c, $(SRCS))
-else
-	SRCS := $(filter-out cmd_xmodem.c, $(SRCS))
 endif
 
 OBJS = ${SRCS:%.c=$(BUILDDIR)/%.rel}

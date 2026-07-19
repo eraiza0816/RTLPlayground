@@ -52,6 +52,7 @@ extern __xdata uint8_t sfp_speed[2];
 extern __xdata uint8_t sfp_pins_last;
 extern __xdata uint8_t sfp_options[2];
 __xdata uint8_t gpio_last_value[8] = { 0 };
+__xdata char sys_language[4];
 
 // Temporatly for str to hex convertion value.
 // Support up to 32_bits.
@@ -1598,6 +1599,23 @@ void cmd_parser(void) __banked
 			}
 		} else if (cmd_compare(0, "ingress")) {
 			parse_ingress();
+		} else if (cmd_compare(0, "lang")) {
+			if (cmd_words_len == 1) {
+				print_string("Current language: ");
+				print_string_x(sys_language);
+				write_char('\n');
+			} else if (cmd_compare(1, "en")) {
+				sys_language[0] = 'e'; sys_language[1] = 'n'; sys_language[2] = '\0';
+				print_string("Language set to en\n");
+			} else if (cmd_compare(1, "ja")) {
+				sys_language[0] = 'j'; sys_language[1] = 'a'; sys_language[2] = '\0';
+				print_string("Language set to ja\n");
+			} else if (cmd_compare(1, "zh")) {
+				sys_language[0] = 'z'; sys_language[1] = 'h'; sys_language[2] = '\0';
+				print_string("Language set to zh\n");
+			} else {
+				print_string("Error: lang <en|ja|zh>\n");
+			}
 		}
 		else {
 			print_string("Unknown command\n");
@@ -1643,8 +1661,9 @@ void execute_config(void) __banked
 	__xdata uint32_t pos = CONFIG_START;
 	__xdata uint8_t pages_left = CONFIG_LEN / FLASH_READ_BURST_SIZE;
 
-	// Set default password, it can be overwritten in the configuration file
+	// Set default password and language, they can be overwritten in the configuration file
 	strtox(passwd, PASSWORD);
+	sys_language[0] = 'e'; sys_language[1] = 'n'; sys_language[2] = '\0';
 	save_cmd = 0;
 
 	uint8_t cmd_idx = 0;

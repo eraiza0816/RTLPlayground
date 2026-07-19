@@ -39,6 +39,7 @@ extern __xdata uint8_t cmd_history[CMD_HISTORY_SIZE];
 extern __xdata uint16_t cmd_history_ptr;
 
 extern __xdata struct flash_region_t flash_region;
+extern __xdata char sys_language[4];
 
 extern __xdata char sfp_module_vendor[2][17];
 extern __xdata char sfp_module_model[2][17];
@@ -269,6 +270,9 @@ void send_basic_info(void)
 			send_sfp_info(1);
 		}
 	}
+	slen += strtox(outbuf + slen, "\",\"lang\":\"");
+	for (register uint8_t i = 0; sys_language[i]; i++)
+		outbuf[slen++] = sys_language[i];
 	char_to_html('"');
 
 	char_to_html('}');

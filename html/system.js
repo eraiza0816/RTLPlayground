@@ -5,6 +5,12 @@ const ips = ["ip", "netmask", "gw"];
 function changeLang() {
   var lang = document.getElementById('lang-select').value;
   setLang(lang);
+  fetch('/cmd', {
+    method: 'POST',
+    body: 'lang ' + lang
+  }).catch(function(err) {
+    console.error('Failed to set language on switch:', err);
+  });
 }
 
 function checkIp(ip) {
@@ -79,6 +85,7 @@ async function flashSave() {
   const cmdLog = await fetchCmdLog();
   if (savedConfig) parseConf(savedConfig);
   if (cmdLog) parseConf(cmdLog);
+  configuration.push('lang ' + rtlLang);
   const body = configuration.join('\n') + '\n';
   console.log("CONFIGURATION to save: ", body);
   await sendConfig(body);
@@ -124,14 +131,14 @@ function fetchIP() {
       document.getElementById("netmask").value=s.ip_netmask;
       document.getElementById("gw").value=s.ip_gateway;
       clearInterval(systemInterval);
+      if (s.lang && LANG[s.lang]) {
+        setLang(s.lang);
+        var langSel = document.getElementById('lang-select');
+        if (langSel) langSel.value = s.lang;
+      }
       // Fetch and populate the config textbox
       fetchConfig().then((configText) => {
         let fullConfig = configText;
-        // Fetch and append cmd_log
-        //return fetchCmdLog().then((cmdLogText) => {
-        //  if (cmdLogText) {
-        //    fullConfig = fullConfig + cmdLogText;
-        //  }
         document.getElementById("config_display").value = fullConfig;
         });
       };

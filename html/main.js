@@ -112,10 +112,21 @@ function nav(id) {
 }
 
 /** LIVE DATA POLLERS **/
+var sfpDiagCache = null;
+
+function pollSfpDiag() {
+  fetchAPI('GET', '/sfp_diag.json', function(raw) {
+    try { sfpDiagCache = JSON.parse(raw); } catch(e) {}
+  });
+}
+
 function pollStatus() {
   fetchAPI('GET', '/status.json', function(raw) {
     try {
       var data = JSON.parse(raw);
+      if (document.getElementById('dash').classList.contains('active')) {
+        pollSfpDiag();
+      }
       var grid = document.getElementById('port-grid');
       var sBody = document.getElementById('stat-body');
       var isDash = document.getElementById('dash').classList.contains('active');
@@ -190,24 +201,33 @@ function pollStatus() {
             if (p.isSFP) {
               tooltip += '\n\n-- SFP Diagnostics --';
               if (p.sfp_vendor) tooltip += '\nVendor: ' + p.sfp_vendor + ' (' + p.sfp_model + ')';
-              if (p.sfp_temp && p.sfp_temp !== '0x0000') {
-                var tRaw = parseInt(p.sfp_temp, 16);
-                if (tRaw > 32767) tRaw -= 65536;
-                tooltip += '\nTemp: ' + (tRaw / 256).toFixed(1) + ' °C';
-              }
-              if (p.sfp_vcc && p.sfp_vcc !== '0x0000') tooltip += '\nVcc: ' + (parseInt(p.sfp_vcc, 16) * 0.0001).toFixed(2) + ' V';
-              if (p.sfp_txbias && p.sfp_txbias !== '0x0000') tooltip += '\nTx Bias: ' + (parseInt(p.sfp_txbias, 16) * 0.002).toFixed(2) + ' mA';
-              if (p.sfp_txpower && p.sfp_txpower !== '0x0000') {
-                var mw = parseInt(p.sfp_txpower, 16) * 0.0001;
-                tooltip += '\nTx Power: ' + (mw > 0 ? (10 * Math.log10(mw)).toFixed(2) : '-inf') + ' dBm';
-              }
-              if (p.sfp_rxpower && p.sfp_rxpower !== '0x0000') {
-                var mw2 = parseInt(p.sfp_rxpower, 16) * 0.0001;
-                tooltip += '\nRx Power: ' + (mw2 > 0 ? (10 * Math.log10(mw2)).toFixed(2) : '-inf') + ' dBm';
-              } else if (p.sfp_rxpower === '0x0000') {
-                tooltip += '\nRx Power: LOS (No light)';
-              }
               if (p.sfp_los !== null) tooltip += '\nRX-LOS: ' + Boolean(Number(p.sfp_los));
+              /* SFP diagnostic data (temp, vcc, bias, power) from sfp_diag.json */
+              if (sfpDiagCache) {
+                for (var di = 0; di < sfpDiagCache.length; di++) {
+                  if (sfpDiagCache[di].portNum === portNum) {
+                    var d = sfpDiagCache[di];
+                    if (d.sfp_temp && d.sfp_temp !== '0x0000') {
+                      var tRaw = parseInt(d.sfp_temp, 16);
+                      if (tRaw > 32767) tRaw -= 65536;
+                      tooltip += '\nTemp: ' + (tRaw / 256).toFixed(1) + ' °C';
+                    }
+                    if (d.sfp_vcc && d.sfp_vcc !== '0x0000') tooltip += '\nVcc: ' + (parseInt(d.sfp_vcc, 16) * 0.0001).toFixed(2) + ' V';
+                    if (d.sfp_txbias && d.sfp_txbias !== '0x0000') tooltip += '\nTx Bias: ' + (parseInt(d.sfp_txbias, 16) * 0.002).toFixed(2) + ' mA';
+                    if (d.sfp_txpower && d.sfp_txpower !== '0x0000') {
+                      var mw = parseInt(d.sfp_txpower, 16) * 0.0001;
+                      tooltip += '\nTx Power: ' + (mw > 0 ? (10 * Math.log10(mw)).toFixed(2) : '-inf') + ' dBm';
+                    }
+                    if (d.sfp_rxpower && d.sfp_rxpower !== '0x0000') {
+                      var mw2 = parseInt(d.sfp_rxpower, 16) * 0.0001;
+                      tooltip += '\nRx Power: ' + (mw2 > 0 ? (10 * Math.log10(mw2)).toFixed(2) : '-inf') + ' dBm';
+                    } else if (d.sfp_rxpower === '0x0000') {
+                      tooltip += '\nRx Power: LOS (No light)';
+                    }
+                    break;
+                  }
+                }
+              }
             }
             d.title = tooltip;
             d.innerHTML = '';

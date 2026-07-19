@@ -27,7 +27,7 @@ static uint16_t xmodem_crc16(uint16_t crc, uint8_t data)
     return crc;
 }
 
-void parse_xmodem(void) __banked
+void parse_xmodem(void) __banked __reentrant
 {
     uint8_t last_ptr = sbuf_ptr;
     uint8_t seq = 1;

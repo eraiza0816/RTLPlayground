@@ -407,7 +407,6 @@ extern __xdata uint8_t cli_mode;
 
 void print_cmd_prompt(void)
 {
-	print_string_no_syslog("\n");
 	if (hostname[0]) {
 		write_char_no_syslog('[');
 		__xdata char *p = hostname;

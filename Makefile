@@ -1,4 +1,4 @@
-VERSION=0.1.0
+VERSION=0.2.17
 
 # WebUI option: WEB=1 (default) to enable, WEB=0 to disable
 WEB ?= 1

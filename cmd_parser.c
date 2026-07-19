@@ -5,6 +5,7 @@
 // #define DEBUG
 // #define REGDBG 1
 
+#include "cmd_parser.h"
 #include "rtl837x_common.h"
 #include "rtl837x_port.h"
 #include "rtl837x_flash.h"
@@ -37,19 +38,12 @@ extern __code uint8_t * __code hex;
 extern __xdata uint8_t flash_buf[FLASH_BUF_SIZE];
 extern __xdata struct flash_region_t flash_region;
 
-#ifdef NO_WEB
-__xdata char passwd[21];
-#else
 extern __xdata char passwd[21];
-#endif
 
 extern __xdata struct dhcp_state dhcp_state;
 extern __xdata char hostname[32];
 extern __xdata uint8_t telnet_enabled;
-#ifndef NO_WEB
 extern __xdata uint8_t web_enabled;
-#endif
-
 __xdata uint8_t vlan_names[VLAN_NAMES_SIZE];
 __xdata uint16_t vlan_ptr;
 
@@ -68,7 +62,7 @@ __xdata uint8_t hexvalue[4] = { 0 };
 
 // Buffer for writing to flash 0x1fd000, copy to 0x1fe000
 __xdata uint8_t cmd_buffer[CMD_BUF_SIZE];
-__xdata uint8_t cmd_available;
+volatile __xdata uint8_t cmd_available;
 
 __xdata	char save_cmd;
 
@@ -1426,10 +1420,7 @@ extern void parse_disable(void) __banked;
 extern void parse_configure_terminal(void) __banked;
 extern void parse_exit(void) __banked;
 extern void parse_end(void) __banked;
-extern uint8_t cmd_mode_allowed(uint8_t start) __banked;
-#ifdef NO_WEB
 extern void parse_xmodem(void) __banked;
-#endif
 
 
 void parse_show(void)
@@ -1752,6 +1743,72 @@ void print_sw_version(void) __banked {
 	write_char('\n');
 }
 
+/* ── Mode permission table and check (BANK2, same as cmd_parser) ── */
+
+struct mode_entry {
+	char __code *name;
+	uint8_t mode_mask;
+};
+
+__code struct mode_entry mode_allow[] = {
+	{"reset",       (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"sfp",         (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"stat",        (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"flash",       (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"sds",         (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"gpio",        (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"regget",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"regset",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"sdsget",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"sdsset",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"phyget",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"physet",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"rnd",         (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"version",     (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"time",        (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"history",     (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"port",        (1<<MODE_CONFIG)|(1<<MODE_CONFIG_IF)},
+	{"mtu",         (1<<MODE_CONFIG)},
+	{"ip",          (1<<MODE_CONFIG)},
+	{"gw",          (1<<MODE_CONFIG)},
+	{"netmask",     (1<<MODE_CONFIG)},
+	{"vlan",        (1<<MODE_CONFIG)},
+	{"pvid",        (1<<MODE_CONFIG)},
+	{"ingress",     (1<<MODE_CONFIG)},
+	{"isolate",     (1<<MODE_CONFIG)},
+	{"mirror",      (1<<MODE_CONFIG)},
+	{"lag",         (1<<MODE_CONFIG)},
+	{"laghash",     (1<<MODE_CONFIG)},
+	{"stp",         (1<<MODE_CONFIG)},
+	{"igmp",        (1<<MODE_CONFIG)},
+	{"hostname",    (1<<MODE_CONFIG)},
+	{"eee",         (1<<MODE_CONFIG)},
+	{"bw",          (1<<MODE_CONFIG)},
+	{"passwd",      (1<<MODE_CONFIG)},
+	{"telnet",      (1<<MODE_CONFIG)},
+	{"web",         (1<<MODE_CONFIG)},
+	{"show",        (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"commit",      (1<<MODE_PRIVILEGED)},
+	{"xmodem",      (1<<MODE_PRIVILEGED)},
+	{0, 0}
+};
+
+static uint8_t cmd_mode_allowed(uint8_t start)
+{
+	struct mode_entry __code *e = mode_allow;
+	for (; e->name; e++) {
+		uint8_t i = 0;
+		while (e->name[i] && cmd_buffer[start + i] == e->name[i])
+			i++;
+		if (e->name[i] == '\0') {
+			uint8_t n = cmd_buffer[start + i];
+			if (n != '\0' && n != ' ')
+				continue;
+			return (e->mode_mask >> cli_mode) & 1;
+		}
+	}
+	return 1; /* unknown command — allow (will get "Unknown command" from parser) */
+}
 
 // Identify command
 void cmd_parser(void) __banked
@@ -1772,8 +1829,11 @@ void cmd_parser(void) __banked
 	print_byte(cmd_words_b[6]); write_char('\n');
 #endif
 	if (cmd_words_len >= 1) {
+		/* Help — works in any mode for both serial and telnet */
+		if (cmd_compare(0, "?") || cmd_compare(0, "help")) {
+			cmd_help();
 		/* Mode transition commands (always allowed) */
-		if (cmd_compare(0, "enable")) {
+		} else if (cmd_compare(0, "enable")) {
 			parse_enable();
 		} else if (cmd_compare(0, "disable")) {
 			parse_disable();
@@ -1785,6 +1845,8 @@ void cmd_parser(void) __banked
 			parse_exit();
 		} else if (cmd_compare(0, "end")) {
 			parse_end();
+		} else if (cmd_words_len >= 2 && (cmd_compare(1, "?") || cmd_compare(1, "help"))) {
+			cmd_help();
 		} else if (!cmd_mode_allowed(cmd_words_b[0])) {
 			print_string("Command not available in this mode\n");
 		} else if (cmd_compare(0, "reset")) {
@@ -1956,10 +2018,8 @@ void cmd_parser(void) __banked
 #endif
 		} else if (cmd_compare(0, "commit")) {
 			parse_commit();
-#ifdef NO_WEB
 		} else if (cmd_compare(0, "xmodem")) {
 			parse_xmodem();
-#endif
 		} else if (cmd_compare(0, "show")) {
 			parse_show();
 		} else if (cmd_compare(0, "hostname")) {

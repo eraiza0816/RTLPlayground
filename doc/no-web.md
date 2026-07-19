@@ -1,7 +1,8 @@
-# Building without the Web Interface
+# Building without the Web UI
 
-The `WEB` build option controls whether the web interface (HTTP server, JSON API,
-embedded HTML/JS files) is included in the firmware.
+The `WEB` build option controls whether the Web UI (HTML, JS, CSS) is embedded
+in the firmware. The HTTP server and JSON API endpoints are always included;
+only the static web assets are excluded.
 
 ## Quick start
 
@@ -15,29 +16,49 @@ Output: `output/<MACHINE>/rtlplayground-<version>-<commit>-<MACHINE>.bin`
 
 | `WEB` | Result |
 |-------|--------|
-| `1` (default) | Full firmware with web UI |
-| `0` | CLI-only firmware, no web |
+| `1` (default) | Full firmware with Web UI, JSON API and telnet |
+| `0` | CLI + JSON API + telnet (no Web UI) |
 
 ## What changes with WEB=0
 
 | Feature | WEB=1 | WEB=0 |
 |---------|-------|-------|
-| HTTP server (port 80) | included | removed |
-| JSON API endpoints | included | removed |
-| HTML/JS/CSS files | embedded (~95 KB) | removed |
-| `web on` / `web off` commands | available | removed |
-| `xmodem` firmware upload | — | **added** |
-| `passwd` command | web + telnet password | telnet password only |
+| HTTP server (port 80) | included | included (JSON API only) |
+| JSON API endpoints | included | included |
+| HTML/JS/CSS files | embedded (~95 KB) | **removed** |
+| `web on` / `web off` commands | available | available (toggles HTTP API) |
+| `xmodem` firmware update | — | **added** |
+| telnet server (port 23) | included | included (dispatched via httpd) |
+
+## Internal details
+
+When `WEB=0` is set, the compiler flag `-DNO_WEBUI` is added and
+`html_data.c` (the WebUI static file index) is excluded from the build.
+
+In `httpd/httpd.c`, the `NO_WEBUI` symbol guards:
+
+- `#include "html_data.h"`
+- `extern` declarations for `f_data[]` / `mime_strings[]`
+- `find_entry()` — returns `0xff` (stub) under `NO_WEBUI`
+- The static file serving branch in `httpd_appcall()`
+
+The HTTP server and JSON API endpoints remain fully functional; only static
+file delivery is disabled.
+
+### uIP integration
+
+`uip-conf.h` always includes `httpd.h`. `httpd_appcall()` inspects `lport`
+and dispatches telnet (23) and HTTP (80) as a unified appcall dispatcher.
 
 ## Code space impact
 
 | Bank | WEB=1 | WEB=0 |
 |------|-------|-------|
-| BANK1 | 40,800 / 49,152 (83%) | **21,650 / 49,152 (44%)** |
-| BANK2 | 45,099 / 49,152 (92%) | **44,777 / 49,152 (91%)** |
-| BANK3 | 11,365 / 49,152 (23%) | **12,166 / 49,152 (25%)** |
+| BANK1 | — | **~19 KB freed** (WebUI removed) |
+| BANK2 | — | unchanged |
+| BANK3 | — | unchanged |
 
-The ~19 KB freed in BANK1 can be used for additional CLI features.
+The freed space in BANK1 can be used for additional CLI features.
 
 ## Firmware update via serial (XMODEM)
 

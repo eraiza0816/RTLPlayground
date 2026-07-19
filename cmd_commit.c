@@ -15,9 +15,7 @@ extern __xdata uip_ipaddr_t uip_hostaddr, uip_draddr, uip_netmask;
 extern __xdata uint8_t stpEnabled;
 extern __xdata uint16_t management_vlan;
 extern __xdata uint8_t telnet_enabled;
-#ifndef NO_WEB
 extern __xdata uint8_t web_enabled;
-#endif
 extern __xdata uint8_t sfr_data[4];
 extern __xdata uint8_t cmd_buffer[128];
 extern __xdata uint8_t cmd_words_b[15];
@@ -113,10 +111,8 @@ void parse_commit(void) __banked
 
 	COMMIT_PUTS("telnet ");
 	if (telnet_enabled) COMMIT_PUTS("on\n"); else COMMIT_PUTS("off\n");
-#ifndef NO_WEB
 	COMMIT_PUTS("web ");
 	if (web_enabled) COMMIT_PUTS("on\n"); else COMMIT_PUTS("off\n");
-#endif
 
 	commit_write_flash();
 	print_string("Config committed\n");

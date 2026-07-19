@@ -7,7 +7,6 @@
 #include "rtl837x_flash.h"
 #include "rtl837x_pins.h"
 #include "uip.h"
-#include "html_data.h"
 #include <stdint.h>
 #include "phy.h"
 #include "version.h"

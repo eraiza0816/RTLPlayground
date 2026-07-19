@@ -6,7 +6,9 @@
 #include "cmd_parser.h"
 #include "rtl837x_flash.h"
 #include "uip.h"
+#ifndef NO_WEBUI
 #include "html_data.h"
+#endif
 
 // #define DEBUG
 #include "debug.h"
@@ -21,8 +23,10 @@
 
 extern volatile __xdata uint8_t sfr_data[4];
 extern __code uint8_t * __code hex;
+#ifndef NO_WEBUI
 extern __code struct f_data f_data[];
 extern __code char * __code mime_strings[];
+#endif
 extern __xdata struct flash_region_t flash_region;
 extern __xdata uint32_t flash_size;
 
@@ -86,6 +90,7 @@ void httpd_init(void) __banked
 }
 
 
+#ifndef NO_WEBUI
 uint8_t find_entry(__xdata uint8_t *e)
 {
 	uint8_t i, j;
@@ -101,6 +106,13 @@ uint8_t find_entry(__xdata uint8_t *e)
 	}
 	return 0xff;
 }
+#else
+uint8_t find_entry(__xdata uint8_t *e)
+{
+	(void)e;
+	return 0xff;
+}
+#endif
 
 
 bool is_word(__xdata uint8_t *xdata_str_p, __code uint8_t * __xdata code_str_p)
@@ -722,10 +734,12 @@ void httpd_appcall(void)
 				uip_close();
 				delay(1000);
 				reset_chip();
-			} else {
-				send_not_found();
-			}
 		} else {
+			send_not_found();
+			}
+		}
+#ifndef NO_WEBUI
+		else {
 			dbg_string("Have entry, authenticated: "); dbg_byte(authenticated); dbg_char('\n');
 			// A web-page is actively accessed, we can reset session time-out
 			reg_read_m(RTL837X_REG_SEC_COUNTER);
@@ -748,6 +762,7 @@ void httpd_appcall(void)
 			flash_read_bulk(outbuf + slen);
 			slen += len_left;
 		}
+#endif
 do_send:
 		dbg_string("slen: "); dbg_short(slen); dbg_char('\n');
 		o_idx = 0;

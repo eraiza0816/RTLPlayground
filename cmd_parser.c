@@ -1480,12 +1480,10 @@ void parse_telnet(void)
 		telnet_enabled = 1;
 		print_string("Telnet enabled\n");
 	} else if (cmd_compare(1, "off")) {
-#ifndef NO_WEB
 		if (!web_enabled) {
 			print_string("Error: would disable all remote access (web is also off)\n");
 			return;
 		}
-#endif
 		telnet_enabled = 0;
 		print_string("Telnet disabled\n");
 	} else {
@@ -1493,7 +1491,6 @@ void parse_telnet(void)
 	}
 }
 
-#ifndef NO_WEB
 void parse_web(void)
 {
 	if (cmd_words_len < 2) {
@@ -1519,7 +1516,6 @@ void parse_web(void)
 		print_string("Error: web [on|off]\n");
 	}
 }
-#endif
 
 
 void parse_eee(void)
@@ -2012,10 +2008,8 @@ void cmd_parser(void) __banked
 			parse_bw();
 		} else if (cmd_compare(0, "telnet")) {
 			parse_telnet();
-#ifndef NO_WEB
 		} else if (cmd_compare(0, "web")) {
 			parse_web();
-#endif
 		} else if (cmd_compare(0, "commit")) {
 			parse_commit();
 		} else if (cmd_compare(0, "xmodem")) {

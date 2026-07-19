@@ -1,4 +1,4 @@
-VERSION=0.2.18
+VERSION=0.2.19
 
 # WebUI option: WEB=1 (default) to enable, WEB=0 to disable
 WEB ?= 1
@@ -53,8 +53,7 @@ SRCS += cmd_mode.c
 SRCS += cmd_xmodem.c
 
 ifeq ($(WEB),0)
-	CC_FLAGS += -DNO_WEB
-	SRCS := $(filter-out httpd/httpd.c httpd/page_impl.c, $(SRCS))
+	CC_FLAGS += -DNO_WEBUI
 	SRCS := $(filter-out html_data.c, $(SRCS))
 endif
 

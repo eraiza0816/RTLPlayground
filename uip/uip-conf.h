@@ -152,13 +152,7 @@ typedef unsigned short uip_stats_t;
 /* Here we include the header file for the application(s) we use in
    our project. */
 /*#include "smtp.h"*/
-#ifndef NO_WEB
 #include "httpd.h"
-#else
-#include "telnetd/telnetd.h"
-#define UIP_APPCALL telnetd_appcall
-typedef uint8_t uip_tcp_appstate_t;
-#endif
 #include "udp_apps.h"
 /*#include "webserver.h" */
 /*#include "dhcpc.h"*/

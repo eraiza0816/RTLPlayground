@@ -198,13 +198,11 @@ __code struct cmd_entry telnet_cmds[] = {
     {0, 0}
 };
 
-#ifndef NO_WEB
 __code struct cmd_entry web_cmds[] = {
     {"on",  "Enable web interface"},
     {"off", "Disable web interface"},
     {0, 0}
 };
-#endif
 
 __code struct cmd_entry mtu_cmds[] = {
     {"show", "Show MTU for all ports"},
@@ -245,9 +243,7 @@ __code struct cmd_group top_cmds[] = {
     {"eee",     "Energy Efficient Ethernet control",                  eee_cmds, (1<<MODE_CONFIG)},
     {"bw",      "Per-port bandwidth control",                         bw_cmds, (1<<MODE_CONFIG)},
     {"telnet",  "Telnet server control",                              telnet_cmds, (1<<MODE_CONFIG)},
-#ifndef NO_WEB
     {"web",     "Web interface control",                              web_cmds, (1<<MODE_CONFIG)},
-#endif
     {"commit",  "Save running configuration to flash",                0, (1<<MODE_PRIVILEGED)},
     {"show",    "Show system information",                            0, (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
     {"version", "Print software version and build info",              0, (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},

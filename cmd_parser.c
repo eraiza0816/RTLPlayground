@@ -1741,69 +1741,127 @@ void print_sw_version(void) __banked {
 
 /* ── Mode permission table and check (BANK2, same as cmd_parser) ── */
 
-struct mode_entry {
-	char __code *name;
+enum cmd_token {
+	CMD_RESET,
+	CMD_SFP,
+	CMD_STAT,
+	CMD_FLASH,
+	CMD_SDS,
+	CMD_GPIO,
+	CMD_REGGET,
+	CMD_REGSET,
+	CMD_SDSGET,
+	CMD_SDSSET,
+	CMD_PHYGET,
+	CMD_PHYSET,
+	CMD_RND,
+	CMD_VERSION,
+	CMD_TIME,
+	CMD_HISTORY,
+	CMD_PORT,
+	CMD_MTU,
+	CMD_IP,
+	CMD_GW,
+	CMD_NETMASK,
+	CMD_VLAN,
+	CMD_PVID,
+	CMD_INGRESS,
+	CMD_ISOLATE,
+	CMD_MIRROR,
+	CMD_LAG,
+	CMD_LAGHASH,
+	CMD_STP,
+	CMD_IGMP,
+	CMD_HOSTNAME,
+	CMD_EEE,
+	CMD_BW,
+	CMD_PASSWD,
+	CMD_TELNET,
+	CMD_WEB,
+	CMD_SHOW,
+	CMD_COMMIT,
+	CMD_XMODEM,
+	CMD_L2,
+};
+
+struct cmd_entry {
+	__code uint8_t *name;
 	uint8_t mode_mask;
+	uint8_t token;
 };
 
-__code struct mode_entry mode_allow[] = {
-	{"reset",       (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
-	{"sfp",         (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
-	{"stat",        (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
-	{"flash",       (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
-	{"sds",         (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
-	{"gpio",        (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
-	{"regget",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
-	{"regset",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
-	{"sdsget",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
-	{"sdsset",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
-	{"phyget",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
-	{"physet",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
-	{"rnd",         (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
-	{"version",     (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
-	{"time",        (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
-	{"history",     (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
-	{"port",        (1<<MODE_CONFIG)|(1<<MODE_CONFIG_IF)},
-	{"mtu",         (1<<MODE_CONFIG)},
-	{"ip",          (1<<MODE_CONFIG)},
-	{"gw",          (1<<MODE_CONFIG)},
-	{"netmask",     (1<<MODE_CONFIG)},
-	{"vlan",        (1<<MODE_CONFIG)},
-	{"pvid",        (1<<MODE_CONFIG)},
-	{"ingress",     (1<<MODE_CONFIG)},
-	{"isolate",     (1<<MODE_CONFIG)},
-	{"mirror",      (1<<MODE_CONFIG)},
-	{"lag",         (1<<MODE_CONFIG)},
-	{"laghash",     (1<<MODE_CONFIG)},
-	{"stp",         (1<<MODE_CONFIG)},
-	{"igmp",        (1<<MODE_CONFIG)},
-	{"hostname",    (1<<MODE_CONFIG)},
-	{"eee",         (1<<MODE_CONFIG)},
-	{"bw",          (1<<MODE_CONFIG)},
-	{"passwd",      (1<<MODE_CONFIG)},
-	{"telnet",      (1<<MODE_CONFIG)},
-	{"web",         (1<<MODE_CONFIG)},
-	{"show",        (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
-	{"commit",      (1<<MODE_PRIVILEGED)},
-	{"xmodem",      (1<<MODE_PRIVILEGED)},
-	{0, 0}
+__code struct cmd_entry cmd_entries[] = {
+	{"reset",       (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG),             CMD_RESET},
+	{"sfp",         (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG),             CMD_SFP},
+	{"stat",        (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG), CMD_STAT},
+	{"flash",       (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG),             CMD_FLASH},
+	{"sds",         (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG),             CMD_SDS},
+	{"gpio",        (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG),             CMD_GPIO},
+	{"regget",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG),             CMD_REGGET},
+	{"regset",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG),             CMD_REGSET},
+	{"sdsget",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG),             CMD_SDSGET},
+	{"sdsset",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG),             CMD_SDSSET},
+	{"phyget",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG),             CMD_PHYGET},
+	{"physet",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG),             CMD_PHYSET},
+	{"rnd",         (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG), CMD_RND},
+	{"version",     (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG), CMD_VERSION},
+	{"time",        (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG), CMD_TIME},
+	{"history",     (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG), CMD_HISTORY},
+	{"port",        (1<<MODE_CONFIG)|(1<<MODE_CONFIG_IF),               CMD_PORT},
+	{"mtu",         (1<<MODE_CONFIG),                                    CMD_MTU},
+	{"ip",          (1<<MODE_CONFIG),                                    CMD_IP},
+	{"gw",          (1<<MODE_CONFIG),                                    CMD_GW},
+	{"netmask",     (1<<MODE_CONFIG),                                    CMD_NETMASK},
+	{"vlan",        (1<<MODE_CONFIG),                                    CMD_VLAN},
+	{"pvid",        (1<<MODE_CONFIG),                                    CMD_PVID},
+	{"ingress",     (1<<MODE_CONFIG),                                    CMD_INGRESS},
+	{"isolate",     (1<<MODE_CONFIG),                                    CMD_ISOLATE},
+	{"mirror",      (1<<MODE_CONFIG),                                    CMD_MIRROR},
+	{"lag",         (1<<MODE_CONFIG),                                    CMD_LAG},
+	{"laghash",     (1<<MODE_CONFIG),                                    CMD_LAGHASH},
+	{"stp",         (1<<MODE_CONFIG),                                    CMD_STP},
+	{"igmp",        (1<<MODE_CONFIG),                                    CMD_IGMP},
+	{"hostname",    (1<<MODE_CONFIG),                                    CMD_HOSTNAME},
+	{"eee",         (1<<MODE_CONFIG),                                    CMD_EEE},
+	{"bw",          (1<<MODE_CONFIG),                                    CMD_BW},
+	{"passwd",      (1<<MODE_CONFIG),                                    CMD_PASSWD},
+	{"telnet",      (1<<MODE_CONFIG),                                    CMD_TELNET},
+	{"web",         (1<<MODE_CONFIG),                                    CMD_WEB},
+	{"show",        (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG), CMD_SHOW},
+	{"commit",      (1<<MODE_PRIVILEGED),                                CMD_COMMIT},
+	{"xmodem",      (1<<MODE_PRIVILEGED),                                CMD_XMODEM},
+	{"l2",          (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG),               CMD_L2},
+	{0, 0, 0}
 };
 
-static uint8_t cmd_mode_allowed(uint8_t start)
+static uint8_t cmd_ambiguous;
+
+static __code struct cmd_entry *cmd_find(uint8_t start)
 {
-	struct mode_entry __code *e = mode_allow;
+	__code struct cmd_entry *match = 0;
+	__code struct cmd_entry *e = cmd_entries;
+	cmd_ambiguous = 0;
+
 	for (; e->name; e++) {
 		uint8_t i = 0;
 		while (e->name[i] && cmd_buffer[start + i] == e->name[i])
 			i++;
+
 		if (e->name[i] == '\0') {
 			uint8_t n = cmd_buffer[start + i];
-			if (n != '\0' && n != ' ')
-				continue;
-			return (e->mode_mask >> cli_mode) & 1;
+			if (n == ' ' || n == '\0')
+				return e;
+		}
+
+		if ((cmd_buffer[start + i] == ' ' || cmd_buffer[start + i] == '\0') && e->name[i]) {
+			if (match) {
+				cmd_ambiguous = 1;
+				return 0;
+			}
+			match = e;
 		}
 	}
-	return 1; /* unknown command — allow (will get "Unknown command" from parser) */
+	return match;
 }
 
 // Identify command
@@ -1843,206 +1901,198 @@ void cmd_parser(void) __banked
 			parse_end();
 		} else if (cmd_words_len >= 2 && (cmd_compare(1, "?") || cmd_compare(1, "help"))) {
 			cmd_help();
-		} else if (!cmd_mode_allowed(cmd_words_b[0])) {
-			print_string("Command not available in this mode\n");
-		} else if (cmd_compare(0, "reset")) {
-			print_string("\nRESET\n\n");
-			reset_chip();
-		} else if (cmd_compare(0, "sfp")) {
-			parse_sfp();
-		} else if (cmd_compare(0, "stat")) {
-			port_stats_print();
-		} else if (cmd_compare(0, "flash") && cmd_words_len == 2) {
-			uint8_t c = cmd_buffer[cmd_words_b[1]];
-			if (c == 's') {
-				print_string("\nSECURITY REGISTERS\n");
-				// The following will only show something else than 0xff if it was programmed for a managed switch
-				print_string("Region 1: ");
-				flash_region.addr = 0x0001000;
-				flash_region.len = 40;
-				flash_read_security();
-				print_string("\nRegion 2: ");
-				flash_region.addr = 0x0002000;
-				flash_region.len = 40;
-				flash_read_security();
-				print_string("\nRegion 3: ");
-				flash_region.addr = 0x0003000;
-				flash_region.len = 40;
-				flash_read_security();
-			} else if (c == 'j') {
-				print_string("\nJEDEC ID\n");
-				flash_read_jedecid();
-			} else if (c == 'u') {
-				print_string("\nUNIQUE ID (note: only 4 bytes are likely correct here!)\n");
-				flash_read_uid();
-			}
-		} else if (cmd_compare(0, "port")) {
-			parse_port();
-		} else if (cmd_compare(0, "mtu")) {
-			parse_mtu();
-		} else if (cmd_compare(0, "ip")) {
-			if (cmd_compare(1, "dhcp")) {
-				dhcp_start();
-			} else if (cmd_words_len == 1) {
-				print_string("Current IP: ");
-				itoa(uip_hostaddr[0]); write_char('.'); itoa(uip_hostaddr[0] >> 8); write_char('.');
-				itoa(uip_hostaddr[1]); write_char('.'); itoa(uip_hostaddr[1] >> 8);
-				if (dhcp_state.state == DHCP_LEASING) {
-					print_string(" (dhcp, renewal in sec: ");
-					print_short(dhcp_state.dhcp_timer);
-					write_char(')');
+		} else {
+			__code struct cmd_entry *e = cmd_find(cmd_words_b[0]);
+			if (!e) {
+				if (!cmd_ambiguous)
+					print_string("Unknown command\n");
+				else
+					print_string("Ambiguous command\n");
+			} else if (!((e->mode_mask >> cli_mode) & 1)) {
+				print_string("Command not available in this mode\n");
+			} else switch (e->token) {
+			case CMD_RESET:
+				print_string("\nRESET\n\n");
+				reset_chip();
+				break;
+			case CMD_SFP:      parse_sfp(); break;
+			case CMD_STAT:     port_stats_print(); break;
+			case CMD_FLASH:
+				if (cmd_words_len == 2) {
+					uint8_t c = cmd_buffer[cmd_words_b[1]];
+					if (c == 's') {
+						print_string("\nSECURITY REGISTERS\n");
+						print_string("Region 1: ");
+						flash_region.addr = 0x0001000;
+						flash_region.len = 40;
+						flash_read_security();
+						print_string("\nRegion 2: ");
+						flash_region.addr = 0x0002000;
+						flash_region.len = 40;
+						flash_read_security();
+						print_string("\nRegion 3: ");
+						flash_region.addr = 0x0003000;
+						flash_region.len = 40;
+						flash_read_security();
+					} else if (c == 'j') {
+						print_string("\nJEDEC ID\n");
+						flash_read_jedecid();
+					} else if (c == 'u') {
+						print_string("\nUNIQUE ID (note: only 4 bytes are likely correct here!)\n");
+						flash_read_uid();
+					}
+				}
+				break;
+			case CMD_SDS:
+				print_reg(RTL837X_REG_SDS_MODES);
+				write_char('\n');
+				break;
+			case CMD_GPIO:     print_gpio_status(); break;
+			case CMD_REGGET:   parse_regget(); break;
+			case CMD_REGSET:   parse_regset(); break;
+			case CMD_SDSGET:   parse_sdsget(); break;
+			case CMD_SDSSET:   parse_sdsset(); break;
+			case CMD_PHYGET:   parse_phyget(); break;
+			case CMD_PHYSET:   parse_physet(); break;
+			case CMD_RND:      parse_rnd(); break;
+			case CMD_PORT:     parse_port(); break;
+			case CMD_MTU:      parse_mtu(); break;
+			case CMD_VLAN:     parse_vlan(); break;
+			case CMD_PVID:
+				if (cmd_words_len == 3) {
+					__xdata uint16_t pvid;
+					uint8_t port;
+					port = cmd_buffer[cmd_words_b[1]] - '1';
+					port = machine.phys_to_log_port[port];
+					if (!atoi_short(&pvid, cmd_words_b[2]))
+						port_pvid_set(port, pvid);
+				}
+				break;
+			case CMD_INGRESS:  parse_ingress(); break;
+			case CMD_ISOLATE:  parse_isolate(); break;
+			case CMD_MIRROR:   parse_mirror(); break;
+			case CMD_LAG:      parse_lag(); break;
+			case CMD_LAGHASH:  parse_lag_hash(); break;
+			case CMD_STP:
+				if (cmd_compare(1, "on")) {
+					print_string("STP enabled\n");
+					stpEnabled = 1;
+					stp_setup();
 				} else {
-					print_string(" (static)");
+					print_string("STP disabled\n");
+					stp_off();
+					stpEnabled = 0;
+				}
+				break;
+			case CMD_IGMP:
+				if (cmd_compare(1, "on"))
+					igmp_enable();
+				else if (cmd_compare(1, "show"))
+					igmp_show();
+				else
+					igmp_setup();
+				break;
+			case CMD_HOSTNAME: parse_hostname(); break;
+			case CMD_EEE:      parse_eee(); break;
+			case CMD_BW:       parse_bw(); break;
+			case CMD_PASSWD:   parse_passwd(); break;
+			case CMD_TELNET:   parse_telnet(); break;
+			case CMD_WEB:      parse_web(); break;
+			case CMD_SHOW:     parse_show(); break;
+			case CMD_COMMIT:   parse_commit(); break;
+			case CMD_XMODEM:   parse_xmodem(); break;
+			case CMD_L2:
+				if (cmd_compare(1, "forget"))
+					port_l2_forget();
+				else if (cmd_compare(1, "del") && cmd_words_len >= 3)
+					parse_l2_delete();
+				else
+					port_l2_learned();
+				break;
+			case CMD_IP:
+				if (cmd_compare(1, "dhcp")) {
+					dhcp_start();
+				} else if (cmd_words_len == 1) {
+					print_string("Current IP: ");
+					itoa(uip_hostaddr[0]); write_char('.'); itoa(uip_hostaddr[0] >> 8); write_char('.');
+					itoa(uip_hostaddr[1]); write_char('.'); itoa(uip_hostaddr[1] >> 8);
+					if (dhcp_state.state == DHCP_LEASING) {
+						print_string(" (dhcp, renewal in sec: ");
+						print_short(dhcp_state.dhcp_timer);
+						write_char(')');
+					} else {
+						print_string(" (static)");
+					}
+					write_char('\n');
+				} else {
+					if (dhcp_state.state)
+						dhcp_stop();
+					if (!parse_ip(cmd_words_b[1])) {
+						uip_ipaddr(&uip_hostaddr, ip[0], ip[1], ip[2], ip[3]);
+						print_string("Setting ip: ");
+						itoa(ip[0]); write_char('.'); itoa(ip[1]); write_char('.');
+						itoa(ip[2]); write_char('.'); itoa(ip[3]); write_char('\n');
+					} else {
+						print_string("Invalid IP address\n");
+						print_string("Error: ip [<ip-address>|dhcp]\n");
+						print_string("  The dhcp option enables the dhcp client, calling ip without options prints the current IP\n");
+						print_string("  Calling with a valid IP address will stop any ongoing dhcp client and set the IP address\n");
+					}
+				}
+				break;
+			case CMD_GW:
+				if (cmd_words_len == 1) {
+					print_string("Current gw: ");
+					itoa(uip_draddr[0]); write_char('.'); itoa(uip_draddr[0] >> 8); write_char('.');
+					itoa(uip_draddr[1]); write_char('.'); itoa(uip_draddr[1] >> 8);
+				} else {
+					if (!parse_ip(cmd_words_b[1]))
+						uip_ipaddr(&uip_draddr, ip[0], ip[1], ip[2], ip[3]);
+					else
+						print_string("Invalid IP address\n");
+					print_string("Setting gw: ");
+					itoa(ip[0]); write_char('.'); itoa(ip[1]); write_char('.');
+					itoa(ip[2]); write_char('.'); itoa(ip[3]);
 				}
 				write_char('\n');
-			} else {
-				if (dhcp_state.state)
-					dhcp_stop();
-				if (!parse_ip(cmd_words_b[1])) {
-					uip_ipaddr(&uip_hostaddr, ip[0], ip[1], ip[2], ip[3]);
-					print_string("Setting ip: ");
-					itoa(ip[0]); write_char('.'); itoa(ip[1]); write_char('.');
-					itoa(ip[2]); write_char('.'); itoa(ip[3]); write_char('\n');
+				break;
+			case CMD_NETMASK:
+				if (cmd_words_len == 1) {
+					print_string("Current netmask: ");
+					itoa(uip_netmask[0]); write_char('.'); itoa(uip_netmask[0] >> 8); write_char('.');
+					itoa(uip_netmask[1]); write_char('.'); itoa(uip_netmask[1] >> 8);
 				} else {
-					print_string("Invalid IP address\n");
-					print_string("Error: ip [<ip-address>|dhcp]\n");
-					print_string("  The dhcp option enables the dhcp client, calling ip without options prints the current IP\n");
-					print_string("  Calling with a valid IP address will stop any ongoing dhcp client and set the IP address\n");
+					if (!parse_ip(cmd_words_b[1]))
+						uip_ipaddr(&uip_netmask, ip[0], ip[1], ip[2], ip[3]);
+					else
+						print_string("Invalid IP address\n");
+					print_string("Setting netmask: ");
+					itoa(ip[0]); write_char('.'); itoa(ip[1]); write_char('.');
+					itoa(ip[2]); write_char('.'); itoa(ip[3]);
 				}
+				write_char('\n');
+				break;
+			case CMD_VERSION:  print_sw_version(); break;
+			case CMD_TIME:
+				print_string("  Tick counter: "); print_long(ticks); print_string("   Sec Counter: ");
+				reg_read_m(RTL837X_REG_SEC_COUNTER);
+				print_sfr_data();
+				write_char('\n');
+				break;
+			case CMD_HISTORY:
+				{
+					__xdata uint16_t p = (cmd_history_ptr + 1) & CMD_HISTORY_MASK;
+					__xdata uint8_t found_begin = 0;
+					while (p != cmd_history_ptr) {
+						if (!cmd_history[p] || cmd_history[p] == '\n')
+							found_begin = 1;
+						if (found_begin && cmd_history[p])
+							write_char(cmd_history[p]);
+						p = (p + 1) & CMD_HISTORY_MASK;
+					}
+				}
+				break;
 			}
-		} else if (cmd_compare(0, "gw")) {
-			if (cmd_words_len == 1) {
-				print_string("Current gw: ");
-				itoa(uip_draddr[0]); write_char('.'); itoa(uip_draddr[0] >> 8); write_char('.');
-				itoa(uip_draddr[1]); write_char('.'); itoa(uip_draddr[1] >> 8);
-			} else {
-				if (!parse_ip(cmd_words_b[1]))
-					uip_ipaddr(&uip_draddr, ip[0], ip[1], ip[2], ip[3]);
-				else
-					print_string("Invalid IP address\n");
-				print_string("Setting gw: ");
-				itoa(ip[0]); write_char('.'); itoa(ip[1]); write_char('.');
-				itoa(ip[2]); write_char('.'); itoa(ip[3]);
-			}
-			write_char('\n');
-		} else if (cmd_compare(0, "netmask")) {
-			if (cmd_words_len == 1) {
-				print_string("Current netmask: ");
-				itoa(uip_netmask[0]); write_char('.'); itoa(uip_netmask[0] >> 8); write_char('.');
-				itoa(uip_netmask[1]); write_char('.'); itoa(uip_netmask[1] >> 8);
-			} else {
-				if (!parse_ip(cmd_words_b[1]))
-					uip_ipaddr(&uip_netmask, ip[0], ip[1], ip[2], ip[3]);
-				else
-					print_string("Invalid IP address\n");
-				print_string("Setting netmask: ");
-				itoa(ip[0]); write_char('.'); itoa(ip[1]); write_char('.');
-				itoa(ip[2]); write_char('.'); itoa(ip[3]);
-			}
-			write_char('\n');
-		} else if (cmd_compare(0, "l2")) {
-			if (cmd_compare(1, "forget"))
-				port_l2_forget();
-			else if (cmd_compare(1, "del") && cmd_words_len >= 3)
-				parse_l2_delete();
-			else
-				port_l2_learned();
-		} else if (cmd_compare(0, "igmp")) {
-			if (cmd_compare(1, "on"))
-				igmp_enable();
-			else if (cmd_compare(1, "show"))
-				igmp_show();
-			else
-				igmp_setup();  // Reverts to default with IP-MC being flooded
-		} else if (cmd_compare(0, "stp")) {
-			if (cmd_compare(1, "on")) {
-				print_string("STP enabled\n");
-				stpEnabled = 1;
-				stp_setup();
-			} else {
-				print_string("STP disabled\n");
-				stp_off();
-				stpEnabled = 0;
-			}
-		} else if (cmd_compare(0, "pvid") && cmd_words_len == 3) {
-			__xdata uint16_t pvid;
-			uint8_t port;
-			port = cmd_buffer[cmd_words_b[1]] - '1';
-			port = machine.phys_to_log_port[port];
-			if (!atoi_short(&pvid, cmd_words_b[2]))
-				port_pvid_set(port, pvid);
-		} else if (cmd_compare(0, "vlan")) {
-			parse_vlan();
-		} else if (cmd_compare(0, "isolate")) {
-			parse_isolate();
-		} else if (cmd_compare(0, "mirror")) {
-			parse_mirror();
-		} else if (cmd_compare(0, "lag")) {
-			parse_lag();
-		} else if (cmd_compare(0, "laghash")) {
-			parse_lag_hash();
-		} else if (cmd_compare(0, "sds")) {
-			print_reg(RTL837X_REG_SDS_MODES);
-			write_char('\n');
-		} else if (cmd_compare(0, "gpio")) {
-			print_gpio_status();
-		} else if (cmd_compare(0, "regget")) {
-			parse_regget();
-		} else if (cmd_compare(0, "regset")) {
-			parse_regset();
-		} else if (cmd_compare(0, "sdsget")) {
-			parse_sdsget();
-		} else if (cmd_compare(0, "sdsset")) {
-			parse_sdsset();
-		} else if (cmd_compare(0, "phyget")) {
-			parse_phyget();
-		} else if (cmd_compare(0, "physet")) {
-			parse_physet();
-		} else if (cmd_compare(0, "rnd")) {
-			parse_rnd();
-		} else if (cmd_compare(0, "passwd")) {
-			parse_passwd();
-		} else if (cmd_compare(0, "eee")) {
-			parse_eee();
-		} else if (cmd_compare(0, "bw")) {
-			parse_bw();
-		} else if (cmd_compare(0, "telnet")) {
-			parse_telnet();
-		} else if (cmd_compare(0, "web")) {
-			parse_web();
-		} else if (cmd_compare(0, "commit")) {
-			parse_commit();
-		} else if (cmd_compare(0, "xmodem")) {
-			parse_xmodem();
-		} else if (cmd_compare(0, "show")) {
-			parse_show();
-		} else if (cmd_compare(0, "hostname")) {
-			parse_hostname();
-		} else if (cmd_compare(0, "version")) {
-			print_sw_version();
-		} else if (cmd_compare(0, "time")) {
-			print_string("  Tick counter: "); print_long(ticks); print_string("   Sec Counter: ");
-			reg_read_m(RTL837X_REG_SEC_COUNTER);
-			print_sfr_data();
-			write_char('\n');
-		} else if (cmd_compare(0, "history")) {
-			__xdata uint16_t p = (cmd_history_ptr + 1) & CMD_HISTORY_MASK;
-			__xdata uint8_t found_begin = 0;
-//			print_string("History ptr: ");
-//			print_short(cmd_history_ptr); write_char('\n');
-			while (p != cmd_history_ptr) {
-//				print_short(p); write_char(' ');
-				if (!cmd_history[p] || cmd_history[p] == '\n')
-					found_begin = 1;
-				if (found_begin && cmd_history[p])
-					write_char(cmd_history[p]);
-				p = (p + 1) & CMD_HISTORY_MASK;
-			}
-		} else if (cmd_compare(0, "ingress")) {
-			parse_ingress();
-		}
-		else {
-			print_string("Unknown command\n");
 		}
 
 

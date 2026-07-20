@@ -2,7 +2,6 @@
 #define _UDPAPPS_H_
 
 #include "dhcp.h"
-#include "syslog.h"
 
 void udp_callbacks(void);
 

@@ -6,7 +6,9 @@
 #include "cmd_parser.h"
 #include "rtl837x_flash.h"
 #include "uip.h"
+#ifndef NO_WEBUI
 #include "html_data.h"
+#endif
 
 // #define DEBUG
 #include "debug.h"
@@ -21,8 +23,10 @@
 
 extern volatile __xdata uint8_t sfr_data[4];
 extern __code uint8_t * __code hex;
+#ifndef NO_WEBUI
 extern __code struct f_data f_data[];
 extern __code char * __code mime_strings[];
+#endif
 extern __xdata struct flash_region_t flash_region;
 extern __xdata uint32_t flash_size;
 
@@ -35,6 +39,7 @@ __xdata uint8_t outbuf[TCP_OUTBUF_SIZE];
 __xdata uint8_t entry;
 __xdata uint16_t slen;
 __xdata uint16_t o_idx;
+__xdata uint8_t pending_reset;
 __xdata uint16_t len_left;
 __xdata uint16_t cont_len;
 __xdata uint32_t cont_addr;
@@ -63,6 +68,7 @@ __xdata uint32_t last_session_use;
 #define TSTATE_CLOSED 		3
 #define TSTATE_POST 		4
 #define TSTATE_MULTIPART	5
+#define TSTATE_FLASH_DONE	6
 
 extern __xdata uint16_t crc_value;
 __xdata uint16_t crc_final;
@@ -84,6 +90,7 @@ void httpd_init(void) __banked
 }
 
 
+#ifndef NO_WEBUI
 uint8_t find_entry(__xdata uint8_t *e)
 {
 	uint8_t i, j;
@@ -99,6 +106,13 @@ uint8_t find_entry(__xdata uint8_t *e)
 	}
 	return 0xff;
 }
+#else
+uint8_t find_entry(__xdata uint8_t *e)
+{
+	(void)e;
+	return 0xff;
+}
+#endif
 
 
 bool is_word(__xdata uint8_t *xdata_str_p, __code uint8_t * __xdata code_str_p)
@@ -110,7 +124,7 @@ bool is_word(__xdata uint8_t *xdata_str_p, __code uint8_t * __xdata code_str_p)
 		c = *code_str_p++;
 
 		if (c == '\0') {
-			if (u != '\0' && u != ' ' && u != '\t' && u != ':' && u != '?' && u != '=' && u != '\n' && u != '\r')
+			if (u != '\0' && u != ' ' && u != '\t' && u != ':' && u != '?' && u != '=' && u != '\n' && u != '\r' && u != ';')
 				return false;
 			return true;
 		}
@@ -131,7 +145,7 @@ bool is_url_word_x(__xdata uint8_t *uri_str_p, __xdata uint8_t *src_str_p)
 		s = *src_str_p++;
 
 		if (s == '\0') {
-			if (u != '\0' && u != ' ' && u != '\t' && u != ':' && u != '?' && u != '=' && u != '\n' && u != '\r')
+			if (u != '\0' && u != ' ' && u != '\t' && u != ':' && u != '?' && u != '=' && u != '\n' && u != '\r' && u != ';')
 				return false;
 			return true;
 		}
@@ -174,7 +188,7 @@ bool is_word_x(__xdata uint8_t *lhs_str_p, __xdata uint8_t *rhs_str_p)
 		c = *rhs_str_p++;
 
 		if (c == '\0') {
-			if (u != '\0' && u != ' ' && u != '\t' && u != ':' && u != '?' && u != '=' && u != '\n' && u != '\r')
+			if (u != '\0' && u != ' ' && u != '\t' && u != ':' && u != '?' && u != '=' && u != '\n' && u != '\r' && u != ';')
 				return false;
 			return true;
 		}
@@ -333,13 +347,13 @@ uint8_t stream_upload(uint16_t bptr)
 				dbg_string("CRC16: "); dbg_short(crc_final); dbg_char('\n');
 				if (crc_final == 0xb001) {
 					print_string("Checksum OK.\nUpload to flash done, will reset!\n");
-					// close connection to avoid retries by browser
-					uip_close();
-					reset_chip();
+					slen = strtox(outbuf, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK\n");
+					pending_reset = 1;
 				} else {
 					print_string("Checksum incorrect! Aborting.\n");
-					uip_close();
+					slen = strtox(outbuf, "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\n\r\nCRC mismatch\n");
 				}
+				s->tstate = TSTATE_FLASH_DONE;
 			}
 			// Make sure there is a 0 at the end of the uploaded data
 			flash_buf[0] = 0;
@@ -364,6 +378,16 @@ uint8_t stream_upload(uint16_t bptr)
 				memcpy(flash_buf + write_len, boundary, bindex);
 				write_len += bindex;
 				bindex = 0;
+				// After a false partial match, re-check the current byte
+				// against boundary[0] instead of blindly appending it as data.
+				// This prevents false matches that consume the actual boundary.
+				if (p[bptr] == boundary[0]) {
+					crc_final = crc_value;
+					crc16(p + bptr);
+					bptr++;
+					bindex = 1;
+					goto skip_data;
+				}
 			}
 			crc16(p + bptr);
 			flash_buf[write_len++] = p[bptr++];
@@ -387,6 +411,7 @@ uint8_t stream_upload(uint16_t bptr)
 			}
 			bindex = 0;
 		}
+		skip_data: ;
 	} while(1);
 }
 
@@ -443,8 +468,7 @@ void handle_post(void)
 		dbg_string("Multipart request\n");
 	}
 
-	if (is_word(request_path, "cmd")) {
-		p += 4;
+	if (is_word(request_path, "/cmd")) {
 		if (!authenticated) {
 			send_unauthorized();
 			return;
@@ -473,7 +497,7 @@ void handle_post(void)
 					      "Set-Cookie: session=");
 			for (register uint8_t i = 0; i < SESSION_ID_LENGTH; i++)
 				outbuf[slen++] = session_id[i];
-			slen += strtox(outbuf + slen, "; SameSite=Strict\r\n\r\n");
+			slen += strtox(outbuf + slen, "; Path=/; SameSite=Strict\r\n\r\n");
 		} else {
 			dbg_string("Password invalid!\n");
 			slen = strtox(outbuf, "HTTP/1.1 302 Found\r\nLocation: login.html\r\n\r\n");
@@ -529,8 +553,23 @@ bad_request:
 }
 
 
+extern void telnetd_appcall(void) __banked;
+extern __xdata uint8_t telnet_enabled;
+extern __xdata uint8_t web_enabled;
+
 void httpd_appcall(void)
 {
+	if (uip_conn->lport == HTONS(23)) {
+		if (telnet_enabled)
+			telnetd_appcall();
+		else
+			uip_close();
+		return;
+	}
+	if (!web_enabled) {
+		uip_close();
+		return;
+	}
 	__xdata struct httpd_state * __xdata s = &(uip_conn->appstate);
 
 	dbg_char('P');
@@ -553,6 +592,11 @@ void httpd_appcall(void)
 	} else if (uip_poll()) {
 		uip_len = 0;
 		if (s->tstate == TSTATE_ACKED) {
+			if (pending_reset) {
+				dbg_string("Upload OK, resetting\n");
+				pending_reset = 0;
+				reset_chip();
+			}
 			dbg_string("Closing because everything has been transmitted\n");
 			uip_close();
 			s->tstate = TSTATE_CLOSED;
@@ -577,11 +621,11 @@ void httpd_appcall(void)
 			dbg_string("Sending B: "); dbg_short(slen); dbg_char('\n');
 			uip_send(outbuf + o_idx, slen);
 			s->tstate = TSTATE_TX;
-		} else if (cont_len) {
+	} else if (cont_len) {
 			dbg_string("CONT cont_len: "); dbg_short(cont_len);
 			slen = cont_len > uip_mss() ? uip_mss() : cont_len;
-			if (slen > TCP_OUTBUF_SIZE)
-				slen = TCP_OUTBUF_SIZE;
+
+			dbg_string("cont_addr: "); dbg_char('\n');
 			flash_region.addr = cont_addr;
 			flash_region.len = slen;
 			flash_read_bulk(outbuf);
@@ -594,6 +638,8 @@ void httpd_appcall(void)
 		// Check here maxupload by subtracting uip_len and close socekt if fails!
 		if (max_upload - uip_len > 0) {
 			stream_upload(0);
+			if (s->tstate == TSTATE_FLASH_DONE)
+				goto do_send;
 			write_char('.');
 		} else {
 			send_bad_request();
@@ -647,9 +693,13 @@ void httpd_appcall(void)
 			} else if (!strcmp(q, "/information.json")) {
 				send_basic_info();
 			} else if (!strcmp(q, "/vlan.json")) {
+			// TODO: validate short_parsed <= 4095 before send_vlan
 				parse_short(q + 15);
 				send_vlan(short_parsed);
+			} else if (is_word(q, "/sfp_diag.json")) {
+				send_sfp_diag();
 			} else if (is_word(q, "/counters.json")) {
+			// TODO: validate q[20] is a digit before send_counters
 				send_counters(q[20]-'0');
 			} else if (is_word(q, "/eee.json")) {
 				send_eee();
@@ -659,6 +709,7 @@ void httpd_appcall(void)
 				parse_short(q + 13); // e.g.: /l2.json?idx=10
 				send_l2(short_parsed);
 			} else if (is_word(q, "/l2_del.json")) {
+			// TODO: validate short_parsed <= 4095 before l2_delete
 				parse_short(q + 17);
 				l2_delete(short_parsed);
 			} else if (is_word(q, "/mirror.json")) {
@@ -683,15 +734,13 @@ void httpd_appcall(void)
 				uip_close();
 				delay(1000);
 				reset_chip();
-			} else {
-				send_not_found();
-			}
 		} else {
-			dbg_string("Have entry, authenticated: "); dbg_byte(authenticated); dbg_char('\n');
-			if (!authenticated && !(f_data[entry].start == FDATA_START_login_html)) {
-				send_to_login();
-				goto do_send;
+			send_not_found();
 			}
+		}
+#ifndef NO_WEBUI
+		else {
+			dbg_string("Have entry, authenticated: "); dbg_byte(authenticated); dbg_char('\n');
 			// A web-page is actively accessed, we can reset session time-out
 			reg_read_m(RTL837X_REG_SEC_COUNTER);
 			timeptr = (uint8_t*)&last_session_use; // last_session_use is Little endian
@@ -713,6 +762,7 @@ void httpd_appcall(void)
 			flash_read_bulk(outbuf + slen);
 			slen += len_left;
 		}
+#endif
 do_send:
 		dbg_string("slen: "); dbg_short(slen); dbg_char('\n');
 		o_idx = 0;

@@ -63,7 +63,8 @@ var mtus = [];
 
 const sysLabels = {
   ip_address: "IP Address", ip_netmask: "Subnet Mask", ip_gateway: "Default Gateway",
-  sw_ver: "Firmware Version", hw_ver: "Hardware Version", mac_addr: "MAC Address", uptime: "System Uptime"
+  sw_ver: "Firmware Version", hw_ver: "Hardware Version", mac_addr: "MAC Address", uptime: "System Uptime",
+  telnet_enabled: "Telnet", web_enabled: "Web"
 };
 
 /** NAVIGATION & SMART POLLING **/
@@ -111,10 +112,21 @@ function nav(id) {
 }
 
 /** LIVE DATA POLLERS **/
+var sfpDiagCache = null;
+
+function pollSfpDiag() {
+  fetchAPI('GET', '/sfp_diag.json', function(raw) {
+    try { sfpDiagCache = JSON.parse(raw); } catch(e) {}
+  });
+}
+
 function pollStatus() {
   fetchAPI('GET', '/status.json', function(raw) {
     try {
       var data = JSON.parse(raw);
+      if (document.getElementById('dash').classList.contains('active')) {
+        pollSfpDiag();
+      }
       var grid = document.getElementById('port-grid');
       var sBody = document.getElementById('stat-body');
       var isDash = document.getElementById('dash').classList.contains('active');
@@ -189,24 +201,33 @@ function pollStatus() {
             if (p.isSFP) {
               tooltip += '\n\n-- SFP Diagnostics --';
               if (p.sfp_vendor) tooltip += '\nVendor: ' + p.sfp_vendor + ' (' + p.sfp_model + ')';
-              if (p.sfp_temp && p.sfp_temp !== '0x0000') {
-                var tRaw = parseInt(p.sfp_temp, 16);
-                if (tRaw > 32767) tRaw -= 65536;
-                tooltip += '\nTemp: ' + (tRaw / 256).toFixed(1) + ' °C';
-              }
-              if (p.sfp_vcc && p.sfp_vcc !== '0x0000') tooltip += '\nVcc: ' + (parseInt(p.sfp_vcc, 16) * 0.0001).toFixed(2) + ' V';
-              if (p.sfp_txbias && p.sfp_txbias !== '0x0000') tooltip += '\nTx Bias: ' + (parseInt(p.sfp_txbias, 16) * 0.002).toFixed(2) + ' mA';
-              if (p.sfp_txpower && p.sfp_txpower !== '0x0000') {
-                var mw = parseInt(p.sfp_txpower, 16) * 0.0001;
-                tooltip += '\nTx Power: ' + (mw > 0 ? (10 * Math.log10(mw)).toFixed(2) : '-inf') + ' dBm';
-              }
-              if (p.sfp_rxpower && p.sfp_rxpower !== '0x0000') {
-                var mw2 = parseInt(p.sfp_rxpower, 16) * 0.0001;
-                tooltip += '\nRx Power: ' + (mw2 > 0 ? (10 * Math.log10(mw2)).toFixed(2) : '-inf') + ' dBm';
-              } else if (p.sfp_rxpower === '0x0000') {
-                tooltip += '\nRx Power: LOS (No light)';
-              }
               if (p.sfp_los !== null) tooltip += '\nRX-LOS: ' + Boolean(Number(p.sfp_los));
+              /* SFP diagnostic data (temp, vcc, bias, power) from sfp_diag.json */
+              if (sfpDiagCache) {
+                for (var di = 0; di < sfpDiagCache.length; di++) {
+                  if (sfpDiagCache[di].portNum === portNum) {
+                    var d = sfpDiagCache[di];
+                    if (d.sfp_temp && d.sfp_temp !== '0x0000') {
+                      var tRaw = parseInt(d.sfp_temp, 16);
+                      if (tRaw > 32767) tRaw -= 65536;
+                      tooltip += '\nTemp: ' + (tRaw / 256).toFixed(1) + ' °C';
+                    }
+                    if (d.sfp_vcc && d.sfp_vcc !== '0x0000') tooltip += '\nVcc: ' + (parseInt(d.sfp_vcc, 16) * 0.0001).toFixed(2) + ' V';
+                    if (d.sfp_txbias && d.sfp_txbias !== '0x0000') tooltip += '\nTx Bias: ' + (parseInt(d.sfp_txbias, 16) * 0.002).toFixed(2) + ' mA';
+                    if (d.sfp_txpower && d.sfp_txpower !== '0x0000') {
+                      var mw = parseInt(d.sfp_txpower, 16) * 0.0001;
+                      tooltip += '\nTx Power: ' + (mw > 0 ? (10 * Math.log10(mw)).toFixed(2) : '-inf') + ' dBm';
+                    }
+                    if (d.sfp_rxpower && d.sfp_rxpower !== '0x0000') {
+                      var mw2 = parseInt(d.sfp_rxpower, 16) * 0.0001;
+                      tooltip += '\nRx Power: ' + (mw2 > 0 ? (10 * Math.log10(mw2)).toFixed(2) : '-inf') + ' dBm';
+                    } else if (d.sfp_rxpower === '0x0000') {
+                      tooltip += '\nRx Power: LOS (No light)';
+                    }
+                    break;
+                  }
+                }
+              }
             }
             d.title = tooltip;
             d.innerHTML = '';
@@ -278,6 +299,18 @@ function pollInfo() {
           el.value = data[keyMap[id]] || '';
         }
       });
+      var brand = document.getElementById('brand-title');
+      if (brand) {
+        brand.textContent = data.hostname || data.hw_ver || 'RTLPlayground';
+      }
+      var verEl = document.getElementById('brand-version');
+      if (verEl) {
+        verEl.textContent = data.sw_ver || '';
+      }
+      if (data.telnet_enabled !== undefined)
+        updateTelnetLabel(data.telnet_enabled === '1');
+      if (data.web_enabled !== undefined)
+        updateWebLabel(data.web_enabled === '1');
     } catch (e) {}
   });
 }
@@ -859,6 +892,30 @@ function rebootSwitch() {
   fetchAPI('GET', '/reset', function() { notify('Switch rebooting...', 'info'); });
 }
 
+function telnetToggle() {
+  var cmd = 'telnet ' + (document.getElementById('telnet_toggle').checked ? 'on' : 'off');
+  fetchAPI('POST', '/cmd', function() { notify('Telnet toggled.', 'success'); }, cmd + '\n');
+}
+
+function updateTelnetLabel(enabled) {
+  var cb = document.getElementById('telnet_toggle');
+  var lb = document.getElementById('telnet_label');
+  if (cb) cb.checked = enabled;
+  if (lb) lb.textContent = enabled ? 'enabled' : 'disabled';
+}
+
+function webToggle() {
+  var cmd = 'web ' + (document.getElementById('web_toggle').checked ? 'on' : 'off');
+  fetchAPI('POST', '/cmd', function() { notify('Web toggled.', 'success'); }, cmd + '\n');
+}
+
+function updateWebLabel(enabled) {
+  var cb = document.getElementById('web_toggle');
+  var lb = document.getElementById('web_label');
+  if (cb) cb.checked = enabled;
+  if (lb) lb.textContent = enabled ? 'enabled' : 'disabled';
+}
+
 function openTab(evt, tabId) {
   var parent = evt.currentTarget.parentElement;
   parent.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
@@ -888,8 +945,6 @@ function getKey(line) {
   if (line.match(/^ip\s+/)) return 'ip';
   if (line.match(/^gw\s+/)) return 'gw';
   if (line.match(/^netmask\s+/)) return 'netmask';
-  if (line.match(/^syslog\s+ip\s+/)) return 'syslog ip';
-  if (line.match(/^syslog\s+/)) return 'syslog';
   if (line.match(/^passwd\s+/)) return 'passwd';
   if (line.match(/^eee\s+\d+/)) return line.match(/^eee\s+\d+/)[0];
   if (line.match(/^eee\s+(on|off)/)) return 'eee';
@@ -909,6 +964,11 @@ function getKey(line) {
   if (line.match(/^port\s+\d+\s+name/)) return line.match(/^port\s+\d+\s+name/)[0];
   if (line.match(/^port\s+\d+/)) return line.match(/^port\s+\d+/)[0];
   if (line.match(/^mtu\s+\d+/)) return line.match(/^mtu\s+\d+/)[0];
+  if (line.match(/^hostname\s+/)) return 'hostname';
+  if (line.match(/^telnet\s+/)) return 'telnet';
+  if (line.match(/^web\s+/)) return 'web';
+  if (line.match(/^commit$/)) return 'commit';
+  if (line.match(/^show$/)) return 'show';
   return null;
 }
 

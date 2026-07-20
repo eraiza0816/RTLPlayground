@@ -24,7 +24,7 @@
 #include "uip/uip_arp.h"
 #include "machine.h"
 #include "phy.h"
-#include "syslog.h"
+#include "telnetd/telnetd.h"
 
 extern __code const struct machine machine;
 extern __xdata uint32_t flash_size;
@@ -119,7 +119,11 @@ __xdata uint16_t rx_packet_vlan;
 __xdata uint16_t management_vlan;
 __xdata uint8_t tx_seq;
 
+__xdata char hostname[32];
+
 __xdata uint8_t stpEnabled;
+__xdata uint8_t telnet_enabled;
+__xdata uint8_t web_enabled;
 
 __code uint16_t bit_mask[16] = {
 	0x0001, 0x0002, 0x0004, 0x0008, 0x0010, 0x0020, 0x0040, 0x0080,
@@ -231,31 +235,30 @@ void isr_serial(void) __interrupt(4)
 	}
 }
 
+static void uart_putc(char c)
+{
+	do {} while (tx_buf_empty == 0);
+	tx_buf_empty = 0;
+	SBUF = c;
+}
+
+__xdata uint8_t telnet_active;
 
 void write_char_no_syslog(char c)
 {
-	do {
-	} while (tx_buf_empty == 0);
 	if (c =='\n') {
-		tx_buf_empty = 0;
-		SBUF = '\r';
-		do {
-		} while (tx_buf_empty == 0);
+		uart_putc('\r');
+		if (telnet_active && telnet_is_connected() && telnet_echo_enabled())
+			telnet_tx_enqueue('\r');
 	}
-	tx_buf_empty = 0;
-	SBUF = c;
+	uart_putc(c);
+	if (telnet_active && telnet_is_connected() && telnet_echo_enabled())
+		telnet_tx_enqueue(c);
 }
 
 void write_char(char c)
 {
 	write_char_no_syslog(c);
-
-	if (syslog_state.enabled) {
-		logbuf[syslog_state.writeptr++] = c;
-		syslog_state.writeptr &= (LOGBUF_SIZE - 1);
-		if (c == '\n')
-			syslog_state.line_available = 1;
-	}
 }
 
 void itoa(uint8_t v)
@@ -398,9 +401,24 @@ void print_byte(uint8_t a)
 	write_char(low);
 }
 
+extern __xdata uint8_t cli_mode;
+
 void print_cmd_prompt(void)
 {
-	print_string_no_syslog("\n> ");
+	if (hostname[0]) {
+		write_char_no_syslog('[');
+		__xdata char *p = hostname;
+		while (*p) write_char_no_syslog(*p++);
+		write_char_no_syslog(']');
+	}
+	switch (cli_mode) {
+	case 0:  print_string_no_syslog("> ");  break;
+	case 1:  print_string_no_syslog("# ");  break;
+	case 2:  print_string_no_syslog("(config)# ");  break;
+	case 3:  print_string_no_syslog("(config-if)# ");  break;
+	case 4:  print_string_no_syslog("(config-vlan)# "); break;
+	default: print_string_no_syslog("> ");  break;
+	}
 }
 
 /*
@@ -664,9 +682,6 @@ void nic_tx_packet(uint16_t ring_ptr)
 	if (management_vlan) {
 		SFR_NIC_DATA_U16LE = (uint16_t) uip_buf;
 		len = FRAME_Q->len;
-		/*
-		(__xdata struct rtl_dot1q_frame *)uip_buf
-#define FRAME (((__xdata struct rtl_dot1q_frame *)&uip_buf[0]).nonq_frame)*/
 	} else {
 		SFR_NIC_DATA_U16LE = (uint16_t) uip_buf + VLAN_TAG_SIZE;
 		len = FRAME->len;
@@ -2121,8 +2136,6 @@ void main(void)
 
 	check_and_flash_update_image();
 
-	syslog_init();
-
 #ifdef DEBUG
 	// This register seems to work on the RTL8373 only if also the SDS
 	// Is correctly configured. Therefore, we can test it, here...
@@ -2149,6 +2162,8 @@ void main(void)
 	uip_init();
 	uip_arp_init();
 	httpd_init();
+	telnetd_init();
+	telnet_active = 1;
 
 	management_vlan = 1; // Default management VLAN is 1
 
@@ -2167,7 +2182,9 @@ void main(void)
 
 	early_boot_handle_button();
 
+	cli_mode = MODE_CONFIG; /* boot config runs in config mode */
 	execute_config();
+	cli_mode = MODE_EXEC;
 	print_cmd_prompt();
 	idle_ready = 1;
 

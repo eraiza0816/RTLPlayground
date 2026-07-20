@@ -158,6 +158,8 @@ var LANG = {
     sys_reset_confirm: 'Are you sure you want to reset the switch?',
     sys_resetting: 'Switch is resetting. Please wait and refresh the page.',
     sys_language: 'Language:',
+    sys_telnet: 'Telnet:',
+    sys_web: 'Web:',
 
     login_title: 'RTL Switch Login',
     login_heading: 'RTL Switch Login',
@@ -337,6 +339,8 @@ var LANG = {
     sys_reset_confirm: 'スイッチを再起動してもよろしいですか？',
     sys_resetting: 'スイッチを再起動中です。しばらく待ってからページをリロードしてください。',
     sys_language: '言語:',
+    sys_telnet: 'Telnet:',
+    sys_web: 'Web:',
 
     login_title: 'RTL スイッチ ログイン',
     login_heading: 'RTL スイッチ ログイン',

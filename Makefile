@@ -1,4 +1,7 @@
-VERSION=0.1.0
+VERSION=0.2.19
+
+# WebUI option: WEB=1 (default) to enable, WEB=0 to disable
+WEB ?= 1
 IMAGESIZE = 524288
 DEFAULT_CONFIG_LOCATION = 454656
 CONFIG_LOCATION = 458752
@@ -36,18 +39,32 @@ create_build_dir:
 	mkdir -p $(BUILDDIR)
 	mkdir -p $(BUILDDIR)/uip
 	mkdir -p $(BUILDDIR)/httpd
+	mkdir -p $(BUILDDIR)/telnetd
 
 SRCS = rtlplayground.c rtl837x_flash.c rtl837x_leds.c rtl837x_phy.c rtl837x_port.c cmd_parser.c html_data.c rtl837x_igmp.c
-SRCS += rtl837x_stp.c rtl837x_pins.c dhcp.c machine.c cmd_editor.c rtl837x_bandwidth.c rtl837x_init.c syslog.c
+SRCS += rtl837x_stp.c rtl837x_pins.c dhcp.c machine.c cmd_editor.c rtl837x_bandwidth.c rtl837x_init.c
 SRCS += uip/timer.c uip/uip.c uip/uip_arp.c uip/uiplib.c uip/uip-fw.c uip/uip-neighbor.c uip/uip-split.c udp_apps.c
 SRCS += httpd/httpd.c httpd/page_impl.c
 SRCS += sfp_bitbang.c
+SRCS += telnetd/telnetd.c
+SRCS += cmd_commit.c
+SRCS += cmd_help.c
+SRCS += cmd_mode.c
+SRCS += cmd_xmodem.c
+
+ifeq ($(WEB),0)
+	CC_FLAGS += -DNO_WEBUI
+	SRCS := $(filter-out html_data.c, $(SRCS))
+endif
+
 OBJS = ${SRCS:%.c=$(BUILDDIR)/%.rel}
 DEPS := ${SRCS:%.c=$(BUILDDIR)/%.d}
 HTML := $(shell find $(html) -name '*.js' -or -name '*.html' -or -name '*.svg')
 
+ifeq ($(WEB),1)
 html_data.c html_data.h: $(HTML) tools/output/fileadder
 	tools/output/fileadder -a $(HTML_LOCATION) -s $(IMAGESIZE) -b BANK1 -d html -p html_data
+endif
 
 $(VERSION_HEADER):
 	@echo "#ifndef VERSION_H" > $(VERSION_HEADER)
@@ -56,7 +73,9 @@ $(VERSION_HEADER):
 	@echo "#define BUILD_DATE \"$(shell date +"%Y-%m-%d %H:%M:%S")\"" >> $(VERSION_HEADER)
 	@echo "#endif" >> $(VERSION_HEADER)
 
+ifeq ($(WEB),1)
 httpd: html_data.h
+endif
 
 $(SUBDIRS):
 	$(MAKE) -C $@
@@ -69,6 +88,11 @@ distclean:
 	-rm -f html_data.c html_data.h $(VERSION_HEADER)
 	-rm -rf $(BUILDDIR)
 
+TELNET_FLAGS = $(CC_FLAGS) --stack-auto
+
+$(BUILDDIR)/telnetd/%.rel: telnetd/%.c
+	$(CC) -MMD $(TELNET_FLAGS) -DMACHINE_$(MACHINE) -o $@ -c $<
+
 $(BUILDDIR)/%.rel: %.c
 	$(CC) -MMD $(CC_FLAGS) -o $@ -c $<
 
@@ -77,7 +101,7 @@ $(BUILDDIR)/%.rel: %.asm
 #	mv -f $(addprefix $(basename $^), .lst .rel .sym) .
 
 $(BUILDDIR)/rtlplayground.ihx: $(OBJS) $(BUILDDIR)/crtstart.rel $(BUILDDIR)/crc16.rel
-	$(CC) $(CC_FLAGS) -Wl-bHOME=0x00000 -Wl-bBANK1=0x14000 -Wl-bBANK2=0x24000 -Wl-r -o $@ $^
+	$(CC) $(CC_FLAGS) -Wl-bHOME=0x00000 -Wl-bBANK1=0x14000 -Wl-bBANK2=0x24000 -Wl-bBANK3=0x34000 -Wl-r -o $@ $^
 
 $(BUILDDIR)/rtlplayground.img: $(BUILDDIR)/rtlplayground.ihx
 	objcopy --input-target=ihex -O binary $< $@
@@ -87,7 +111,9 @@ $(BUILDDIR)/rtlplayground-$(FILENAME_EXTENSION).bin: $(BUILDDIR)/rtlplayground.i
 	tools/output/imagebuilder -i $^ $@
 	tools/output/fileadder -a $(DEFAULT_CONFIG_LOCATION) -s $(IMAGESIZE) -d config.txt $@
 	tools/output/fileadder -a $(CONFIG_LOCATION) -s $(IMAGESIZE) -d config.txt $@
+ifeq ($(WEB),1)
 	tools/output/fileadder -a $(HTML_LOCATION) -s $(IMAGESIZE) -d html -p html_data -b BANK1 $@
+endif
 	tools/output/crc_calculator -u $@
 	ln -sf $(MACHINE)/rtlplayground-$(FILENAME_EXTENSION).bin output/rtlplayground.bin
 

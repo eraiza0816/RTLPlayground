@@ -13,7 +13,7 @@
 
 #define SESSION_ID "1234567890ab"
 #define PASSWORD "1234"
-#define SESSION_TIMEOUT 2000
+#define SESSION_TIMEOUT 200
 
 #define PORTS 6
 #define NSFP 1
@@ -119,10 +119,29 @@ char *getMime(const char *name)
 
 void send_basic_info(int socket)
 {
-	char *response = "HTTP/1.1 200 OK\r\n"
-		    "Content-Type: application/json; charset=UTF-8\r\n\r\n"
-			"{\"ip_address\":\"192.168.10.247\",\"ip_gateway\":\"192.168.2.22\",\"ip_netmask\":\"255.255.255.0\",\"mac_address\":\"1c:2a:a3:23:00:02\",\"sw_ver\":\"" VERSION_SW "\",\"hw_ver\":\"SWGT024-V2.0\"}";
-	write(socket, response, strlen(response));
+	struct json_object *v;
+	const char *jstring;
+	char *header = "HTTP/1.1 200 OK\r\n"
+		       "Content-Type: application/json; charset=UTF-8\r\n\r\n";
+
+	v = json_object_new_object();
+	json_object_object_add(v, "ip_address", json_object_new_string("192.168.10.247"));
+	json_object_object_add(v, "ip_gateway", json_object_new_string("192.168.2.22"));
+	json_object_object_add(v, "ip_netmask", json_object_new_string("255.255.255.0"));
+	json_object_object_add(v, "telnet_enabled", json_object_new_string("1"));
+	json_object_object_add(v, "web_enabled", json_object_new_string("1"));
+	json_object_object_add(v, "mac_address", json_object_new_string("1c:2a:a3:23:00:02"));
+	json_object_object_add(v, "sw_ver", json_object_new_string(VERSION_SW));
+	json_object_object_add(v, "build_date", json_object_new_string(__DATE__));
+	json_object_object_add(v, "hw_ver", json_object_new_string("SWGT024-V2.0"));
+	json_object_object_add(v, "flash_size", json_object_new_string("16MB"));
+	json_object_object_add(v, "hostname", json_object_new_string("rtlplayground"));
+	json_object_object_add(v, "sfp_slot_0", json_object_new_string("OEM/10G-SFP+/12345678"));
+
+	write(socket, header, strlen(header));
+	jstring = json_object_to_json_string_ext(v, JSON_C_TO_STRING_PLAIN);
+	write(socket, jstring, strlen(jstring));
+	json_object_put(v);
 }
 
 void send_vlan(int s, int vlan)
@@ -165,6 +184,9 @@ void send_status(int s)
 		v = json_object_new_object();
 		json_object_object_add(v, "portNum", json_object_new_int(i));
 		json_object_object_add(v, "logPort", json_object_new_int(physToLogPort[i-1]));
+		char port_name[32];
+		sprintf(port_name, "Port %d", i);
+		json_object_object_add(v, "name", json_object_new_string(port_name));
 		json_object_object_add(v, "isSFP", json_object_new_int(i <= PORTS - NSFP ? 0 : 1));
 		json_object_object_add(v, "enabled", json_object_new_int((i % 4) ? 1 : 0));
 		json_object_object_add(v, "link", json_object_new_int(i % 2 ? ((i == 1)? 5 : 2) : 0));
@@ -175,40 +197,19 @@ void send_status(int s)
 			txB[i-1] += rate * (now - last_called) / 10000000;
 			rxB[i-1] += rate * (now - last_called) / 10000000;
 		}
-		sprintf(txG_buff, "0x%016lx", txG[i-1]);
-		sprintf(txB_buff, "0x%016lx", txB[i-1]);
-		sprintf(rxG_buff, "0x%016lx", rxG[i-1]);
-		sprintf(rxB_buff, "0x%016lx", rxB[i-1]);
+		sprintf(txG_buff, "0x%lx", txG[i-1]);
+		sprintf(txB_buff, "0x%lx", txB[i-1]);
+		sprintf(rxG_buff, "0x%lx", rxG[i-1]);
+		sprintf(rxB_buff, "0x%lx", rxB[i-1]);
 		json_object_object_add(v, "txG", json_object_new_string(txG_buff));
 		json_object_object_add(v, "txB", json_object_new_string(txB_buff));
 		json_object_object_add(v, "rxG", json_object_new_string(rxG_buff));
 		json_object_object_add(v, "rxB", json_object_new_string(rxB_buff));
 		if (i >= PORTS - NSFP) {
-			uint16_t temp = 0x28fb + rand() / (RAND_MAX / 100);
-			uint16_t vcc = 0x7eda + rand() / (RAND_MAX / 100);
-			uint16_t txbias = 0x0d24 +rand() / (RAND_MAX / 100);
-			uint16_t txpower = 0x14bd + rand() / (RAND_MAX / 100);
-			uint16_t rxpower = 0;
-			uint16_t laser = 0;
-			uint16_t options = 0x68;
-			
-			sprintf(sfp_options, "0x%02x", options);
-			sprintf(sfp_temp, "0x%04x", temp);
-			sprintf(sfp_vcc, "0x%04x", vcc);
-			sprintf(sfp_txbias, "0x%04x", txbias);
-			sprintf(sfp_txpower, "0x%04x", txpower);
-			sprintf(sfp_rxpower, "0x%04x", rxpower);
-			sprintf(sfp_laser, "0x%04x", laser);
 			json_object_object_add(v, "sfp_vendor", json_object_new_string("OEM"));
 			json_object_object_add(v, "sfp_model", json_object_new_string("10G-SFP+"));
 			json_object_object_add(v, "sfp_serial", json_object_new_string("12345678"));
-			json_object_object_add(v, "sfp_options", json_object_new_string(sfp_options));
-			json_object_object_add(v, "sfp_temp", json_object_new_string(sfp_temp));
-			json_object_object_add(v, "sfp_vcc", json_object_new_string(sfp_vcc));
-			json_object_object_add(v, "sfp_txbias", json_object_new_string(sfp_txbias));
-			json_object_object_add(v, "sfp_txpower", json_object_new_string(sfp_txpower));
-			json_object_object_add(v, "sfp_rxpower", json_object_new_string(sfp_rxpower));
-			json_object_object_add(v, "sfp_laser", json_object_new_string(sfp_laser));
+			json_object_object_add(v, "sfp_los", json_object_new_int(0));
 		} else {
 			if (i == 1)
 				json_object_object_add(v, "adv", json_object_new_string("100000"));
@@ -388,13 +389,16 @@ void send_l2(int s, int idx)
 		printf("Entry %d, idx: %04x, transferred %d\n", i, l2_entries[i].idx, transferred);
 		v = json_object_new_object();
 		json_object_object_add(v, "mac", json_object_new_string(l2_entries[i].mac));
-		json_object_object_add(v, "vlan", json_object_new_string(l2_entries[i].vlan));
+		int vlan_id = atoi(l2_entries[i].vlan);
+		char vlan_hex[8];
+		sprintf(vlan_hex, "0x%03x", vlan_id);
+		json_object_object_add(v, "vlan", json_object_new_string(vlan_hex));
 		if (l2_entries[i].type == 'l')
 			json_object_object_add(v, "type", json_object_new_string("l"));
 		else
 			json_object_object_add(v, "type", json_object_new_string("s"));
 		json_object_object_add(v, "port", json_object_new_int(l2_entries[i].port));
-		sprintf(l2_idx_buff, "%04x", l2_entries[i].idx);
+		sprintf(l2_idx_buff, "0x%04x", l2_entries[i].idx);
 		json_object_object_add(v, "idx", json_object_new_string(l2_idx_buff));
 		json_object_array_add(entries, v);
 		j++;
@@ -466,7 +470,6 @@ void send_cmd_log(int s)
 
 	for (int i = 0; i < cmd_ptr; i++) {
 		write(s, cmd_history[i], strlen(cmd_history[i]));
-		write(s, "\n", 1);
 		printf("%d: %s\n", i, cmd_history[i]);
 	}
 }
@@ -499,7 +502,7 @@ void send_vlanlist(int s)
 
 	arr = json_object_new_array();
 	v = json_object_new_object();
-	json_object_object_add(v, "id", json_object_new_string("1"));
+	json_object_object_add(v, "id", json_object_new_int(1));
 	json_object_object_add(v, "name", json_object_new_string("Default"));
 	json_object_array_add(arr, v);
 
@@ -513,7 +516,7 @@ void send_l2_delete(int s, int idx)
 {
         char *response = "HTTP/1.1 200 OK\r\n"
                        "Content-Type: application/json; charset=UTF-8\r\n\r\n"
-                       "{}";
+                       "{\"result\":0}";
         write(s, response, strlen(response));
 }
 
@@ -525,6 +528,7 @@ void send_sfp_eeprom(int s, int slot)
                        "Content-Type: application/json; charset=UTF-8\r\n\r\n";
 
 	v = json_object_new_object();
+	json_object_object_add(v, "slot", json_object_new_int(slot));
 	// Return empty 256-byte EEPROM data (all zeros)
 	char data[513];
 	memset(data, '0', 512);
@@ -535,6 +539,42 @@ void send_sfp_eeprom(int s, int slot)
 	jstring = json_object_to_json_string_ext(v, JSON_C_TO_STRING_PLAIN);
         write(s, jstring, strlen(jstring));
 	json_object_put(v);
+}
+
+
+void send_sfp_diag(int s)
+{
+	struct json_object *arr, *v;
+	const char *jstring;
+	char *header = "HTTP/1.1 200 OK\r\n"
+		       "Content-Type: application/json; charset=UTF-8\r\n\r\n";
+
+	arr = json_object_new_array();
+	for (int i = 1; i <= PORTS; i++) {
+		if (i <= PORTS - NSFP) continue;
+		v = json_object_new_object();
+		json_object_object_add(v, "portNum", json_object_new_int(i));
+		sprintf(sfp_options, "0x%02x", 0x68);
+		json_object_object_add(v, "sfp_options", json_object_new_string(sfp_options));
+		sprintf(sfp_temp, "0x%04x", 0x28fb + rand() / (RAND_MAX / 100));
+		json_object_object_add(v, "sfp_temp", json_object_new_string(sfp_temp));
+		sprintf(sfp_vcc, "0x%04x", 0x7eda + rand() / (RAND_MAX / 100));
+		json_object_object_add(v, "sfp_vcc", json_object_new_string(sfp_vcc));
+		sprintf(sfp_txbias, "0x%04x", 0x0d24 + rand() / (RAND_MAX / 100));
+		json_object_object_add(v, "sfp_txbias", json_object_new_string(sfp_txbias));
+		sprintf(sfp_txpower, "0x%04x", 0x14bd + rand() / (RAND_MAX / 100));
+		json_object_object_add(v, "sfp_txpower", json_object_new_string(sfp_txpower));
+		sprintf(sfp_rxpower, "0x%04x", 0x0000);
+		json_object_object_add(v, "sfp_rxpower", json_object_new_string(sfp_rxpower));
+		sprintf(sfp_laser, "0x%02x", 0x00);
+		json_object_object_add(v, "sfp_state", json_object_new_string(sfp_laser));
+		json_object_array_add(arr, v);
+	}
+
+	write(s, header, strlen(header));
+	jstring = json_object_to_json_string_ext(arr, JSON_C_TO_STRING_PLAIN);
+	write(s, jstring, strlen(jstring));
+	json_object_put(arr);
 }
 
 
@@ -699,6 +739,13 @@ void launch(struct Server *server)
 					else
 						send_status(new_socket);
 					goto done;
+				} else if (!strncmp(&buffer[4], "/sfp_diag.json", 14)) {
+					printf("SFP diag request\n");
+					if (!authenticated)
+						send_unauthorized(new_socket);
+					else
+						send_sfp_diag(new_socket);
+					goto done;
 				} else if (!strncmp(&buffer[4], "/eee.json", 9)) {
 					printf("EEE request\n");
 					if (!authenticated)
@@ -775,8 +822,7 @@ void launch(struct Server *server)
 				} else if (!strncmp(&buffer[4], "/cmd_log_clear", 14)) {
 					printf("Request cmd_log_clear\n");
 					cmd_ptr = 0;
-					char *response = "HTTP/1.1 200 OK\r\n\r\n";
-					write(new_socket, response, strlen(response));
+					send_mtu(new_socket);
 					goto done;
 				} else if (!strncmp(&buffer[4], "/cmd_log", 8)) {
 					printf("Request cmd_log\n");
@@ -802,8 +848,6 @@ void launch(struct Server *server)
 					goto done;
 				} else if (!strncmp(&buffer[4], "/reset", 6)) {
 					printf("Reset request\n");
-					char *response = "HTTP/1.1 200 OK\r\n\r\n";
-					write(new_socket, response, strlen(response));
 					goto done;
 				} else if (!strncmp(&buffer[4], "/counters.json?port=", 20)) {
 					int port = atoi(&buffer[24]);
@@ -897,7 +941,7 @@ void launch(struct Server *server)
 						printf("Password accepted!\n");
 						response = "HTTP/1.1 302 Found\r\n"
 							   "Location: index.html\r\n"
-							   "Set-Cookie: session=" SESSION_ID "; SameSite=Lax\r\n"
+							   "Set-Cookie: session=" SESSION_ID "; Path=/; SameSite=Strict\r\n"
 							   "\r\n";
 					} else {
 						response = "HTTP/1.1 302 Found\r\n"
@@ -970,12 +1014,13 @@ void launch(struct Server *server)
 				}
 			}
 			char *response = "HTTP/1.1 200 OK\r\n"
-					 "Cache-Control: max-age=60, must-revalidate\r\n"
 					 "Content-Type: ";
 			write(new_socket, response, strlen(response));
 
 			write(new_socket, mime, strlen(mime));
-			response = "; charset=UTF-8\r\n\r\n";
+			response = "; charset=UTF-8\r\nCache-Control: max-age=60, must-revalidate\r\n"
+				   "Access-Control-Allow-Origin: *\r\n"
+				   "Content-Security-Policy: style-src 'self' 'unsafe-inline'\r\n\r\n";
 			write(new_socket, response, strlen(response));
 			if (filesize)
 				write(new_socket, buffer, filesize);

@@ -1,6 +1,31 @@
 # Automation
 
-## Upload
+## CLI via Telnet
+
+If Telnet is enabled (`telnet on`), CLI commands can be automated via Telnet:
+
+```bash
+# Send a single command and read response
+echo -e "show\n" | nc -w 2 ${SWITCH_IP} 23
+```
+
+Or with password authentication using `expect`:
+```bash
+expect -c '
+set timeout 5
+spawn telnet '${SWITCH_IP}'
+expect "Password:"
+send "'${PASSWORD}'\r"
+expect ">"
+send "show\r"
+expect ">"
+send "commit\r"
+expect ">"
+send "exit\r"
+'
+```
+
+## Firmware Upload
 
 You can automate upload of the firmware via WEB with curl:
 

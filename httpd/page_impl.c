@@ -7,13 +7,11 @@
 #include "rtl837x_flash.h"
 #include "rtl837x_pins.h"
 #include "uip.h"
-#include "html_data.h"
 #include <stdint.h>
 #include "phy.h"
 #include "version.h"
 #include "machine.h"
 #include "page_impl.h"
-#include "syslog.h"
 
 // #define DEBUG
 #include "debug.h"
@@ -35,6 +33,9 @@ extern __xdata uint8_t sfr_data[4];
 extern __xdata uint8_t sfp_pins_last;
 extern __xdata uint8_t vlan_names[VLAN_NAMES_SIZE];
 
+extern __xdata uint8_t telnet_enabled;
+extern __xdata uint8_t web_enabled;
+
 extern __xdata uint8_t cmd_history[CMD_HISTORY_SIZE];
 extern __xdata uint16_t cmd_history_ptr;
 
@@ -44,6 +45,7 @@ extern __xdata char sfp_module_vendor[2][17];
 extern __xdata char sfp_module_model[2][17];
 extern __xdata char sfp_module_serial[2][17];
 extern __xdata uint8_t sfp_options[2];
+extern __xdata char hostname[32];
 
 __code uint8_t * __code HTTP_RESPONCE_JSON = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n";
 __code uint8_t * __code HTTP_RESPONCE_TXT = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
@@ -252,11 +254,16 @@ void send_basic_info(void)
 	itoa_html(uip_netmask[0] >> 8); char_to_html('.');
 	itoa_html(uip_netmask[1]); char_to_html('.');
 	itoa_html(uip_netmask[1] >> 8);
-	slen += strtox(outbuf + slen, "\",\"syslog_server_ip\":\"");
-	itoa_html(syslog_state.server_ip[0]); char_to_html('.');
-	itoa_html(syslog_state.server_ip[1]); char_to_html('.');
-	itoa_html(syslog_state.server_ip[2]); char_to_html('.');
-	itoa_html(syslog_state.server_ip[3]);
+	slen += strtox(outbuf + slen, "\",\"telnet_enabled\":\"");
+	if (telnet_enabled)
+		char_to_html('1');
+	else
+		char_to_html('0');
+	slen += strtox(outbuf + slen, "\",\"web_enabled\":\"");
+	if (web_enabled)
+		char_to_html('1');
+	else
+		char_to_html('0');
 	slen += strtox(outbuf + slen, "\",\"mac_address\":\"");
 	byte_to_html(uip_ethaddr.addr[0]); char_to_html(':');
 	byte_to_html(uip_ethaddr.addr[1]); char_to_html(':');
@@ -272,6 +279,12 @@ void send_basic_info(void)
 	slen += strtox(outbuf + slen, machine.machine_name);
 	slen += strtox(outbuf + slen, "\",\"flash_size\":\"");
 	string_to_html(get_flash_size_str());
+
+	slen += strtox(outbuf + slen, "\",\"hostname\":\"");
+	if (hostname[0]) {
+		for (uint8_t i = 0; hostname[i]; i++)
+			char_to_html(hostname[i]);
+	}
 
 	if (machine.n_sfp) {
 		slen += strtox(outbuf + slen, "\",\"sfp_slot_0\":\"");
@@ -671,41 +684,12 @@ void send_status(void)
 		}
 		slen += strtox(outbuf + slen, "\"");
 
-		if (machine.is_sfp[i]) {
+			if (machine.is_sfp[i]) {
 			uint8_t sfp = machine.is_sfp[i] - 1;
 			slen += strtox(outbuf + slen, ",\"isSFP\":1,\"enabled\":");
 			if (!(sfp_pins_last & (0x1 << (sfp << 2)))) {
 				bool_to_html(1);
-				slen += strtox(outbuf + slen,",\"sfp_options\":\"0x");
-				byte_to_html(sfp_options[sfp]);
-				if (sfp_options[sfp] & 0x40) {
-					slen += strtox(outbuf + slen,"\",\"sfp_temp\":\"0x");
-					sfp_send_data(sfp, 224, 2);
-					slen += strtox(outbuf + slen,"\",\"sfp_vcc\":\"0x");
-					sfp_send_data(sfp, 226, 2);
-					slen += strtox(outbuf + slen,"\",\"sfp_txbias\":\"0x");
-					sfp_send_data(sfp, 228, 2);
-					slen += strtox(outbuf + slen,"\",\"sfp_txpower\":\"0x");
-					sfp_send_data(sfp, 230, 2);
-					slen += strtox(outbuf + slen,"\",\"sfp_rxpower\":\"0x");
-					sfp_send_data(sfp, 232, 2);
-					if (sfp_options[sfp] & 0x10) {
-						slen += strtox(outbuf + slen,"\",\"sfp_temp_cal\":\"0x");
-						sfp_send_data(sfp, 212, 4);
-						slen += strtox(outbuf + slen,"\",\"sfp_vcc_cal\":\"0x");
-						sfp_send_data(sfp, 216, 4);
-						slen += strtox(outbuf + slen,"\",\"sfp_txbias_cal\":\"0x");
-						sfp_send_data(sfp, 204, 4);
-						slen += strtox(outbuf + slen,"\",\"sfp_txpower_cal\":\"0x");
-						sfp_send_data(sfp, 208, 4);
-						slen += strtox(outbuf + slen,"\",\"sfp_rxpower_cal\":\"0x");
-						sfp_send_data(sfp, 184, 16);
-						sfp_send_data(sfp, 200, 4);
-					}
-					slen += strtox(outbuf + slen,"\",\"sfp_state\":\"0x");
-					sfp_send_data(sfp, 238, 1);
-				}
-				slen += strtox(outbuf + slen,"\",\"sfp_vendor\":\"");
+				slen += strtox(outbuf + slen,",\"sfp_vendor\":\"");
 				for (register uint8_t s = 0; s < 16 && sfp_module_vendor[sfp][s]; s++)
 					outbuf[slen++] = sfp_module_vendor[sfp][s];
 				slen += strtox(outbuf + slen,"\",\"sfp_model\":\"");
@@ -788,6 +772,39 @@ void send_status(void)
 		else
 			char_to_html(']');
 	}
+}
+
+void send_sfp_diag(void)
+{
+	slen = strtox(outbuf, HTTP_RESPONCE_JSON);
+	char_to_html('[');
+	uint8_t first = 1;
+	for (uint8_t i = machine.min_port; i <= machine.max_port; i++) {
+		if (!machine.is_sfp[i]) continue;
+		uint8_t sfp = machine.is_sfp[i] - 1;
+		if (!first) char_to_html(',');
+		first = 0;
+		slen += strtox(outbuf + slen, "{\"portNum\":");
+		itoa_html(machine.log_to_phys_port[i]);
+		slen += strtox(outbuf + slen, ",\"sfp_options\":\"0x");
+		byte_to_html(sfp_options[sfp]);
+		if (sfp_options[sfp] & 0x40) {
+			slen += strtox(outbuf + slen,"\",\"sfp_temp\":\"0x");
+			sfp_send_data(sfp, 224, 2);
+			slen += strtox(outbuf + slen,"\",\"sfp_vcc\":\"0x");
+			sfp_send_data(sfp, 226, 2);
+			slen += strtox(outbuf + slen,"\",\"sfp_txbias\":\"0x");
+			sfp_send_data(sfp, 228, 2);
+			slen += strtox(outbuf + slen,"\",\"sfp_txpower\":\"0x");
+			sfp_send_data(sfp, 230, 2);
+			slen += strtox(outbuf + slen,"\",\"sfp_rxpower\":\"0x");
+			sfp_send_data(sfp, 232, 2);
+		}
+		slen += strtox(outbuf + slen,"\",\"sfp_state\":\"0x");
+		sfp_send_data(sfp, 238, 1);
+		slen += strtox(outbuf + slen,"\"}");
+	}
+	char_to_html(']');
 }
 
 

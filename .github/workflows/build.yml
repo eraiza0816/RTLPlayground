@@ -28,6 +28,15 @@ jobs:
       - name: Build firmware
         run: make MACHINE="${{ matrix.machine }}"
 
+      - name: Build CLI firmware (no web)
+        run: |
+          make MACHINE="${{ matrix.machine }}" clean
+          make WEB=0 MACHINE="${{ matrix.machine }}"
+          cd output/${{ matrix.machine }}
+          for f in rtlplayground-v*.bin; do
+            mv "$f" "rtlplayground-CLI-${f#rtlplayground-}"
+          done
+
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v7
         with:
@@ -41,18 +50,23 @@ jobs:
       contents: write
 
     steps:
+      - uses: actions/checkout@v7
+
       - uses: actions/download-artifact@v8
         with:
           pattern: firmware-*
           merge-multiple: true
 
+      - name: Extract version
+        run: echo "FW_VERSION=v$(grep '^VERSION=' Makefile | cut -d= -f2)" >> $GITHUB_ENV
+
       - name: Create Release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: continuous
-          name: Continuous Build
+          tag_name: ${{ env.FW_VERSION }}
+          name: Firmware ${{ env.FW_VERSION }}
           body: |
-            Automated firmware build triggered by a merge to `main`.
+            Automated firmware build for ${{ env.FW_VERSION }}.
 
             Includes builds for:
             - SWGT024_V2_0_MANAGED

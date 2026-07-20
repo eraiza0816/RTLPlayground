@@ -5,6 +5,7 @@
 // #define DEBUG
 // #define REGDBG 1
 
+#include "cmd_parser.h"
 #include "rtl837x_common.h"
 #include "rtl837x_port.h"
 #include "rtl837x_flash.h"
@@ -15,7 +16,6 @@
 #include "rtl837x_igmp.h"
 #include "rtl837x_bandwidth.h"
 #include "dhcp.h"
-#include "syslog.h"
 #include "uip/uip.h"
 #include "version.h"
 
@@ -41,7 +41,9 @@ extern __xdata struct flash_region_t flash_region;
 extern __xdata char passwd[21];
 
 extern __xdata struct dhcp_state dhcp_state;
-
+extern __xdata char hostname[32];
+extern __xdata uint8_t telnet_enabled;
+extern __xdata uint8_t web_enabled;
 __xdata uint8_t vlan_names[VLAN_NAMES_SIZE];
 __xdata uint16_t vlan_ptr;
 
@@ -60,7 +62,7 @@ __xdata uint8_t hexvalue[4] = { 0 };
 
 // Buffer for writing to flash 0x1fd000, copy to 0x1fe000
 __xdata uint8_t cmd_buffer[CMD_BUF_SIZE];
-__xdata uint8_t cmd_available;
+volatile __xdata uint8_t cmd_available;
 
 __xdata	char save_cmd;
 
@@ -192,7 +194,11 @@ uint8_t atoi_byte(__xdata uint8_t *out, uint8_t idx)
 
 	while (isnumber(cmd_buffer[idx])) {
 		err = 0;
-		num = (num * 10) + cmd_buffer[idx] - '0';
+		uint8_t digit = cmd_buffer[idx] - '0';
+		if (num > 25 || (num == 25 && digit > 5)) {
+			return 1;
+		}
+		num = (num * 10) + digit;
 		idx++;
 	}
 
@@ -208,8 +214,11 @@ uint8_t atoi_short(__xdata uint16_t *vlan, uint8_t idx)
 
 	while (isnumber(cmd_buffer[idx])) {
 		err = 0;
-		uint8_t val = cmd_buffer[idx] - '0';
-		*vlan = (*vlan * 10) + val;
+		uint8_t digit = cmd_buffer[idx] - '0';
+		if (*vlan > 6553 || (*vlan == 6553 && digit > 5)) {
+			return 1;
+		}
+		*vlan = (*vlan * 10) + digit;
 		idx++;
 	}
 
@@ -220,17 +229,31 @@ uint8_t atoi_short(__xdata uint16_t *vlan, uint8_t idx)
 uint8_t parse_ip(uint8_t idx)
 {
 	__xdata uint8_t b;
+	__xdata uint16_t val;
 
 	for (b = 0; b < 4; b++) {
-		ip[b] = 0;
+		val = 0;
+		if (!isnumber(cmd_buffer[idx])) {
+			print_string("Error in IP format: missing octet\n");
+			return -1;
+		}
 		while (isnumber(cmd_buffer[idx])) {
-			ip[b] = (ip[b] * 10) + cmd_buffer[idx] - '0';
+			val = val * 10 + (cmd_buffer[idx] - '0');
+			if (val > 255) {
+				print_string("Error in IP format: octet > 255\n");
+				return -1;
+			}
 			idx++;
 		}
+		ip[b] = val;
 		if (b < 3 && cmd_buffer[idx++] != '.') {
 			print_string("Error in IP format, expecting '.'\n");
 			return -1;
 		}
+	}
+	if (cmd_buffer[idx] != '\0' && cmd_buffer[idx] != ' ') {
+		print_string("Error in IP format: trailing characters\n");
+		return -1;
 	}
 	return 0;
 }
@@ -300,6 +323,7 @@ void parse_lag_hash(void)
 	__xdata uint8_t group;
 	__xdata uint8_t hash = 0;
 
+	// TODO: validate group range (0-3) before port_lag_hash_set call
 	group = cmd_buffer[cmd_words_b[1]] - '0';
 
 	uint8_t w = 2;
@@ -409,6 +433,7 @@ void parse_isolate(void)
 
 	print_string("\nISOLATE ");
 
+	// TODO: validate port with isnumber() before phys_to_log_port access
 	__xdata int8_t port_configured = cmd_buffer[cmd_words_b[1]] - '1';
 	port_configured = machine.phys_to_log_port[port_configured];
 	if (isnumber(cmd_buffer[cmd_words_b[1] + 1]))  // CPU-port, logical port 9
@@ -573,8 +598,8 @@ void parse_mirror(void)
 	mirroring_port = cmd_buffer[cmd_words_b[1]] - '1';
 	if (isnumber(cmd_buffer[cmd_words_b[1] + 1]))
 		mirroring_port = (mirroring_port + 1) * 10 + cmd_buffer[cmd_words_b[1] + 1] - '1';
+	// TODO: validate mirroring_port range after phys_to_log_port mapping
 	mirroring_port = machine.phys_to_log_port[mirroring_port];
-	
 
 	uint8_t w = 2;
 	while (w < cmd_words_len) {
@@ -722,6 +747,7 @@ void parse_mtu(void)
 			write_char(' '); print_short(mtu); write_char('\n');
 		}
 	}
+	// TODO: validate port with isnumber() before phys_to_log_port access
 	p = cmd_buffer[cmd_words_b[1]] - '1';
 	p = machine.phys_to_log_port[p];
 	print_byte(p);
@@ -729,6 +755,7 @@ void parse_mtu(void)
 		print_string("mtu [port] [size]\n");
 		return;
 	}
+	// TODO: validate atoi_short() return value; check min MTU >= 64
 	atoi_short(&mtu, cmd_words_b[2]);
 	if (mtu > 0x3fff) {
 		print_string("Maximum MTU is 16383\n");
@@ -1348,9 +1375,146 @@ void parse_passwd(void)
 			passwd[j++] = c;
 		} while (c != '\0' && j < 20);
 		passwd[j] = '\0';
+		if (j < 5) {
+			print_string("Error: password too short (min 4 chars)\n");
+			passwd[0] = '\0';
+			return;
+		}
+		print_string("Password set\n");
 		return;
 	}
 	print_string("Missing password\n");
+}
+
+void parse_hostname(void)
+{
+	if (cmd_words_len >= 2) {
+		uint8_t i = cmd_words_b[1];
+		uint8_t j = 0;
+		while (cmd_buffer[i] && j < 31) {
+			uint8_t c = cmd_buffer[i];
+			if (!isletter(c) && !isnumber(c) && c != '-' && c != '_') {
+				print_string("Error: invalid character in hostname\n");
+				return;
+			}
+			hostname[j++] = c;
+			i++;
+		}
+		hostname[j] = '\0';
+		print_string("Hostname set to ");
+		print_string_x(hostname);
+		write_char('\n');
+		return;
+	}
+	if (hostname[0])
+		print_string_x(hostname);
+	else
+		print_string("(not set)");
+	write_char('\n');
+}
+
+
+extern void parse_commit(void) __banked;
+extern void parse_enable(void) __banked;
+extern void parse_disable(void) __banked;
+extern void parse_configure_terminal(void) __banked;
+extern void parse_exit(void) __banked;
+extern void parse_end(void) __banked;
+extern void parse_xmodem(void) __banked;
+
+
+void parse_show(void)
+{
+	print_string("Hostname:   ");
+	if (hostname[0])
+		print_string_x(hostname);
+	else
+		print_string("(not set)");
+	write_char('\n');
+
+	print_string("IP:         ");
+	itoa(uip_hostaddr[0]); write_char('.');
+	itoa(uip_hostaddr[0] >> 8); write_char('.');
+	itoa(uip_hostaddr[1]); write_char('.');
+	itoa(uip_hostaddr[1] >> 8);
+	write_char('\n');
+
+	print_string("Gateway:    ");
+	itoa(uip_draddr[0]); write_char('.');
+	itoa(uip_draddr[0] >> 8); write_char('.');
+	itoa(uip_draddr[1]); write_char('.');
+	itoa(uip_draddr[1] >> 8);
+	write_char('\n');
+
+	print_string("Netmask:    ");
+	itoa(uip_netmask[0]); write_char('.');
+	itoa(uip_netmask[0] >> 8); write_char('.');
+	itoa(uip_netmask[1]); write_char('.');
+	itoa(uip_netmask[1] >> 8);
+	write_char('\n');
+
+	print_string("Password:   ");
+	if (passwd[0])
+		print_string("(set)");
+	else
+		print_string("(not set)");
+	write_char('\n');
+}
+
+
+extern void parse_l2_delete(void) __banked;
+
+
+void parse_telnet(void)
+{
+	if (cmd_words_len < 2) {
+		print_string("Telnet: ");
+		if (telnet_enabled)
+			print_string("enabled\n");
+		else
+			print_string("disabled\n");
+		return;
+	}
+
+	if (cmd_compare(1, "on")) {
+		telnet_enabled = 1;
+		print_string("Telnet enabled\n");
+	} else if (cmd_compare(1, "off")) {
+		if (!web_enabled) {
+			print_string("Error: would disable all remote access (web is also off)\n");
+			return;
+		}
+		telnet_enabled = 0;
+		print_string("Telnet disabled\n");
+	} else {
+		print_string("Error: telnet [on|off]\n");
+	}
+}
+
+void parse_web(void)
+{
+	if (cmd_words_len < 2) {
+		print_string("Web: ");
+		if (web_enabled)
+			print_string("enabled\n");
+		else
+			print_string("disabled\n");
+		return;
+	}
+
+	if (cmd_compare(1, "on")) {
+		web_enabled = 1;
+		print_string("Web interface enabled\n");
+	} else if (cmd_compare(1, "off")) {
+		if (!telnet_enabled) {
+			print_string("Error: would disable all remote access (telnet is also off)\n");
+			return;
+		}
+		web_enabled = 0;
+		print_string("Web interface disabled (telnet still available)\n");
+	} else {
+		print_string("Error: web [on|off]\n");
+	}
 }
 
 
@@ -1373,7 +1537,9 @@ void parse_eee(void)
 			speed_word = 2;
 		} else if (cmd_buffer[idx] == ' ' || cmd_buffer[idx] == '\0') {
 			// Word 2 is a port number
-			port = cmd_buffer[cmd_words_b[2]] - '1';
+			// TODO: validate port with isnumber() before phys_to_log_port access
+	// TODO: validate cmd_words_len >= 3 before accessing cmd_words_b[2]
+	port = cmd_buffer[cmd_words_b[2]] - '1';
 			port = machine.phys_to_log_port[port];
 			// Check if word 3 is a speed
 			if (cmd_words_len >= 4)
@@ -1488,52 +1654,6 @@ err:
 	print_string("usage: bw [in|out|status] <port> [<hexvalue>|off|drop|fc]\n");
 }
 
-void parse_syslog(void)
-{
-	if (cmd_words_len < 2) // no argument -> print status
-	{
-		print_string("Current syslog status: ");
-		if (syslog_state.enabled) {
-			print_string("enabled, sending to ");
-			itoa(syslog_state.server_ip[0]); write_char('.'); itoa(syslog_state.server_ip[1]); write_char('.');
-			itoa(syslog_state.server_ip[2]); write_char('.'); itoa(syslog_state.server_ip[3]);
-			write_char('\n');
-		} else {
-			print_string("disabled\n");
-		}
-		return;
-	}
-
-	if (cmd_compare(1, "on")) {
-		syslog_start();
-	} else if (cmd_compare(1, "off")){
-		syslog_stop();
-	} else if (cmd_compare(1, "ip")) {
-		if (cmd_words_len < 3) { // no additional arguemnt -> print current ip
-			print_string("Current syslog IP: ");
-			itoa(syslog_state.server_ip[0]); write_char('.'); itoa(syslog_state.server_ip[1]); write_char('.');
-			itoa(syslog_state.server_ip[2]); write_char('.'); itoa(syslog_state.server_ip[3]);
-			return;
-		} else if (!parse_ip(cmd_words_b[2])) {
-			uint8_t was_enabled = syslog_state.enabled;
-			if (was_enabled)
-				syslog_stop();
-			print_string("Setting new syslog IP.\n");
-			syslog_state.server_ip[0] = ip[0]; syslog_state.server_ip[1] = ip[1];
-			syslog_state.server_ip[2] = ip[2]; syslog_state.server_ip[3] = ip[3];
-			if (was_enabled)
-				syslog_start();
-		} else {
-			print_string("Invalid IP address\n");
-		}
-	}
-	else
-	{
-		print_string("Error: syslog [on|off|ip [ip-address]]\n");
-		print_string("  on/off enables or disables syslog, ip sets the syslog server IP address\n");
-	}
-}
-
 // Parse command into words
 // cmd_words_len contains the number of words found.
 // cmd_words_b[] contains only start of a word offset.
@@ -1619,6 +1739,72 @@ void print_sw_version(void) __banked {
 	write_char('\n');
 }
 
+/* ── Mode permission table and check (BANK2, same as cmd_parser) ── */
+
+struct mode_entry {
+	char __code *name;
+	uint8_t mode_mask;
+};
+
+__code struct mode_entry mode_allow[] = {
+	{"reset",       (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"sfp",         (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"stat",        (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"flash",       (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"sds",         (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"gpio",        (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"regget",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"regset",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"sdsget",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"sdsset",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"phyget",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"physet",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"rnd",         (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"version",     (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"time",        (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"history",     (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"port",        (1<<MODE_CONFIG)|(1<<MODE_CONFIG_IF)},
+	{"mtu",         (1<<MODE_CONFIG)},
+	{"ip",          (1<<MODE_CONFIG)},
+	{"gw",          (1<<MODE_CONFIG)},
+	{"netmask",     (1<<MODE_CONFIG)},
+	{"vlan",        (1<<MODE_CONFIG)},
+	{"pvid",        (1<<MODE_CONFIG)},
+	{"ingress",     (1<<MODE_CONFIG)},
+	{"isolate",     (1<<MODE_CONFIG)},
+	{"mirror",      (1<<MODE_CONFIG)},
+	{"lag",         (1<<MODE_CONFIG)},
+	{"laghash",     (1<<MODE_CONFIG)},
+	{"stp",         (1<<MODE_CONFIG)},
+	{"igmp",        (1<<MODE_CONFIG)},
+	{"hostname",    (1<<MODE_CONFIG)},
+	{"eee",         (1<<MODE_CONFIG)},
+	{"bw",          (1<<MODE_CONFIG)},
+	{"passwd",      (1<<MODE_CONFIG)},
+	{"telnet",      (1<<MODE_CONFIG)},
+	{"web",         (1<<MODE_CONFIG)},
+	{"show",        (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"commit",      (1<<MODE_PRIVILEGED)},
+	{"xmodem",      (1<<MODE_PRIVILEGED)},
+	{0, 0}
+};
+
+static uint8_t cmd_mode_allowed(uint8_t start)
+{
+	struct mode_entry __code *e = mode_allow;
+	for (; e->name; e++) {
+		uint8_t i = 0;
+		while (e->name[i] && cmd_buffer[start + i] == e->name[i])
+			i++;
+		if (e->name[i] == '\0') {
+			uint8_t n = cmd_buffer[start + i];
+			if (n != '\0' && n != ' ')
+				continue;
+			return (e->mode_mask >> cli_mode) & 1;
+		}
+	}
+	return 1; /* unknown command — allow (will get "Unknown command" from parser) */
+}
 
 // Identify command
 void cmd_parser(void) __banked
@@ -1639,7 +1825,27 @@ void cmd_parser(void) __banked
 	print_byte(cmd_words_b[6]); write_char('\n');
 #endif
 	if (cmd_words_len >= 1) {
-		if (cmd_compare(0, "reset")) {
+		/* Help — works in any mode for both serial and telnet */
+		if (cmd_compare(0, "?") || cmd_compare(0, "help")) {
+			cmd_help();
+		/* Mode transition commands (always allowed) */
+		} else if (cmd_compare(0, "enable")) {
+			parse_enable();
+		} else if (cmd_compare(0, "disable")) {
+			parse_disable();
+		} else if (cmd_compare(0, "configure") && cmd_compare(1, "terminal")) {
+			parse_configure_terminal();
+		} else if (cmd_compare(0, "configure")) {
+			print_string("Usage: configure terminal\n");
+		} else if (cmd_compare(0, "exit")) {
+			parse_exit();
+		} else if (cmd_compare(0, "end")) {
+			parse_end();
+		} else if (cmd_words_len >= 2 && (cmd_compare(1, "?") || cmd_compare(1, "help"))) {
+			cmd_help();
+		} else if (!cmd_mode_allowed(cmd_words_b[0])) {
+			print_string("Command not available in this mode\n");
+		} else if (cmd_compare(0, "reset")) {
 			print_string("\nRESET\n\n");
 			reset_chip();
 		} else if (cmd_compare(0, "sfp")) {
@@ -1674,8 +1880,6 @@ void cmd_parser(void) __banked
 			parse_port();
 		} else if (cmd_compare(0, "mtu")) {
 			parse_mtu();
-		} else if (cmd_compare(0, "syslog")) {
-			parse_syslog();
 		} else if (cmd_compare(0, "ip")) {
 			if (cmd_compare(1, "dhcp")) {
 				dhcp_start();
@@ -1739,6 +1943,8 @@ void cmd_parser(void) __banked
 		} else if (cmd_compare(0, "l2")) {
 			if (cmd_compare(1, "forget"))
 				port_l2_forget();
+			else if (cmd_compare(1, "del") && cmd_words_len >= 3)
+				parse_l2_delete();
 			else
 				port_l2_learned();
 		} else if (cmd_compare(0, "igmp")) {
@@ -1800,6 +2006,18 @@ void cmd_parser(void) __banked
 			parse_eee();
 		} else if (cmd_compare(0, "bw")) {
 			parse_bw();
+		} else if (cmd_compare(0, "telnet")) {
+			parse_telnet();
+		} else if (cmd_compare(0, "web")) {
+			parse_web();
+		} else if (cmd_compare(0, "commit")) {
+			parse_commit();
+		} else if (cmd_compare(0, "xmodem")) {
+			parse_xmodem();
+		} else if (cmd_compare(0, "show")) {
+			parse_show();
+		} else if (cmd_compare(0, "hostname")) {
+			parse_hostname();
 		} else if (cmd_compare(0, "version")) {
 			print_sw_version();
 		} else if (cmd_compare(0, "time")) {
@@ -1862,10 +2080,10 @@ void clear_command_history(void) __banked
 #if CONFIG_LEN % FLASH_READ_BURST_SIZE
 	#error "CONFIG_LEN not a multiple of FLASH_READ_BURST_SIZE"
 #endif
-void execute_config(void) __banked
+void execute_config(void) __banked __reentrant
 {
-	__xdata uint32_t pos = CONFIG_START;
-	__xdata uint8_t pages_left = CONFIG_LEN / FLASH_READ_BURST_SIZE;
+	static __xdata uint32_t pos = CONFIG_START;
+	static __xdata uint8_t pages_left = CONFIG_LEN / FLASH_READ_BURST_SIZE;
 
 	// Set default password, it can be overwritten in the configuration file
 	strtox(passwd, PASSWORD);
@@ -1877,7 +2095,7 @@ void execute_config(void) __banked
 		flash_region.len = FLASH_READ_BURST_SIZE;
 		flash_read_bulk(flash_buf);
 
-		__xdata uint8_t cfg_idx = 0;
+		static __xdata uint8_t cfg_idx = 0;
 		uint8_t c = 0;
 		do {
 			if (cmd_idx >= (CMD_BUF_SIZE - 1)) {
@@ -1912,6 +2130,10 @@ void execute_config(void) __banked
 	} while(pages_left);
 
 config_done:
+	// Set default hostname from machine name if not configured
+	if (!hostname[0])
+		strtox(hostname, machine.machine_name);
+
 	// Start saving commands to cmd_history
 	clear_command_history();
 	save_cmd = 1;

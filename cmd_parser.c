@@ -134,6 +134,28 @@ uint8_t cmd_compare(uint8_t start, __code uint8_t * cmd)
 }
 
 
+uint8_t cmd_compare_prefix(uint8_t start, __code uint8_t * cmd)
+{
+	if (cmd_words_len == 0 || start > (cmd_words_len - 1))
+		return 0;
+
+	uint8_t i = cmd_words_b[start];
+	uint8_t j = 0;
+
+	while (cmd[j] && cmd_buffer[i] == cmd[j]) {
+		i++; j++;
+	}
+
+	if ((cmd_buffer[i] == ' ' || cmd_buffer[i] == '\0') && cmd[j])
+		return 1;
+
+	if (cmd[j] == '\0' && (cmd_buffer[i] == ' ' || cmd_buffer[i] == '\0'))
+		return 1;
+
+	return 0;
+}
+
+
 /* Converts ascii-hex array into value.
 	returns number of hexvalue[] entries has been written.
 	return value = 0 means error.
@@ -1884,22 +1906,22 @@ void cmd_parser(void) __banked
 #endif
 	if (cmd_words_len >= 1) {
 		/* Help — works in any mode for both serial and telnet */
-		if (cmd_compare(0, "?") || cmd_compare(0, "help")) {
+		if (cmd_compare_prefix(0, "?") || cmd_compare_prefix(0, "help")) {
 			cmd_help();
 		/* Mode transition commands (always allowed) */
-		} else if (cmd_compare(0, "enable")) {
+		} else if (cmd_compare_prefix(0, "enable")) {
 			parse_enable();
-		} else if (cmd_compare(0, "disable")) {
+		} else if (cmd_compare_prefix(0, "disable")) {
 			parse_disable();
-		} else if (cmd_compare(0, "configure") && cmd_compare(1, "terminal")) {
+		} else if (cmd_compare_prefix(0, "configure") && cmd_compare(1, "terminal")) {
 			parse_configure_terminal();
-		} else if (cmd_compare(0, "configure")) {
+		} else if (cmd_compare_prefix(0, "configure")) {
 			print_string("Usage: configure terminal\n");
-		} else if (cmd_compare(0, "exit")) {
+		} else if (cmd_compare_prefix(0, "exit")) {
 			parse_exit();
-		} else if (cmd_compare(0, "end")) {
+		} else if (cmd_compare_prefix(0, "end")) {
 			parse_end();
-		} else if (cmd_words_len >= 2 && (cmd_compare(1, "?") || cmd_compare(1, "help"))) {
+		} else if (cmd_words_len >= 2 && (cmd_compare_prefix(1, "?") || cmd_compare_prefix(1, "help"))) {
 			cmd_help();
 		} else {
 			__code struct cmd_entry *e = cmd_find(cmd_words_b[0]);

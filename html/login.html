@@ -6,13 +6,18 @@
   <title data-i18n="login_title">RTL Switch Login</title>
   <style>
     :root {
-      --bg: #f4f6f8;
+      --bg: #f5f5f5;
       --primary: #1e293b;
-      --accent: #3b82f6;
-      --accent-hover: #2563eb;
-      --text: #334155;
-      --error-bg: #fee2e2;
-      --error-text: #ef4444;
+      --accent: #1976D2;
+      --accent-hover: #1565C0;
+      --text: #424242;
+      --text-muted: #757575;
+      --error-bg: #ffebee;
+      --error-text: #c62828;
+      --input-bg: #f5f5f5;
+      --input-border: #bdbdbd;
+      --md-el-4: 0 8px 16px rgba(0,0,0,0.14), 0 4px 8px rgba(0,0,0,0.12);
+      --md-el-2: 0 4px 8px rgba(0,0,0,0.14), 0 2px 4px rgba(0,0,0,0.12);
     }
     * { box-sizing: border-box; }
     body {
@@ -29,8 +34,8 @@
       background: #fff;
       width: 100%;
       max-width: 400px;
-      border-radius: 12px;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+      border-radius: 8px;
+      box-shadow: var(--md-el-4);
       overflow: hidden;
       animation: slideUp 0.4s ease;
     }
@@ -41,52 +46,54 @@
       padding: 30px;
       text-align: center;
     }
-    .card-header h1 { margin: 0; font-size: 1.5rem; font-weight: 800; letter-spacing: 0.5px; }
+    .card-header h1 { margin: 0; font-size: 1.5rem; font-weight: 400; letter-spacing: 0; }
     .card-header p { margin: 10px 0 0 0; color: #94a3b8; font-size: 0.9rem; }
-    .card-body { padding: 40px 30px; }
-    .input-group { margin-bottom: 20px; }
+    .card-body { padding: 32px 24px; }
+    .input-group { margin-bottom: 24px; }
     .input-group label {
       display: block;
-      margin-bottom: 8px;
-      font-weight: 600;
-      font-size: 0.9rem;
-      color: #475569;
+      margin-bottom: 4px;
+      font-weight: 400;
+      font-size: 0.8rem;
+      color: var(--text-muted);
     }
     .input-group input {
       width: 100%;
       padding: 12px 16px;
-      border: 1px solid #cbd5e1;
-      border-radius: 6px;
+      border: none;
+      border-bottom: 2px solid var(--input-border);
+      border-radius: 4px 4px 0 0;
+      background: var(--input-bg);
       font-size: 1rem;
       outline: none;
-      transition: 0.2s;
+      transition: border-color 0.2s;
     }
-    .input-group input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,0.2); }
+    .input-group input:focus { border-bottom-color: var(--accent); }
     .btn {
       width: 100%;
       background: var(--accent);
       color: white;
       border: none;
       padding: 14px;
-      border-radius: 6px;
+      border-radius: 4px;
       cursor: pointer;
-      font-weight: 700;
-      font-size: 1rem;
+      font-weight: 600;
+      font-size: 0.95rem;
       transition: 0.2s;
-      margin-top: 10px;
+      margin-top: 8px;
+      min-height: 48px;
     }
-    .btn:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(59,130,246,0.2); }
+    .btn:hover { background: var(--accent-hover); box-shadow: var(--md-el-2); }
     .error-msg {
       display: none;
       background: var(--error-bg);
       color: var(--error-text);
       padding: 12px;
-      border-radius: 6px;
+      border-radius: 4px;
       font-size: 0.9rem;
-      font-weight: 600;
+      font-weight: 500;
       margin-bottom: 20px;
       text-align: center;
-      border: 1px solid #fca5a5;
     }
   </style>
   <script src="/i18n.js"></script>

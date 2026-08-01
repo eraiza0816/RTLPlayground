@@ -6,6 +6,8 @@
 
 **結論: 可能。** コンパイルはビルドホスト（PC）で完結し、ターゲットの 8051 MCU には負担をかけない。ただし、Flash 容量・配信方式・HTML インラインハンドラに関する制約を考慮する必要がある。
 
+> **ステータス（v0.2.21）:** 本提案は未実施。ただし WebUI は `doc/webui-performance.md` の最適化（L2 差分更新・ポーリング削減・VLAN N+1 解消・JSON キャッシュ）と、並列取得によるファイル破損対策（`DOMContentLoaded` 後の直列スクリプトロード、`index.html`/`login.html` の `<script src>` を動的ローダーに変更）が適用済み。TS 移行は将来課題として残る。
+
 ---
 
 ## 現状のアーキテクチャ
@@ -14,13 +16,13 @@
 
 | File | Size | Role |
 |------|------|------|
-| `main.js` | 56.8KB | 全ページのロジック（単一ファイル・Vanilla JS） |
-| `i18n.js` | 13.7KB | 多言語辞書 + `t()` |
-| `index.html` | 26.9KB | メインページ |
-| `login.html` | 4.0KB | ログインページ |
-| `favicon.ico` | 1.9KB | アイコン |
+| `main.js` | 54.8KB | 全ページのロジック（単一ファイル・Vanilla JS） |
+| `i18n.js` | 13.4KB | 多言語辞書 + `t()` |
+| `index.html` | 26.5KB | メインページ（`DOMContentLoaded` 後に i18n.js→main.js を直列ロード） |
+| `login.html` | 4.1KB | ログインページ（`DOMContentLoaded` 後に i18n.js をロード） |
+| `favicon.ico` | 1.9KB | アイコン（HTML は `data:,` で参照し実 fetch を抑制） |
 
-合計 約101KB
+合計 約100KB
 
 ### ビルドフロー
 
@@ -139,9 +141,17 @@ index.html:199-451 に **60個以上のインラインハンドラ**が main.js 
 
 ### 2. i18n.js は分離維持が安全
 
-- login.html:99 は **i18n.js のみ**を読み込み（main.js なし）で `t()` を使用
-- i18n.js を main.js に結合すると login ページに main.js の init 処理（main.js:1345）まで引き込まれる
+- login.html は **i18n.js のみ**を読み込み（main.js なし）で `t()` を使用
+- i18n.js を main.js に結合すると login ページに main.js の init 処理まで引き込まれる
 - **i18n.ts は単独ファイルとして `i18n.js` を配信**するのが無難
+
+### 3. スクリプトは `DOMContentLoaded` 後の直列ロード
+
+- v0.2.21 で並列取得によるデバイスのファイル破損対策のため、`index.html` / `login.html` は
+  `<script src>` をやめ、`DOMContentLoaded` 後に `document.createElement('script')` で
+  i18n.js → main.js を直列ロードする動的ローダーを使用している
+- TS 化後も `dist/main.js` / `dist/i18n.js` をこのローダーで読み込む構成を維持する
+- favicon は `data:,` で抑制（並列リクエストゼロを保証）
 
 → 最終構成: **`html/dist/main.js`（多数の TS を結合）+ `html/dist/i18n.js`（単独）** の2ファイル
 → 配信面の負担は現状と変わらない

@@ -132,6 +132,52 @@ at once.
 
 ---
 
+## アセンブラ移植の効果検証 (v0.2.21)
+
+メモリ/文字列関数と数値パース・出力フォーマット関数を手書きアセンブラに移植した
+(コミット `ca4e0a8` `perf(mem)`, `76fde96` `perf(util)`)。本ボトルネック分析への影響を調査した結果:
+
+### 改善された部分 (ボトルネック2 の「文字列/整形」側)
+
+- `strtox` (JSON リテラル構築): `/status.json` で 19 回呼ばれ、C ループ → アセンブラで 1 バイトあたり 3-4 倍高速
+- `string_to_html`: outbuf 追記をインライン化し、1 文字ごとの `char_to_html` lcall を排除
+- `memcpy`/`strlen`/`strcmp`: uIP パケット処理・コマンド処理の高速化
+- `itoa`/`print_byte`: 数値・16進表示の高速化
+- あわせて `__divuint`/`__moduint` と `atoi_*` の `__mulint` 呼び出しを排除
+
+### 解消されていない部分 (主要ボトルネック)
+
+| ボトルネック | 状態 | 理由 |
+|-------------|------|------|
+| 1. 直列リクエストキュー | 未解消 | バックエンドのグローバル状態 + uIP keep-alive なし。**アセンブラでは解決不可** (アーキテクチャ問題) |
+| 2. レジスタ読み出し (支配的) | **未解消** | `/status.json` で 11 回、`/counters.json` で 55 回の SFR トランザクション (PHY MMD / I2C / MIB カウンタ)。アセンブラ移植対象外 |
+| 3. キャッシュなし | 別途解決済み | `Cache-Control: max-age=1` (asm 無関係) |
+| 4. TCP バッファ (MSS 1460) | 未解消 | outbuf 2500B / MSS 制約は変更なし |
+| 5. 不要ポーリング | 別途解決済み | フロントエンド修正 (asm 無関係) |
+
+### 実測 TTFB (実機、現行ファームウェア)
+
+| エンドポイント | TTFB |
+|---------------|------|
+| status.json | ~25ms |
+| l2.json | ~16ms |
+| eee.json | ~20ms |
+| vlan.json | ~15ms |
+| information.json | ~55ms |
+
+TTFB の大部分は TCP 接続確立 + レジスタ読み出し (SFR busy-wait) であり、
+アセンブラ化した整形処理の寄与は数 ms 未満と推定される。
+
+### 残るフロントエンド側の整形最適化候補
+
+- `char_to_html` / `byte_to_html` / `charhex_to_html` はまだ C のまま (1 文字ごとに lcall)。
+  アセンブラ化すれば formatting 部分をさらに高速化できるが、レジスタ読み出しが支配的なため
+  TTFB への影響は限定的。
+- レジスタ読み出しそのものの削減 (ポーリング間隔延長・バックエンド側キャッシュ) が
+  次の効果的な改善手段。
+
+---
+
 ## Measurement Guide
 
 To quantify improvements, add timing instrumentation:

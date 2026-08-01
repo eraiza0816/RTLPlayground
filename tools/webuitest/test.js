@@ -20,7 +20,7 @@ const { chromium } = require('playwright');
 
 const BASE = process.env.WUI_URL || process.argv[2] || 'http://127.0.0.1:18080';
 const PASSWORD = process.env.WUI_PASSWORD || process.argv[3] || '1234';
-const PAGES = ['dash', 'stat', 'vlan', 'eee', 'port', 'bw', 'mirror', 'lag', 'l2', 'sys', 'sfp', 'update'];
+const PAGES = ['dash', 'stat', 'vlan', 'eee', 'port', 'bw', 'mirror', 'lag', 'l2', 'sys', 'sfp'];
 
 (async () => {
   const browser = await chromium.launch();
@@ -92,7 +92,25 @@ const PAGES = ['dash', 'stat', 'vlan', 'eee', 'port', 'bw', 'mirror', 'lag', 'l2
     }
   }
 
-  // 5. Final summary
+  // 5. Firmware update is a tab inside the System page
+  await page.evaluate(() => nav('sys'));
+  await page.waitForTimeout(1000);
+  const hasUpdateTab = await page.evaluate(() => !!document.getElementById('sys-tab-update') && !!document.getElementById('binFile') && !!document.getElementById('flashBtn'));
+  if (hasUpdateTab) {
+    console.log('OK: firmware update section present in System page');
+  } else {
+    failures.push('firmware update section missing in System page');
+    console.log('FAIL: firmware update section missing in System page');
+  }
+  const hasNavUpdate = await page.evaluate(() => !!document.getElementById('nav-update'));
+  if (!hasNavUpdate) {
+    console.log('OK: standalone nav-update item removed');
+  } else {
+    failures.push('nav-update item still present');
+    console.log('FAIL: nav-update item still present');
+  }
+
+  // 6. Final summary
   console.log('\n=== Summary ===');
   console.log('Console errors : ' + (consoleErrors.length ? consoleErrors.join('\n  ') : 'none'));
   console.log('Page errors    : ' + (pageErrors.length ? pageErrors.join('\n  ') : 'none'));

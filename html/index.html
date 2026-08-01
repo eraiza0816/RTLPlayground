@@ -200,7 +200,6 @@
     <li onclick="nav('bw')" id="nav-bw" data-i18n="nav_bandwidth">Bandwidth Limits</li>
     <li onclick="nav('sfp')" id="nav-sfp">SFP EEPROM</li>
     <li onclick="nav('sys')" id="nav-sys" data-i18n="nav_system">System Settings</li>
-    <li onclick="nav('update')" id="nav-update" data-i18n="nav_fw_update">Firmware Update</li>
   </ul>
 </nav>
 
@@ -377,6 +376,7 @@
     <button class="tab-btn active" onclick="openTab(event, 'sys-tab-main')" data-i18n="sys_tab_system">System</button>
     <button class="tab-btn" onclick="openTab(event, 'sys-tab-advanced')" data-i18n="sys_tab_advanced">Advanced</button>
     <button class="tab-btn" onclick="openTab(event, 'sys-tab-console')" data-i18n="sys_tab_console">Console</button>
+    <button class="tab-btn" onclick="openTab(event, 'sys-tab-update')" data-i18n="update_heading">Firmware Update</button>
   </div>
 
   <div id="sys-tab-main" class="tab-content active">
@@ -433,22 +433,20 @@
     </div>
     <p style="color:#64748b;font-size:12px;" data-i18n="sys_console_warn">Be careful — you can lock yourself out!</p>
   </div>
-</div>
 
-<!-- FIRMWARE UPDATE -->
-<div id="update" class="panel">
-  <h2 data-i18n="update_heading">Firmware Update</h2>
-  <p data-i18n="update_instruction">Choose a firmware update file to upload:</p>
-  <div class="input-row">
-    <input type="file" id="binFile" accept=".bin">
-    <button class="btn btn-danger" id="flashBtn" onclick="startFlash()" data-i18n="update_upload">Upload File</button>
-  </div>
-  <div id="progress-wrap" style="display:none;margin-top:20px;">
-    <div style="background:#e2e8f0;border-radius:8px;overflow:hidden;height:24px;">
-      <div id="fBar" style="height:100%;width:0%;background:var(--accent);transition:width 0.3s;"></div>
+  <div id="sys-tab-update" class="tab-content">
+    <p data-i18n="update_instruction">Choose a firmware update file to upload:</p>
+    <div class="input-row">
+      <input type="file" id="binFile" accept=".bin">
+      <button class="btn btn-danger" id="flashBtn" onclick="startFlash()" data-i18n="update_upload">Upload File</button>
     </div>
-    <p id="fText" style="text-align:center;font-weight:600;">0%</p>
-    <p id="fStatus" style="color:#64748b;font-size:13px;">Preparing...</p>
+    <div id="progress-wrap" style="display:none;margin-top:20px;">
+      <div style="background:#e2e8f0;border-radius:8px;overflow:hidden;height:24px;">
+        <div id="fBar" style="height:100%;width:0%;background:var(--accent);transition:width 0.3s;"></div>
+      </div>
+      <p id="fText" style="text-align:center;font-weight:600;">0%</p>
+      <p id="fStatus" style="color:#64748b;font-size:13px;">Preparing...</p>
+    </div>
   </div>
 </div>
 

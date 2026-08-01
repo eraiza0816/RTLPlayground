@@ -296,68 +296,10 @@ void print_string_x(__xdata char *p)
 }
 
 
-void memcpy(__xdata void * __xdata dst, __xdata const void * __xdata src, uint16_t len)
-{
-	__xdata uint8_t *d = dst;
-	__xdata const uint8_t *s = src;
-	while (len--)
-		*d++ = *s++;
-}
-
-void memcpyc(register __xdata uint8_t *dst, register __code uint8_t *src, register uint16_t len)
-{
-	while (len--)
-		*dst++ = *src++;
-}
-
-
-void memset(register __xdata uint8_t *dst, register __xdata uint8_t v, register uint8_t len)
-{
-	while (len--)
-		*dst++ = v;
-}
-
-uint16_t strtox(register __xdata uint8_t *dst, register __code const char *s)
-{
-	__xdata uint8_t *b = dst;
-	while (*s)
-		*dst++ = *s++;
-	*dst = 0;
-	return dst - b;
-}
-
-
-uint16_t strlen(register __code const char *s)
-{
-	uint16_t l = 0;
-	while (s[l])
-		l++;
-	return l;
-}
-
-
-uint16_t strlen_x(register __xdata const char *s)
-{
-	uint16_t l = 0;
-	while (s[l])
-		l++;
-	return l;
-}
-
-
-char strcmp(register __xdata const uint8_t *a, register __code const uint8_t *b)
-{
-	uint8_t i = 0;
-
-	while (b[i] && (b[i] == a[i]))
-		i++;
-
-	if (a[i] < b[i])
-		return -1;
-	else if (a[i] > b[i])
-		return 1;
-	return 0;
-}
+/*
+ * memcpy/memcpyc/memset/strtox/strlen/strlen_x/strcmp are implemented in
+ * hand-written assembly (rtlplayground_mem.asm) for speed and code size.
+ */
 
 
 void print_short(uint16_t a)

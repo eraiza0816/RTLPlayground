@@ -1391,9 +1391,14 @@ void parse_hostname(void)
 	if (cmd_words_len >= 2) {
 		uint8_t i = cmd_words_b[1];
 		uint8_t j = 0;
+		// A hostname (RFC 1123 DNS label) must not contain a dot, the dot is
+		// only a separator between labels of an FQDN. The default machine name
+		// (e.g. "PCB-K0402WS-V3.0") may contain one, so the name is truncated
+		// at the first invalid character (here: the dot).
 		while (cmd_buffer[i] && j < 31) {
 			uint8_t c = cmd_buffer[i];
 			if (!isletter(c) && !isnumber(c) && c != '-' && c != '_') {
+				hostname[j] = '\0';
 				print_string("Error: invalid character in hostname\n");
 				return;
 			}

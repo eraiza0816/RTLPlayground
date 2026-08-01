@@ -83,33 +83,34 @@ void byte_to_html(uint8_t val)
 
 /* Converts a uint8_t to raw string.
    Suppress leading zeros.
+   Uses repeated subtraction instead of division so no 16-bit division
+   library routine (__divuint/__moduint) gets linked in.
 */
 void itoa_html(uint8_t v)
 {
-	uint8_t t = (v / 100);
-	// when print_zeros is not zero, we know that a non-zero number has printed.
-	// That have to print all the next numbers.
-	uint8_t print_zeros = t;
-	if (print_zeros)
-		char_to_html('0' + t);
-	t = (v / 10) % 10;
-	print_zeros |= t;
-	if (print_zeros)
-		char_to_html('0' + t);
-	char_to_html('0' + (v % 10));
+	uint8_t t, print_zeros = 0;
+	t = 0;
+	while (v >= 100) { v -= 100; t++; }
+	if (t || print_zeros) { char_to_html('0' + t); print_zeros = 1; }
+	t = 0;
+	while (v >= 10) { v -= 10; t++; }
+	if (t || print_zeros) { char_to_html('0' + t); print_zeros = 1; }
+	char_to_html('0' + v);
 }
 
 void itoa16_html(uint16_t v) /* sufficient for VLAN IDs (max 4094) */
 {
-	uint8_t print_zeros = 0;
-	uint8_t d;
-	d = v / 1000;
-	if (d) { char_to_html('0' + d); print_zeros = 1; }
-	d = (v / 100) % 10;
+	uint8_t d, print_zeros = 0;
+	d = 0;
+	while (v >= 1000) { v -= 1000; d++; }
 	if (d || print_zeros) { char_to_html('0' + d); print_zeros = 1; }
-	d = (v / 10) % 10;
+	d = 0;
+	while (v >= 100) { v -= 100; d++; }
+	if (d || print_zeros) { char_to_html('0' + d); print_zeros = 1; }
+	d = 0;
+	while (v >= 10) { v -= 10; d++; }
 	if (d || print_zeros) char_to_html('0' + d);
-	char_to_html('0' + (v % 10));
+	char_to_html('0' + v);
 }
 
 void string_to_html(__code char *s)

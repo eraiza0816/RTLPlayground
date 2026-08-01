@@ -17,9 +17,12 @@ var isFlashing = false;
 function fetchAPI(method, url, cb, data) {
   if (isFlashing) return;
   var key = url + '|' + method + '|' + (data || '');
-  if (inFlight && inFlight.key === key) return;
-  if (reqQ.some(function(r) { return (r.url + '|' + r.method + '|' + (r.data || '')) === key; })) return;
-  reqQ.push({ method: method, url: url, cb: cb, data: data, key: key });
+  if (!cb) cb = function() {};
+  if (inFlight && inFlight.key === key) { inFlight.cbs.push(cb); return; }
+  for (var qi = 0; qi < reqQ.length; qi++) {
+    if (reqQ[qi].key === key) { reqQ[qi].cbs.push(cb); return; }
+  }
+  reqQ.push({ method: method, url: url, cbs: [cb], data: data, key: key });
   if (!busy) processQ();
 }
 
@@ -27,22 +30,22 @@ function processQ() {
   if (reqQ.length === 0 || isFlashing) { busy = false; return; }
   busy = true;
   var r = reqQ.shift();
-  inFlight = { url: r.url, method: r.method, key: r.key };
-  var finalUrl = r.url;
-  if (r.method === 'GET') finalUrl += (finalUrl.indexOf('?') >= 0 ? '&' : '?') + '_t=' + new Date().getTime();
+  inFlight = { url: r.url, method: r.method, key: r.key, cbs: r.cbs };
   var x = new XMLHttpRequest();
-  x.open(r.method, finalUrl, true);
+  x.open(r.method, r.url, true);
   x.timeout = 4000;
   x.onreadystatechange = function() {
     if (x.readyState === 4) {
       inFlight = null;
       if (isFlashing) return;
-      if (x.status === 200 && r.cb) r.cb(x.responseText);
+      if (x.status === 200) {
+        r.cbs.forEach(function(c) { c(x.responseText); });
+      }
       else if (x.status === 401) { document.location = '/login.html'; return; }
-      setTimeout(processQ, 50);
+      setTimeout(processQ, 10);
     }
   };
-  x.ontimeout = x.onerror = function() { inFlight = null; setTimeout(processQ, 100); };
+  x.ontimeout = x.onerror = function() { inFlight = null; setTimeout(processQ, 20); };
   x.send(r.data);
 }
 
@@ -68,7 +71,7 @@ const sysLabels = {
 };
 
 /** NAVIGATION & SMART POLLING **/
-function nav(id) {
+ function nav(id) {
   if (isFlushing) return notify("Locked during update.", "warning");
   clearInterval(poller); poller = null;
   clearInterval(systemInterval); systemInterval = null;
@@ -85,7 +88,7 @@ function nav(id) {
     pollStatus(); poller = setInterval(pollStatus, 5000);
     pollInfo(); systemInterval = setInterval(pollInfo, 5000);
   } else if (id === 'port') {
-    pollStatus(); poller = setInterval(pollStatus, 5000);
+    pollStatus();
     loadPortConfig();
   } else if (id === 'stat') {
     pollStatus(); poller = setInterval(pollStatus, 5000);
@@ -99,7 +102,7 @@ function nav(id) {
   } else if (id === 'lag') {
     loadLagConfig();
   } else if (id === 'eee') {
-    pollStatus(); poller = setInterval(pollStatus, 5000);
+    pollStatus();
     loadEeeConfig();
   } else if (id === 'bw') {
     loadBwConfig();
@@ -111,10 +114,50 @@ function nav(id) {
   }
 }
 
+/** PAUSE POLLING WHEN TAB HIDDEN **/
+function activePage() {
+  var a = document.querySelector('.panel.active');
+  return a ? a.id : null;
+}
+
+function startPagePolling(id) {
+  if (id === 'dash') {
+    poller = setInterval(pollStatus, 5000);
+    systemInterval = setInterval(pollInfo, 5000);
+  } else if (id === 'stat') {
+    poller = setInterval(pollStatus, 5000);
+  } else if (id === 'l2') {
+    l2Interval = setInterval(getL2, 10000);
+  } else if (id === 'sys') {
+    systemInterval = setInterval(pollInfo, 5000);
+  }
+}
+
+document.addEventListener('visibilitychange', function() {
+  if (document.hidden) {
+    clearInterval(poller); poller = null;
+    clearInterval(systemInterval); systemInterval = null;
+    clearInterval(l2Interval); l2Interval = null;
+    return;
+  }
+  var id = activePage();
+  if (!id) return;
+  if (id === 'dash') { pollStatus(); pollInfo(); }
+  else if (id === 'stat') { pollStatus(); }
+  else if (id === 'l2') { getL2(); }
+  else if (id === 'sys') { pollInfo(); }
+  else if (id === 'port' || id === 'eee') { pollStatus(); }
+  startPagePolling(id);
+});
+
 /** LIVE DATA POLLERS **/
 var sfpDiagCache = null;
 
+var sfpDiagLast = 0;
 function pollSfpDiag() {
+  var now = Date.now();
+  if (now - sfpDiagLast < 15000) return;
+  sfpDiagLast = now;
   fetchAPI('GET', '/sfp_diag.json', function(raw) {
     try { sfpDiagCache = JSON.parse(raw); } catch(e) {}
   });
@@ -206,22 +249,22 @@ function pollStatus() {
               if (sfpDiagCache) {
                 for (var di = 0; di < sfpDiagCache.length; di++) {
                   if (sfpDiagCache[di].portNum === portNum) {
-                    var d = sfpDiagCache[di];
-                    if (d.sfp_temp && d.sfp_temp !== '0x0000') {
-                      var tRaw = parseInt(d.sfp_temp, 16);
+                    var diag = sfpDiagCache[di];
+                    if (diag.sfp_temp && diag.sfp_temp !== '0x0000') {
+                      var tRaw = parseInt(diag.sfp_temp, 16);
                       if (tRaw > 32767) tRaw -= 65536;
                       tooltip += '\nTemp: ' + (tRaw / 256).toFixed(1) + ' °C';
                     }
-                    if (d.sfp_vcc && d.sfp_vcc !== '0x0000') tooltip += '\nVcc: ' + (parseInt(d.sfp_vcc, 16) * 0.0001).toFixed(2) + ' V';
-                    if (d.sfp_txbias && d.sfp_txbias !== '0x0000') tooltip += '\nTx Bias: ' + (parseInt(d.sfp_txbias, 16) * 0.002).toFixed(2) + ' mA';
-                    if (d.sfp_txpower && d.sfp_txpower !== '0x0000') {
-                      var mw = parseInt(d.sfp_txpower, 16) * 0.0001;
+                    if (diag.sfp_vcc && diag.sfp_vcc !== '0x0000') tooltip += '\nVcc: ' + (parseInt(diag.sfp_vcc, 16) * 0.0001).toFixed(2) + ' V';
+                    if (diag.sfp_txbias && diag.sfp_txbias !== '0x0000') tooltip += '\nTx Bias: ' + (parseInt(diag.sfp_txbias, 16) * 0.002).toFixed(2) + ' mA';
+                    if (diag.sfp_txpower && diag.sfp_txpower !== '0x0000') {
+                      var mw = parseInt(diag.sfp_txpower, 16) * 0.0001;
                       tooltip += '\nTx Power: ' + (mw > 0 ? (10 * Math.log10(mw)).toFixed(2) : '-inf') + ' dBm';
                     }
-                    if (d.sfp_rxpower && d.sfp_rxpower !== '0x0000') {
-                      var mw2 = parseInt(d.sfp_rxpower, 16) * 0.0001;
+                    if (diag.sfp_rxpower && diag.sfp_rxpower !== '0x0000') {
+                      var mw2 = parseInt(diag.sfp_rxpower, 16) * 0.0001;
                       tooltip += '\nRx Power: ' + (mw2 > 0 ? (10 * Math.log10(mw2)).toFixed(2) : '-inf') + ' dBm';
-                    } else if (d.sfp_rxpower === '0x0000') {
+                    } else if (diag.sfp_rxpower === '0x0000') {
                       tooltip += '\nRx Power: LOS (No light)';
                     }
                     break;
@@ -509,39 +552,36 @@ function loadVlanTable() {
     try {
       var vlans = JSON.parse(raw);
       vlans.forEach(function(v) {
-        fetchAPI('GET', '/vlan.json?vid=' + v.id, function(sRaw) {
-          try {
-            var s = JSON.parse(sRaw);
-            var m = parseInt(s.members, 16);
-            var members = m & 0x3FF;
-            var untag = s.untag !== undefined ? parseInt(s.untag, 16) : (((m >> 10) & 0x3FF) & members);
-            var tagged = members & ~untag;
-            var pvid = parseInt(s.pvid, 16) & 0x3FF;
-            var tr = document.createElement('tr');
-            var td = document.createElement('td');
-            var a = document.createElement('a');
-            a.href = '#';
-            a.textContent = v.id;
-            (function(vid) { a.onclick = function(e) { e.preventDefault(); document.getElementById('vid').value = vid; fetchVLAN(); }; })(v.id);
-            td.appendChild(a); tr.appendChild(td);
-            td = document.createElement('td'); td.textContent = v.name || ''; tr.appendChild(td);
-            td = document.createElement('td'); td.textContent = portsToRange(members, globalNumPorts); tr.appendChild(td);
-            td = document.createElement('td'); td.textContent = portsToRange(tagged, globalNumPorts); tr.appendChild(td);
-            td = document.createElement('td'); td.textContent = portsToRange(untag, globalNumPorts); tr.appendChild(td);
-            td = document.createElement('td'); td.textContent = portsToRange(pvid, globalNumPorts); tr.appendChild(td);
-            td = document.createElement('td');
-            if (v.id != 1) {
-              var btn = document.createElement('button');
-              btn.className = 'btn btn-danger';
-              btn.style.cssText = 'padding:2px 8px;font-size:11px;';
-              btn.textContent = '✕';
-              (function(vid) { btn.onclick = function() { deleteVlan(vid); }; })(v.id);
-              td.appendChild(btn);
-            }
-            tr.appendChild(td);
-            tbody.appendChild(tr);
-          } catch (e) {}
-        });
+        try {
+          var m = v.members !== undefined ? parseInt(v.members, 16) : 0;
+          var members = m & 0x3FF;
+          var untag = ((m >> 10) & 0x3FF) & members;
+          var tagged = members & ~untag;
+          var pvid = 0;
+          var tr = document.createElement('tr');
+          var td = document.createElement('td');
+          var a = document.createElement('a');
+          a.href = '#';
+          a.textContent = v.id;
+          (function(vid) { a.onclick = function(e) { e.preventDefault(); document.getElementById('vid').value = vid; fetchVLAN(); }; })(v.id);
+          td.appendChild(a); tr.appendChild(td);
+          td = document.createElement('td'); td.textContent = v.name || ''; tr.appendChild(td);
+          td = document.createElement('td'); td.textContent = portsToRange(members, globalNumPorts); tr.appendChild(td);
+          td = document.createElement('td'); td.textContent = portsToRange(tagged, globalNumPorts); tr.appendChild(td);
+          td = document.createElement('td'); td.textContent = portsToRange(untag, globalNumPorts); tr.appendChild(td);
+          td = document.createElement('td'); td.textContent = portsToRange(pvid, globalNumPorts); tr.appendChild(td);
+          td = document.createElement('td');
+          if (v.id != 1) {
+            var btn = document.createElement('button');
+            btn.className = 'btn btn-danger';
+            btn.style.cssText = 'padding:2px 8px;font-size:11px;';
+            btn.textContent = '✕';
+            (function(vid) { btn.onclick = function() { deleteVlan(vid); }; })(v.id);
+            td.appendChild(btn);
+          }
+          tr.appendChild(td);
+          tbody.appendChild(tr);
+        } catch (e) {}
       });
     } catch (e) {}
   });
@@ -562,9 +602,16 @@ function loadL2Config() {
   });
   l2Entries = [];
   l2CurrentEntry = 0;
+  lastL2Sig = '';
   getL2();
   if (l2Interval) clearInterval(l2Interval);
   l2Interval = setInterval(getL2, 2000);
+}
+
+/* After the initial table walk wraps around, slow down the refresh */
+function l2SlowDown() {
+  if (l2Interval) clearInterval(l2Interval);
+  l2Interval = setInterval(getL2, 10000);
 }
 
 function getL2() {
@@ -582,11 +629,13 @@ function getL2() {
       if (l2Entries.length >= 4096) { l2Entries = []; l2CurrentEntry = 0; clearInterval(l2Interval); return; }
       var w = 0;
       for (var i = l2Entries.length - 1; i > 0; i--) { if (l2Entries[0].idx == l2Entries[i].idx) { w = 1; break; } }
-      if (w) { l2CurrentEntry = 0; fillL2(l2Entries); }
+      if (w) { l2CurrentEntry = 0; fillL2(l2Entries); l2SlowDown(); }
       else { l2CurrentEntry = s[s.length - 1].idx + 1; }
     } catch (e) {}
   });
 }
+
+var lastL2Sig = '';
 
 function fillL2(s) {
   var tbody = document.getElementById('l2body');
@@ -602,14 +651,34 @@ function fillL2(s) {
   });
   s = s.filter(function(item, pos, ary) { return !pos || item.idx != ary[pos - 1].idx; });
   s = s.map(function(e) { e.port = e.port != 9 ? e.port : 'CPU'; return e; });
+
+  /* Diff-update: skip DOM work entirely when the table is unchanged */
+  var sig = s.map(function(e) { return e.idx + ':' + e.mac + ':' + e.vlan + ':' + e.port + ':' + e.type; }).join('|');
+  if (sig === lastL2Sig) { l2Entries = []; return; }
+  lastL2Sig = sig;
+
+  /* Reuse existing <tr> nodes (keyed by data-idx), only create new ones */
+  var existing = {};
+  Array.prototype.forEach.call(tbody.children, function(tr) {
+    existing[tr.getAttribute('data-idx')] = tr;
+  });
   tbody.innerHTML = '';
   s.forEach(function(e) {
-    var tr = document.createElement('tr');
-    var td = tr.insertCell(); td.textContent = e.port;
-    td = tr.insertCell(); td.textContent = e.mac;
-    td = tr.insertCell(); td.textContent = e.vlan;
-    td = tr.insertCell(); td.textContent = e.type;
-    td = tr.insertCell(); td.innerHTML = '<button class="btn" style="padding:2px 8px;font-size:11px;" onclick="delL2(' + e.idx + ')">' + (t('l2_delete') || 'Delete') + '</button>';
+    var tr = existing['' + e.idx];
+    if (tr) {
+      tr.cells[0].textContent = e.port;
+      tr.cells[1].textContent = e.mac;
+      tr.cells[2].textContent = e.vlan;
+      tr.cells[3].textContent = e.type;
+    } else {
+      tr = document.createElement('tr');
+      tr.setAttribute('data-idx', e.idx);
+      var td = tr.insertCell(); td.textContent = e.port;
+      td = tr.insertCell(); td.textContent = e.mac;
+      td = tr.insertCell(); td.textContent = e.vlan;
+      td = tr.insertCell(); td.textContent = e.type;
+      td = tr.insertCell(); td.innerHTML = '<button class="btn" style="padding:2px 8px;font-size:11px;" onclick="delL2(' + e.idx + ')">' + (t('l2_delete') || 'Delete') + '</button>';
+    }
     tbody.appendChild(tr);
   });
   l2Entries = [];
@@ -1246,7 +1315,7 @@ function applyTheme() {
 window.addEventListener('load', function() {
   initI18n();
   var langSel = document.getElementById('lang-select');
-  if (langSel) langSel.value = rtlLang;
+  if (langSel && typeof rtlLang !== 'undefined') langSel.value = rtlLang;
   applyTheme();
   nav('dash');
   document.getElementById('vlanSelect').onchange = function() {

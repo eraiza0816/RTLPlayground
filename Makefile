@@ -1,4 +1,4 @@
-VERSION=0.2.21
+VERSION=0.2.22
 
 # WebUI option: WEB=1 (default) to enable, WEB=0 to disable
 WEB ?= 1
@@ -100,7 +100,7 @@ $(BUILDDIR)/%.rel: %.asm
 	${ASM} ${AFLAGS} -o $@ $<
 #	mv -f $(addprefix $(basename $^), .lst .rel .sym) .
 
-$(BUILDDIR)/rtlplayground.ihx: $(OBJS) $(BUILDDIR)/crtstart.rel $(BUILDDIR)/crc16.rel
+$(BUILDDIR)/rtlplayground.ihx: $(OBJS) $(BUILDDIR)/crtstart.rel $(BUILDDIR)/crc16.rel $(BUILDDIR)/rtlplayground_mem.rel $(BUILDDIR)/rtlplayground_util.rel
 	$(CC) $(CC_FLAGS) -Wl-bHOME=0x00000 -Wl-bBANK1=0x14000 -Wl-bBANK2=0x24000 -Wl-bBANK3=0x34000 -Wl-r -o $@ $^
 
 $(BUILDDIR)/rtlplayground.img: $(BUILDDIR)/rtlplayground.ihx

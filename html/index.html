@@ -96,8 +96,6 @@
     .btn { background: var(--accent); color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 14px; transition: 0.2s; white-space: nowrap; min-height: 44px; }
     .btn:hover:not(:disabled) { background: var(--accent-hover); box-shadow: var(--md-el-2); }
     .btn:disabled { background: var(--input-border); color: var(--text-muted); cursor: not-allowed; box-shadow: none; }
-    .btn-outlined { background: transparent; color: var(--accent); border: 2px solid currentColor; }
-    .btn-outlined:hover:not(:disabled) { background: var(--accent); color: #fff; box-shadow: none; }
     .btn-danger { background: var(--danger); }
     .btn-danger:hover:not(:disabled) { background: #C62828; }
     .btn-warning { background: var(--warning); color: #fff; }
@@ -133,9 +131,6 @@
     #toast.success { background: var(--success); }
     #toast.error { background: var(--danger); }
     #toast.info { background: var(--accent); }
-    .cbgroup { display: inline-block; text-align: center; margin: 4px; }
-    .cbgroup label { display: block; font-size: 11px; }
-    .psel { margin: 4px; transform: scale(1.2); }
     .tab-bar { display: flex; border-bottom: 2px solid var(--border); margin-bottom: 20px; }
     .tab-btn { padding: 10px 20px; background: transparent; border: none; cursor: pointer; font-size: 14px; border-bottom: 2px solid transparent; margin-bottom: -2px; color: var(--text-muted); }
     .tab-btn:hover { color: var(--accent); }
@@ -144,8 +139,6 @@
     .tab-content.active { display: block; }
     .narrow { width: auto; min-width: 0; }
     #info-table td:first-child { font-weight: 600; width: 200px; color: var(--table-header-text); }
-    .mtu-grid { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-    .mtu-grid > * { flex: 0 0 auto; }
     #hexdump table { font-size: 11px; min-width: 0; }
     #hexdump td { padding: 2px 4px; text-align: center; font-size: 11px; }
     #hexdump th { padding: 2px 4px; font-size: 10px; }
@@ -207,7 +200,6 @@
     <li onclick="nav('bw')" id="nav-bw" data-i18n="nav_bandwidth">Bandwidth Limits</li>
     <li onclick="nav('sfp')" id="nav-sfp">SFP EEPROM</li>
     <li onclick="nav('sys')" id="nav-sys" data-i18n="nav_system">System Settings</li>
-    <li onclick="nav('update')" id="nav-update" data-i18n="nav_fw_update">Firmware Update</li>
   </ul>
 </nav>
 
@@ -384,6 +376,7 @@
     <button class="tab-btn active" onclick="openTab(event, 'sys-tab-main')" data-i18n="sys_tab_system">System</button>
     <button class="tab-btn" onclick="openTab(event, 'sys-tab-advanced')" data-i18n="sys_tab_advanced">Advanced</button>
     <button class="tab-btn" onclick="openTab(event, 'sys-tab-console')" data-i18n="sys_tab_console">Console</button>
+    <button class="tab-btn" onclick="openTab(event, 'sys-tab-update')" data-i18n="update_heading">Firmware Update</button>
   </div>
 
   <div id="sys-tab-main" class="tab-content active">
@@ -440,22 +433,20 @@
     </div>
     <p style="color:#64748b;font-size:12px;" data-i18n="sys_console_warn">Be careful — you can lock yourself out!</p>
   </div>
-</div>
 
-<!-- FIRMWARE UPDATE -->
-<div id="update" class="panel">
-  <h2 data-i18n="update_heading">Firmware Update</h2>
-  <p data-i18n="update_instruction">Choose a firmware update file to upload:</p>
-  <div class="input-row">
-    <input type="file" id="binFile" accept=".bin">
-    <button class="btn btn-danger" id="flashBtn" onclick="startFlash()" data-i18n="update_upload">Upload File</button>
-  </div>
-  <div id="progress-wrap" style="display:none;margin-top:20px;">
-    <div style="background:#e2e8f0;border-radius:8px;overflow:hidden;height:24px;">
-      <div id="fBar" style="height:100%;width:0%;background:var(--accent);transition:width 0.3s;"></div>
+  <div id="sys-tab-update" class="tab-content">
+    <p data-i18n="update_instruction">Choose a firmware update file to upload:</p>
+    <div class="input-row">
+      <input type="file" id="binFile" accept=".bin">
+      <button class="btn btn-danger" id="flashBtn" onclick="startFlash()" data-i18n="update_upload">Upload File</button>
     </div>
-    <p id="fText" style="text-align:center;font-weight:600;">0%</p>
-    <p id="fStatus" style="color:#64748b;font-size:13px;">Preparing...</p>
+    <div id="progress-wrap" style="display:none;margin-top:20px;">
+      <div style="background:#e2e8f0;border-radius:8px;overflow:hidden;height:24px;">
+        <div id="fBar" style="height:100%;width:0%;background:var(--accent);transition:width 0.3s;"></div>
+      </div>
+      <p id="fText" style="text-align:center;font-weight:600;">0%</p>
+      <p id="fStatus" style="color:#64748b;font-size:13px;">Preparing...</p>
+    </div>
   </div>
 </div>
 

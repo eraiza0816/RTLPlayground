@@ -7,3 +7,5 @@ version.h
 tools/httpd_sim
 tools/injector
 tools/fileadder
+tools/rtlpctl/rtlpctl
+tools/webuitest/node_modules/

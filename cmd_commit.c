@@ -53,6 +53,23 @@ static __xdata uint8_t commit_pos;
 	COMMIT_PUTC('0' + (__v % 10)); \
 } while(0)
 
+/* 16 bit decimal output via repeated subtraction, so no 16 bit division
+   library routine (__divuint/__moduint) gets linked in.  Leading zeros
+   are suppressed; the config parser (atoi_short) accepts both forms. */
+#define COMMIT_DEC16(v16) do { \
+	uint16_t __vv = (v16); \
+	uint8_t __d, __z = 0; \
+	__d = 0; while (__vv >= 10000) { __vv -= 10000; __d++; } \
+	if (__d || __z) { COMMIT_PUTC('0' + __d); __z = 1; } \
+	__d = 0; while (__vv >= 1000) { __vv -= 1000; __d++; } \
+	if (__d || __z) { COMMIT_PUTC('0' + __d); __z = 1; } \
+	__d = 0; while (__vv >= 100) { __vv -= 100; __d++; } \
+	if (__d || __z) { COMMIT_PUTC('0' + __d); __z = 1; } \
+	__d = 0; while (__vv >= 10) { __vv -= 10; __d++; } \
+	if (__d || __z) { COMMIT_PUTC('0' + __d); } \
+	COMMIT_PUTC('0' + __vv); \
+} while(0)
+
 #define COMMIT_IP(ip) do { \
 	COMMIT_BYTE((ip)[0] & 0xFF); COMMIT_PUTC('.'); \
 	COMMIT_BYTE((ip)[0] >> 8); COMMIT_PUTC('.'); \
@@ -103,9 +120,7 @@ void parse_commit(void) __banked
 
 	if (management_vlan >= 2) {
 		COMMIT_PUTS("vlan ");
-		COMMIT_BYTE(management_vlan / 100);
-		COMMIT_BYTE((management_vlan / 10) % 10);
-		COMMIT_BYTE(management_vlan % 10);
+		COMMIT_DEC16(management_vlan);
 		COMMIT_PUTS(" mgmt\n");
 	}
 

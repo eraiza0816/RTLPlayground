@@ -81,7 +81,7 @@ type SwitchInfo struct {
 }
 
 type VLANEntry struct {
-	ID   string `json:"id"`
+	ID   int    `json:"id"`
 	Name string `json:"name"`
 }
 
@@ -379,6 +379,7 @@ func (e *Exporter) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
+	start := time.Now()
 	success := 1.0
 	var wg sync.WaitGroup
 
@@ -421,11 +422,12 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 			float64(parseHex64(p.RxG)), port, p.Name, logPort)
 		ch <- prometheus.MustNewConstMetric(portRxBadDesc, prometheus.CounterValue,
 			float64(parseHex64(p.RxB)), port, p.Name, logPort)
+	}
 
-		if p.IsSFP != 0 && p.SfpVendor != "" {
-			ch <- prometheus.MustNewConstMetric(sfpTempDesc, prometheus.GaugeValue,
-				0, port, p.SfpVendor, p.SfpModel)
-		}
+	// SFP vendor/model per port, used as labels for the SFP diagnostics
+	portMeta := make(map[int]struct{ vendor, model string })
+	for _, p := range *ports {
+		portMeta[p.PortNum] = struct{ vendor, model string }{p.SfpVendor, p.SfpModel}
 	}
 
 	// SFP diagnostics from /sfp_diag.json
@@ -433,10 +435,12 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	if err == nil {
 		for _, d := range *sfpDiag {
 			port := strconv.Itoa(d.PortNum)
+			meta := portMeta[d.PortNum]
+			vendor, model := meta.vendor, meta.model
 			if d.SfpOptions != "" {
 				if temp := parseHex16(d.SfpTemp); temp != nil {
 					ch <- prometheus.MustNewConstMetric(sfpTempDesc, prometheus.GaugeValue,
-						float64(int16(*temp))*0.0625, port, "", "")
+						float64(int16(*temp))/256.0, port, vendor, model)
 				}
 				if vcc := parseHex16(d.SfpVcc); vcc != nil {
 					ch <- prometheus.MustNewConstMetric(sfpVoltageDesc, prometheus.GaugeValue,
@@ -450,12 +454,19 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 					if mW := float64(*txpw) * 0.0001; mW > 0 {
 						ch <- prometheus.MustNewConstMetric(sfpTxPowerDesc, prometheus.GaugeValue,
 							10*math.Log10(mW), port)
+					} else {
+						ch <- prometheus.MustNewConstMetric(sfpTxPowerDesc, prometheus.GaugeValue,
+							math.NaN(), port)
 					}
 				}
 				if rxpw := parseHex16(d.SfpRxPower); rxpw != nil {
 					if mW := float64(*rxpw) * 0.0001; mW > 0 {
 						ch <- prometheus.MustNewConstMetric(sfpRxPowerDesc, prometheus.GaugeValue,
 							10*math.Log10(mW), port)
+					} else {
+						// No light received (LOS): report NaN instead of dropping the series
+						ch <- prometheus.MustNewConstMetric(sfpRxPowerDesc, prometheus.GaugeValue,
+							math.NaN(), port)
 					}
 				}
 			}
@@ -536,8 +547,12 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 			return
 		}
 		for _, g := range *lags {
+			value := 0.0
+			if members, err := strconv.ParseUint(g.Members, 16, 64); err == nil && members != 0 {
+				value = 1.0
+			}
 			ch <- prometheus.MustNewConstMetric(lagMembersDesc, prometheus.GaugeValue,
-				1, strconv.Itoa(g.LagNum))
+				value, strconv.Itoa(g.LagNum))
 		}
 	}()
 
@@ -569,14 +584,19 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 			port := strconv.Itoa(p.PortNum)
 			ibw := parseHexInt(p.IBW)
 			ebw := parseHexInt(p.EBW)
+			// 0 = no rate limit configured
+			ingressLimit := 0.0
 			if p.ILimited != 0 && ibw > 0 {
-				ch <- prometheus.MustNewConstMetric(bwIngressLimitDesc, prometheus.GaugeValue,
-					float64(ibw), port)
+				ingressLimit = float64(ibw)
 			}
+			ch <- prometheus.MustNewConstMetric(bwIngressLimitDesc, prometheus.GaugeValue,
+				ingressLimit, port)
+			egressLimit := 0.0
 			if p.ELimited != 0 && ebw > 0 {
-				ch <- prometheus.MustNewConstMetric(bwEgressLimitDesc, prometheus.GaugeValue,
-					float64(ebw), port)
+				egressLimit = float64(ebw)
 			}
+			ch <- prometheus.MustNewConstMetric(bwEgressLimitDesc, prometheus.GaugeValue,
+				egressLimit, port)
 		}
 	}()
 
@@ -597,7 +617,8 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 	wg.Wait()
 
-	ch <- prometheus.MustNewConstMetric(scrapeDurationDesc, prometheus.GaugeValue, 0)
+	ch <- prometheus.MustNewConstMetric(scrapeDurationDesc, prometheus.GaugeValue,
+		time.Since(start).Seconds())
 	ch <- prometheus.MustNewConstMetric(scrapeSuccessDesc, prometheus.GaugeValue, success)
 }
 

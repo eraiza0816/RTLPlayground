@@ -1,3 +1,11 @@
+// @ts-check
+/**
+ * Element lookup typed as an input element.  Covers the value/checked/
+ * disabled/type/placeholder/files accesses used throughout this file.
+ * @param {string} id
+ * @returns {HTMLInputElement}
+ */
+function $in(id) { return /** @type {HTMLInputElement} */ (document.getElementById(id)); }
 /** NOTIFICATIONS **/
 let toastTimer;
 function notify(msg, type) {
@@ -297,7 +305,7 @@ function pollStatus() {
         }
 
         if (isStat) {
-          var tr = document.getElementById('stat-' + portNum);
+          var tr = /** @type {HTMLTableRowElement} */ (document.getElementById('stat-' + portNum));
           if (tr) {
             tr.cells[0].innerHTML = '<strong>' + (t('common_port') || 'Port ') + portNum + '</strong>';
             tr.cells[1].textContent = portNames[portNum];
@@ -322,7 +330,7 @@ function pollInfo() {
   fetchAPI('GET', '/information.json', function(raw) {
     try {
       var data = JSON.parse(raw);
-      var tbl = document.getElementById('info-table');
+      var tbl = /** @type {HTMLTableElement} */ (document.getElementById('info-table'));
       if (tbl) {
         tbl.innerHTML = '';
         for (var k in data) {
@@ -336,7 +344,7 @@ function pollInfo() {
         }
       }
       ['sys-ip','sys-mask','sys-gw'].forEach(function(id) {
-        var el = document.getElementById(id);
+        var el = $in(id);
         if (el && document.activeElement !== el) {
           var keyMap = { 'sys-ip': 'ip_address', 'sys-mask': 'ip_netmask', 'sys-gw': 'ip_gateway' };
           el.value = data[keyMap[id]] || '';
@@ -427,17 +435,17 @@ function loadPortConfig() {
 }
 
 function togglePort(p) {
-  var disabled = document.getElementById('disable' + p).checked;
-  document.getElementById('speed' + p).disabled = disabled;
+  var disabled = $in('disable' + p).checked;
+  $in('speed' + p).disabled = disabled;
 }
 
 async function applyPortCfg(p) {
-  var btn = document.getElementById('pcfg-btn-' + p);
+  var btn = /** @type {HTMLButtonElement} */ (document.getElementById('pcfg-btn-' + p));
   if (btn) btn.disabled = true;
-  var speed = document.getElementById('speed' + p).value;
-  var disabled = document.getElementById('disable' + p).checked;
+  var speed = $in('speed' + p).value;
+  var disabled = $in('disable' + p).checked;
   var cmd = 'port ' + p + ' ' + (disabled ? 'off' : speed);
-  var pname = document.getElementById('pname' + p).value.trim().replace(/\s+/g, '_');
+  var pname = $in('pname' + p).value.trim().replace(/\s+/g, '_');
   if (pname) fetchAPI('POST', '/cmd', null, 'port ' + p + ' name ' + pname);
   fetchAPI('POST', '/cmd', function() {
     if (btn) btn.disabled = false;
@@ -446,40 +454,40 @@ async function applyPortCfg(p) {
 }
 
 function applyMTU(p) {
-  var mtu = document.getElementById('mtu' + p).value;
+  var mtu = $in('mtu' + p).value;
   fetchAPI('POST', '/cmd', function() { notify('MTU for Port ' + p + ' updated.', 'success'); }, 'mtu ' + p + ' ' + mtu);
 }
 
 /** VLAN **/
 function initVlanTable() {
-  var tbody = document.getElementById('vlan-edit-body');
+  var tbody = /** @type {HTMLTableSectionElement} */ (document.getElementById('vlan-edit-body'));
   if (!globalNumPorts) return;
-  if (tbody.children.length === globalNumPorts && tbody.children[0].cells.length > 1) return;
+  if (tbody.children.length === globalNumPorts && /** @type {HTMLTableRowElement} */ (tbody.children[0]).cells.length > 1) return;
   var rows = '';
   for (var i = 1; i <= globalNumPorts; i++) {
     rows += '<tr><td><strong>' + (t('common_port') || 'Port ') + i + '</strong></td>'
       + '<td class="cb-cell"><input type="checkbox" id="tport' + i + '" onclick="document.getElementById(\'uport' + i + '\').checked=false"></td>'
-      + '<td class="cb-cell"><input type="checkbox" id="uport' + i + '" onclick="document.getElementById(\'tport' + i + '\').checked=false"></td>'
+      + '<td class="cb-cell"><input type="checkbox" id="uport' + i + '" onclick="$in(\'tport' + i + '\').checked=false"></td>'
       + '<td class="cb-cell"><input type="checkbox" id="pport' + i + '"></td></tr>';
   }
   tbody.innerHTML = rows;
 }
 
 function fetchVLAN() {
-  var vid = document.getElementById('vid').value;
+  var vid = $in('vid').value;
   if (!vid) return notify('Please enter a VLAN ID first.', 'warning');
   fetchAPI('GET', '/vlan.json?vid=' + vid, function(raw) {
     try {
       var s = JSON.parse(raw);
-      document.getElementById('vname').value = s.name || '';
+      $in('vname').value = s.name || '';
       var members = parseInt(s.members, 16);
       var untag = s.untag !== undefined ? parseInt(s.untag, 16) : ((members >> 10) & 0x3FF);
       var pvidMask = parseInt(s.pvid, 16);
       for (var p = 1; p <= globalNumPorts; p++) {
         var bit = physToLogMap[p] !== undefined ? physToLogMap[p] : (p - 1);
-        document.getElementById('tport' + p).checked = ((members >> bit) & 1) && !((untag >> bit) & 1);
-        document.getElementById('uport' + p).checked = ((members >> bit) & 1) && ((untag >> bit) & 1);
-        document.getElementById('pport' + p).checked = (pvidMask >> bit) & 1;
+        $in('tport' + p).checked = ((members >> bit) & 1) && !((untag >> bit) & 1);
+        $in('uport' + p).checked = !!(((members >> bit) & 1) && ((untag >> bit) & 1));
+        $in('pport' + p).checked = !!((pvidMask >> bit) & 1);
       }
       notify('VLAN ' + vid + ' loaded.', 'success');
     } catch (e) { notify('VLAN not found.', 'error'); }
@@ -487,14 +495,14 @@ function fetchVLAN() {
 }
 
 function applyVLAN() {
-  var vid = document.getElementById('vid').value;
+  var vid = $in('vid').value;
   if (!vid) return notify('Please enter a VLAN ID first.', 'warning');
-  var vlanName = document.getElementById('vname').value.trim().replace(/\s+/g, '_');
+  var vlanName = $in('vname').value.trim().replace(/\s+/g, '_');
   var cmd = 'vlan ' + vid;
   if (vlanName) cmd += ' ' + vlanName;
   for (var p = 1; p <= globalNumPorts; p++) {
-    if (document.getElementById('tport' + p).checked) cmd += ' ' + p + 't';
-    else if (document.getElementById('uport' + p).checked) cmd += ' ' + p;
+    if ($in('tport' + p).checked) cmd += ' ' + p + 't';
+    else if ($in('uport' + p).checked) cmd += ' ' + p;
   }
   fetchAPI('POST', '/cmd', function() {
     // Send PVID commands sequentially after VLAN command completes
@@ -504,7 +512,7 @@ function applyVLAN() {
 
 function sendPvids(vid) {
   for (var p = 1; p <= globalNumPorts; p++) {
-    if (document.getElementById('pport' + p).checked) {
+    if ($in('pport' + p).checked) {
       fetchAPI('POST', '/cmd', null, 'pvid ' + p + ' ' + vid);
     }
   }
@@ -516,7 +524,7 @@ function loadVlanList() {
   fetchAPI('GET', '/vlanlist', function(raw) {
     try {
       var vlans = JSON.parse(raw);
-      var sel = document.getElementById('vlanSelect');
+      var sel = /** @type {HTMLSelectElement} */ (document.getElementById('vlanSelect'));
       if (!vlans || !vlans.length) { sel.style.display = 'none'; return; }
       sel.style.display = '';
       sel.options.length = 1;
@@ -526,7 +534,7 @@ function loadVlanList() {
         opt.text = v.name ? v.id + ' — ' + v.name : String(v.id);
         sel.appendChild(opt);
       });
-      sel.onchange = function() { document.getElementById('vid').value = this.value; fetchVLAN(); };
+      sel.onchange = () => { $in('vid').value = sel.value; fetchVLAN(); };
     } catch (e) { document.getElementById('vlanSelect').style.display = 'none'; }
   });
 }
@@ -563,7 +571,7 @@ function loadVlanTable() {
           var a = document.createElement('a');
           a.href = '#';
           a.textContent = v.id;
-          (function(vid) { a.onclick = function(e) { e.preventDefault(); document.getElementById('vid').value = vid; fetchVLAN(); }; })(v.id);
+          (function(vid) { a.onclick = function(e) { e.preventDefault(); $in('vid').value = vid; fetchVLAN(); }; })(v.id);
           td.appendChild(a); tr.appendChild(td);
           td = document.createElement('td'); td.textContent = v.name || ''; tr.appendChild(td);
           td = document.createElement('td'); td.textContent = portsToRange(members, globalNumPorts); tr.appendChild(td);
@@ -598,7 +606,7 @@ function loadL2Config() {
     var clean = raw.replace(/[^\x09\x0A\x0D\x20-\x7E]/g, '').trim();
     parseConf(clean);
     var igmpMatch = clean.match(/^igmp\s+(on|off)/m);
-    document.getElementById('igmp-en').checked = igmpMatch && igmpMatch[1] === 'on';
+    $in('igmp-en').checked = igmpMatch && igmpMatch[1] === 'on';
   });
   l2Entries = [];
   l2CurrentEntry = 0;
@@ -689,7 +697,7 @@ function delL2(idx) {
 }
 
 function applyIGMP() {
-  var en = document.getElementById('igmp-en').checked;
+  var en = $in('igmp-en').checked;
   fetchAPI('POST', '/cmd', function() { notify('IGMP ' + (en ? 'ON' : 'OFF'), 'success'); }, en ? 'igmp on' : 'igmp off');
 }
 
@@ -754,7 +762,7 @@ function loadMirrorConfig() {
     d.style.cssText = 'display:inline-block;text-align:center;margin:4px;';
     var l = document.createElement('label');
     l.style.cssText = 'display:block;font-size:11px;';
-    l.textContent = i;
+    l.textContent = String(i);
     var inp = document.createElement('input');
     inp.type = 'checkbox';
     inp.id = 'mtx' + i;
@@ -762,35 +770,35 @@ function loadMirrorConfig() {
     l.appendChild(inp);
     d.appendChild(l);
     txDiv.appendChild(d);
-    var d2 = d.cloneNode(true);
+    var d2 = /** @type {HTMLElement} */ (d.cloneNode(true));
     d2.children[0].children[0].id = 'mrx' + i;
     rxDiv.appendChild(d2);
   }
   fetchAPI('GET', '/mirror.json', function(raw) {
     try {
       var s = JSON.parse(raw);
-      document.getElementById('mirror-en').checked = s.enabled;
-      document.getElementById('mirror-port').value = s.mPort;
+      $in('mirror-en').checked = s.enabled;
+      $in('mirror-port').value = s.mPort;
       var m_tx = parseInt(s.mirror_tx, 2);
       var m_rx = parseInt(s.mirror_rx, 2);
       for (var i = 1; i <= globalNumPorts; i++) {
         var bit = physToLogMap[i] !== undefined ? physToLogMap[i] : (i - 1);
-        document.getElementById('mtx' + i).checked = (m_tx >> bit) & 1;
-        document.getElementById('mrx' + i).checked = (m_rx >> bit) & 1;
+        $in('mtx' + i).checked = !!((m_tx >> bit) & 1);
+        $in('mrx' + i).checked = !!((m_rx >> bit) & 1);
       }
     } catch (e) {}
   });
 }
 
 function applyMirror() {
-  var mp = document.getElementById('mirror-port').value;
+  var mp = $in('mirror-port').value;
   if (!mp) return notify('Set Mirroring Port first', 'warning');
-  document.getElementById('mtx' + mp).checked = false;
-  document.getElementById('mrx' + mp).checked = false;
+  $in('mtx' + mp).checked = false;
+  $in('mrx' + mp).checked = false;
   var cmd = 'mirror ' + mp;
   for (var i = 1; i <= globalNumPorts; i++) {
-    var t = document.getElementById('mtx' + i).checked;
-    var r = document.getElementById('mrx' + i).checked;
+    var t = $in('mtx' + i).checked;
+    var r = $in('mrx' + i).checked;
     if (t && r) cmd += ' ' + i;
     else if (t) cmd += ' ' + i + 't';
     else if (r) cmd += ' ' + i + 'r';
@@ -826,7 +834,7 @@ function loadLagConfig() {
 function applyLAG(l) {
   var cmd = 'lag ' + (l + 1);
   for (var i = 1; i <= globalNumPorts; i++) {
-    if (document.getElementById('lag' + l + '_p' + i).checked) cmd += ' ' + i;
+    if ($in('lag' + l + '_p' + i).checked) cmd += ' ' + i;
   }
   fetchAPI('POST', '/cmd', function() { notify('LAG Group ' + (l + 1) + ' updated.', 'success'); }, cmd);
 }
@@ -837,7 +845,7 @@ function loadEeeConfig() {
   if (!tbody || !globalNumPorts) return;
   tbody.innerHTML = '';
   for (var i = 1; i <= globalNumPorts; i++) {
-    var tr = document.createElement('tr');
+    var tr = /** @type {HTMLTableRowElement} */ (document.createElement('tr'));
     tr.id = 'eee-row-' + i;
     for (var j = 0; j < 8; j++) tr.appendChild(document.createElement('td'));
     tr.cells[0].innerHTML = '<strong>' + (t('common_port') || 'Port ') + i + '</strong>';
@@ -850,7 +858,7 @@ function loadEeeConfig() {
         var p = s[i];
         var n = parseInt(p.portNum, 10);
         if (isNaN(n)) continue;
-        var tr = document.getElementById('eee-row-' + n);
+        var tr = /** @type {HTMLTableRowElement} */ (document.getElementById('eee-row-' + n));
         if (!tr) continue;
         if (!p.isSFP) {
           var eee = parseInt(p.eee, 2);
@@ -901,38 +909,38 @@ function loadBwConfig() {
 }
 
 function toggleBW(p, dir) {
-  document.getElementById('bwbtn_' + p).disabled = false;
+  $in('bwbtn_' + p).disabled = false;
   if (dir === 'i') {
-    var lim = document.getElementById('ilim_' + p).checked;
-    document.getElementById('ibw_' + p).disabled = !lim;
-    document.getElementById('ifc_' + p).disabled = !lim;
-    if (!lim) { document.getElementById('ibw_' + p).value = ''; document.getElementById('ibw_' + p).placeholder = 'UNLIMITED'; }
-    if (lim) document.getElementById('ifc_' + p).checked = true;
+    var lim = $in('ilim_' + p).checked;
+    $in('ibw_' + p).disabled = !lim;
+    $in('ifc_' + p).disabled = !lim;
+    if (!lim) { $in('ibw_' + p).value = ''; $in('ibw_' + p).placeholder = 'UNLIMITED'; }
+    if (lim) $in('ifc_' + p).checked = true;
   } else {
-    var lim = document.getElementById('elim_' + p).checked;
-    document.getElementById('ebw_' + p).disabled = !lim;
-    if (!lim) { document.getElementById('ebw_' + p).value = ''; document.getElementById('ebw_' + p).placeholder = 'UNLIMITED'; }
+    var lim = $in('elim_' + p).checked;
+    $in('ebw_' + p).disabled = !lim;
+    if (!lim) { $in('ebw_' + p).value = ''; $in('ebw_' + p).placeholder = 'UNLIMITED'; }
   }
 }
 
 function applyBandwidth(p) {
   var logPort = p - 1;
-  if (document.getElementById('ilim_' + p).checked) {
-    var val = parseInt(document.getElementById('ibw_' + p).value || 0);
+  if ($in('ilim_' + p).checked) {
+    var val = parseInt($in('ibw_' + p).value) || 0;
     var hex = Math.floor(val / 16).toString(16).padStart(4, '0');
     fetchAPI('POST', '/cmd', null, 'bw in ' + logPort + ' ' + hex);
-    if (!document.getElementById('ifc_' + p).checked) fetchAPI('POST', '/cmd', null, 'bw in ' + logPort + ' drop');
+    if (!$in('ifc_' + p).checked) fetchAPI('POST', '/cmd', null, 'bw in ' + logPort + ' drop');
   } else {
     fetchAPI('POST', '/cmd', null, 'bw in ' + logPort + ' off');
   }
-  if (document.getElementById('elim_' + p).checked) {
-    var val2 = parseInt(document.getElementById('ebw_' + p).value || 0);
+  if ($in('elim_' + p).checked) {
+    var val2 = parseInt($in('ebw_' + p).value) || 0;
     var hex2 = Math.floor(val2 / 16).toString(16).padStart(4, '0');
     fetchAPI('POST', '/cmd', null, 'bw out ' + logPort + ' ' + hex2);
   } else {
     fetchAPI('POST', '/cmd', null, 'bw out ' + logPort + ' off');
   }
-  document.getElementById('bwbtn_' + p).disabled = true;
+  $in('bwbtn_' + p).disabled = true;
   notify('Bandwidth for Port ' + p + ' applied.', 'success');
 }
 
@@ -941,14 +949,14 @@ function loadSysConfig() {
   fetchAPI('GET', '/config', function(raw) {
     var clean = raw.replace(/[^\x09\x0A\x0D\x20-\x7E]/g, '').trim();
     parseConf(clean);
-    document.getElementById('config-window').value = clean;
+    $in('config-window').value = clean;
   });
 }
 
 function applyIP() {
-  var ip = document.getElementById('sys-ip').value;
-  var nm = document.getElementById('sys-mask').value;
-  var gw = document.getElementById('sys-gw').value;
+  var ip = $in('sys-ip').value;
+  var nm = $in('sys-mask').value;
+  var gw = $in('sys-gw').value;
   var ipv4 = /^(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]\d|\d)){3}$/;
   if (!ipv4.test(ip) || !ipv4.test(nm) || !ipv4.test(gw)) return notify('Invalid IPv4 address format.', 'error');
   fetchAPI('POST', '/cmd', function() { notify('IP updated temporarily.', 'success'); }, 'ip ' + ip);
@@ -962,24 +970,24 @@ function rebootSwitch() {
 }
 
 function telnetToggle() {
-  var cmd = 'telnet ' + (document.getElementById('telnet_toggle').checked ? 'on' : 'off');
+  var cmd = 'telnet ' + ($in('telnet_toggle').checked ? 'on' : 'off');
   fetchAPI('POST', '/cmd', function() { notify('Telnet toggled.', 'success'); }, cmd + '\n');
 }
 
 function updateTelnetLabel(enabled) {
-  var cb = document.getElementById('telnet_toggle');
+  var cb = $in('telnet_toggle');
   var lb = document.getElementById('telnet_label');
   if (cb) cb.checked = enabled;
   if (lb) lb.textContent = enabled ? 'enabled' : 'disabled';
 }
 
 function webToggle() {
-  var cmd = 'web ' + (document.getElementById('web_toggle').checked ? 'on' : 'off');
+  var cmd = 'web ' + ($in('web_toggle').checked ? 'on' : 'off');
   fetchAPI('POST', '/cmd', function() { notify('Web toggled.', 'success'); }, cmd + '\n');
 }
 
 function updateWebLabel(enabled) {
-  var cb = document.getElementById('web_toggle');
+  var cb = $in('web_toggle');
   var lb = document.getElementById('web_label');
   if (cb) cb.checked = enabled;
   if (lb) lb.textContent = enabled ? 'enabled' : 'disabled';
@@ -994,7 +1002,7 @@ function openTab(evt, tabId) {
 }
 
 function sendConsoleCmd() {
-  var cmd = document.getElementById('console-cmd').value;
+  var cmd = $in('console-cmd').value;
   if (!cmd) return notify('Enter a command.', 'warning');
   fetchAPI('POST', '/cmd', function() { notify('Command sent.', 'success'); }, cmd);
 }
@@ -1002,10 +1010,10 @@ function sendConsoleCmd() {
 function clearStartupConfig() {
   var lines = '';
   ['sys-ip','sys-mask','sys-gw'].forEach(function(id) {
-    var el = document.getElementById(id);
+    var el = $in(id);
     if (el) lines += { 'sys-ip': 'ip ', 'sys-mask': 'netmask ', 'sys-gw': 'gw ' }[id] + el.value + '\n';
   });
-  document.getElementById('config-window').value = lines;
+  $in('config-window').value = lines;
   notify('Startup config cleared (retained IP).', 'info');
 }
 
@@ -1085,12 +1093,12 @@ async function flashSaveConfig() {
     var body = configuration.join('\n') + '\n';
     await sendConfig(body);
     setTimeout(function() { fetch('/cmd_log_clear', { method: 'GET' }).catch(function() {}); }, 1000);
-    document.getElementById('config-window').value = body;
+    $in('config-window').value = body;
   } catch (err) {} finally { isFlushing = false; }
 }
 
 function saveManualConfig() {
-  var text = document.getElementById('config-window').value.replace(/[^\x09\x0A\x0D\x20-\x7E]/g, '');
+  var text = $in('config-window').value.replace(/[^\x09\x0A\x0D\x20-\x7E]/g, '');
   sendConfig(text).then(function() {
     setTimeout(function() { fetch('/cmd_log_clear', { method: 'GET' }).catch(function() {}); }, 1000);
   });
@@ -1098,7 +1106,7 @@ function saveManualConfig() {
 
 /** FIRMWARE UPDATE **/
 function startFlash() {
-  var file = document.getElementById('binFile').files[0];
+  var file = $in('binFile').files[0];
   if (!file || !file.name.toLowerCase().endsWith('.bin')) return notify('Select a valid .bin file.', 'error');
   if (!confirm('WARNING: Flashing interrupts traffic. Do not power off. Proceed?')) return;
 
@@ -1111,7 +1119,7 @@ function startFlash() {
   var bar = document.getElementById('fBar');
   var text = document.getElementById('fText');
   var status = document.getElementById('fStatus');
-  document.getElementById('flashBtn').disabled = true;
+  $in('flashBtn').disabled = true;
   document.getElementById('progress-wrap').style.display = 'block';
 
   status.innerText = 'UPLOADING FIRMWARE TO RAM...';
@@ -1155,7 +1163,7 @@ var sfpSlot = 0;
 function hex(b) { return (b >> 4).toString(16) + (b & 0xf).toString(16); }
 
 function loadEeprom() {
-  sfpSlot = parseInt(document.getElementById('slotsel').value);
+  sfpSlot = parseInt($in('slotsel').value);
   fetchAPI('GET', '/sfp_eeprom.json?slot=' + sfpSlot, function(raw) {
     try {
       var j = JSON.parse(raw);
@@ -1217,7 +1225,7 @@ function editByte(offset) {
 }
 
 function pwArg() {
-  var pw = document.getElementById('pwinput').value.trim();
+  var pw = $in('pwinput').value.trim();
   if (!pw) return '';
   if (!/^[0-9a-fA-F]{8}$/.test(pw)) { notify('Password must be 8 hex digits.', 'error'); return ''; }
   return ' --pw ' + pw;
@@ -1269,7 +1277,7 @@ function uploadBin(input) {
   if (!confirm('Write ' + file.name + ' to SFP ' + (sfpSlot + 1) + ' EEPROM?')) return;
   var reader = new FileReader();
   reader.onload = function(e) {
-    var data = new Uint8Array(e.target.result);
+    var data = new Uint8Array(/** @type {ArrayBuffer} */ (e.target.result));
     var hexStr = '';
     for (var i = 0; i < 256; i++) hexStr += hex(data[i]);
     fetchAPI('POST', '/cmd', function() { notify('Write complete.', 'success'); loadEeprom(); }, 'sfp ' + (sfpSlot + 1) + ' bulk ' + hexStr + pwArg());
@@ -1282,7 +1290,7 @@ function initI18n() {
   document.querySelectorAll('[data-i18n]').forEach(function(el) {
     if (typeof t === 'function') {
       var key = el.getAttribute('data-i18n');
-      if (el.tagName === 'INPUT' && (el.type === 'submit' || el.type === 'button')) el.value = t(key);
+      if (el.tagName === 'INPUT') { var inp = /** @type {HTMLInputElement} */ (el); if (inp.type === 'submit' || inp.type === 'button') inp.value = t(key); }
       else if (el.tagName === 'OPTION') el.textContent = t(key);
       else if (el.tagName === 'TITLE') el.textContent = t(key);
       else el.innerHTML = t(key);
@@ -1291,7 +1299,7 @@ function initI18n() {
 }
 
 function changeLang() {
-  var lang = document.getElementById('lang-select').value;
+  var lang = $in('lang-select').value;
   setLang(lang);
   initI18n();
   var activePanel = document.querySelector('.panel.active');
@@ -1299,7 +1307,7 @@ function changeLang() {
 }
 
 function toggleTheme() {
-  var enabled = document.getElementById('theme-toggle').checked;
+  var enabled = $in('theme-toggle').checked;
   document.documentElement.classList.toggle('dark', enabled);
   localStorage.setItem('rtl_theme', enabled ? 'dark' : 'light');
 }
@@ -1307,19 +1315,19 @@ function toggleTheme() {
 function applyTheme() {
   var saved = localStorage.getItem('rtl_theme');
   var dark = saved === 'dark';
-  var toggle = document.getElementById('theme-toggle');
+  var toggle = $in('theme-toggle');
   if (toggle) toggle.checked = dark;
   document.documentElement.classList.toggle('dark', dark);
 }
 
 window.addEventListener('load', function() {
   initI18n();
-  var langSel = document.getElementById('lang-select');
+  var langSel = /** @type {HTMLSelectElement} */ (document.getElementById('lang-select'));
   if (langSel && typeof rtlLang !== 'undefined') langSel.value = rtlLang;
   applyTheme();
   nav('dash');
   document.getElementById('vlanSelect').onchange = function() {
-    document.getElementById('vid').value = this.value;
+    $in('vid').value = /** @type {HTMLSelectElement} */ (this).value;
     fetchVLAN();
   };
 });

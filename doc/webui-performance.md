@@ -81,40 +81,100 @@ WebUIの描画速度低下の原因調査レポート。
 
 ---
 
-## Current Status (HEAD `c1a4274`)
+## Current Status (v0.2.21)
 
 | Improvement | Status | Details |
 |-------------|--------|---------|
-| SFP diagnostics → `/sfp_diag.json` | ✅ Done | `page_impl.c:778-809`, `httpd.c:687-688` |
-| Cache-Control on JSON | ❌ Not done | `HTTP_RESPONCE_JSON` has no Cache-Control header |
-| VLAN N+1 elimination | ❌ Not done | `loadVlanTable()` still fetches per-VLAN (`main.js:512`) |
-| EEE page pollStatus removal | ❌ Not done | `main.js:102` |
-| Port Config poll optimization | ❌ Not done | `main.js:88` polls every 5s |
-| Version | `v0.2.18` | Makefile line 1 |
+| SFP diagnostics → `/sfp_diag.json` | ✅ Done | `page_impl.c` |
+| Cache-Control on JSON | ✅ Done | `HTTP_RESPONCE_JSON` = `Cache-Control: private, max-age=1` |
+| VLAN N+1 elimination | ✅ Done | `send_vlanlist()` includes `members`; `loadVlanTable()` uses inline data |
+| EEE page pollStatus removal | ✅ Done | `nav('eee')` fetches status once, no interval |
+| Port Config poll optimization | ✅ Done | `nav('port')` fetches status once, no interval |
+| L2 table diff-update | ✅ Done | `fillL2()` updates rows only on change; fast walk then 10s refresh |
+| Tab-hidden polling pause | ✅ Done | `visibilitychange` clears intervals while hidden |
+| SFP diag throttle | ⚠️ Partial | Fetched only on Dashboard, throttled to 15s (hover-lazy not implemented) |
+| File-corruption mitigation | ✅ Done | Scripts load sequentially after `DOMContentLoaded` + favicon suppressed (see below) |
+| Version | `v0.2.21` | Makefile line 1 |
+
+### File-corruption root cause (fixed)
+
+The browser preloads `<script src>` resources in parallel with the HTML
+document. Because the backend serves responses from a single shared buffer
+(`outbuf`/`slen`), concurrent connections corrupted file transfers (truncated
+or spliced JS → `t is not defined`, `nav is not a function`). Fixed in the
+frontend by loading `i18n.js`/`main.js` sequentially after `DOMContentLoaded`
+and suppressing the favicon request, so the device never serves two responses
+at once.
 
 ---
 
-## Recommended Plan
+## Recommended Plan (implementation status)
 
-### Phase 1 (High Impact, Low Risk)
+### Phase 1 (High Impact, Low Risk) — ✅ all done
 
-1. **VLAN N+1 fix** — Backend: `send_vlanlist()` to include `members` field. Frontend: `loadVlanTable()` to use inline data. Removes N serial requests per VLAN table render.
-   - **Known issue:** PVID (`port_pvid_get()`) causes OSEG overflow during link. Include `members` only and default PVID to 0 on frontend.
+1. **VLAN N+1 fix** — ✅ Done. `send_vlanlist()` includes `members`; `loadVlanTable()` uses inline data.
+   - **Known issue:** PVID (`port_pvid_get()`) causes OSEG overflow during link. Members only are inlined; PVID defaults to 0 on the frontend.
 
-2. **Cache-Control** — Add `Cache-Control: private, max-age=2` to `HTTP_RESPONCE_JSON`. Allows 2s browser caching for rapid page switches.
+2. **Cache-Control** — ✅ Done. `Cache-Control: private, max-age=1` (doc originally suggested `max-age=2`; `1` was chosen for fresher polls). The frontend `_t` cache-buster was removed so the cache is effective.
 
-3. **Smart polling** — Remove `pollStatus()` from EEE page. Change Port Config to single fetch (no interval). Reduces unnecessary backend load.
+3. **Smart polling** — ✅ Done. `pollStatus()` removed from EEE page; Port Config uses a single fetch.
 
 ### Phase 2 (Medium Impact)
 
-4. **SFP diag lazy-load** — Fetch `/sfp_diag.json` only on Dashboard, and only when user hovers over an SFP port.
+4. **SFP diag lazy-load** — ⚠️ Partial. `/sfp_diag.json` is fetched only while the Dashboard is active and throttled to every 15s. Hover-only fetching is not implemented.
 
-5. **ETag / If-None-Match** — Add conditional GET support to JSON endpoints. Backend complexity high, but would eliminate redundant transfers entirely.
+5. **ETag / If-None-Match** — ❌ Not implemented. Replaced by short `max-age=1` caching and removal of the cache-buster.
 
 ### Cannot Do
 
-- **Concurrent requests:** Backend global state (`outbuf`, `slen`) precludes parallel handling without major refactoring of uIP appstate.
-- **HTTP keep-alive:** uIP does not support connection reuse.
+- **Concurrent requests:** Backend global state (`outbuf`, `slen`) still precludes parallel handling without refactoring uIP appstate. Mitigated on the frontend by loading scripts sequentially after `DOMContentLoaded` and suppressing the favicon request (no concurrent requests in normal use).
+- **HTTP keep-alive:** uIP does not support connection reuse. Every request is a full TCP connection.
+
+---
+
+## アセンブラ移植の効果検証 (v0.2.21)
+
+メモリ/文字列関数と数値パース・出力フォーマット関数を手書きアセンブラに移植した
+(コミット `ca4e0a8` `perf(mem)`, `76fde96` `perf(util)`)。本ボトルネック分析への影響を調査した結果:
+
+### 改善された部分 (ボトルネック2 の「文字列/整形」側)
+
+- `strtox` (JSON リテラル構築): `/status.json` で 19 回呼ばれ、C ループ → アセンブラで 1 バイトあたり 3-4 倍高速
+- `string_to_html`: outbuf 追記をインライン化し、1 文字ごとの `char_to_html` lcall を排除
+- `memcpy`/`strlen`/`strcmp`: uIP パケット処理・コマンド処理の高速化
+- `itoa`/`print_byte`: 数値・16進表示の高速化
+- あわせて `__divuint`/`__moduint` と `atoi_*` の `__mulint` 呼び出しを排除
+
+### 解消されていない部分 (主要ボトルネック)
+
+| ボトルネック | 状態 | 理由 |
+|-------------|------|------|
+| 1. 直列リクエストキュー | 未解消 | バックエンドのグローバル状態 + uIP keep-alive なし。**アセンブラでは解決不可** (アーキテクチャ問題) |
+| 2. レジスタ読み出し (支配的) | **未解消** | `/status.json` で 11 回、`/counters.json` で 55 回の SFR トランザクション (PHY MMD / I2C / MIB カウンタ)。アセンブラ移植対象外 |
+| 3. キャッシュなし | 別途解決済み | `Cache-Control: max-age=1` (asm 無関係) |
+| 4. TCP バッファ (MSS 1460) | 未解消 | outbuf 2500B / MSS 制約は変更なし |
+| 5. 不要ポーリング | 別途解決済み | フロントエンド修正 (asm 無関係) |
+
+### 実測 TTFB (実機、現行ファームウェア)
+
+| エンドポイント | TTFB |
+|---------------|------|
+| status.json | ~25ms |
+| l2.json | ~16ms |
+| eee.json | ~20ms |
+| vlan.json | ~15ms |
+| information.json | ~55ms |
+
+TTFB の大部分は TCP 接続確立 + レジスタ読み出し (SFR busy-wait) であり、
+アセンブラ化した整形処理の寄与は数 ms 未満と推定される。
+
+### 残るフロントエンド側の整形最適化候補
+
+- `char_to_html` / `byte_to_html` / `charhex_to_html` はまだ C のまま (1 文字ごとに lcall)。
+  アセンブラ化すれば formatting 部分をさらに高速化できるが、レジスタ読み出しが支配的なため
+  TTFB への影響は限定的。
+- レジスタ読み出しそのものの削減 (ポーリング間隔延長・バックエンド側キャッシュ) が
+  次の効果的な改善手段。
 
 ---
 

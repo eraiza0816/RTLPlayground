@@ -102,6 +102,14 @@ __xdata uint8_t sbuf[SBUF_SIZE];
 // Registry data in sfr is in *big endian* order, so sfr_data[0] is the MSB and sfr_data[3] the LSB
 __xdata uint8_t sfr_data[4];
 
+/*
+ * Set by the external IRQ handlers instead of calling write_char() from
+ * interrupt context (which could busy-wait on the UART and deadlock).
+ * The main loop reports the flagged characters.
+ * bit 0 = 'X' (ext0), bit 1 = 'Y' (ext1), bit 2 = 'Z' (ext2), bit 3 = 'W' (ext3)
+ */
+__xdata uint8_t ext_irq_flags;
+
 extern __xdata uint8_t gpio_last_value[8];
 
 extern __xdata struct flash_region_t flash_region;
@@ -261,21 +269,6 @@ void write_char(char c)
 	write_char_no_syslog(c);
 }
 
-void itoa(uint8_t v)
-{
-	uint8_t t = (v / 100);
-	// when print_zeros is not zero, we know that a non-zero number has printed.
-	// That have to print all the next numbers.
-	uint8_t print_zeros = t;
-	if (print_zeros)
-		write_char('0' + t);
-	t = (v / 10) % 10;
-	print_zeros |= t;
-	if (print_zeros)
-		write_char('0' + t);
-	write_char('0' + (v % 10));
-}
-
 
 void print_string(__code char *p)
 {
@@ -296,68 +289,10 @@ void print_string_x(__xdata char *p)
 }
 
 
-void memcpy(__xdata void * __xdata dst, __xdata const void * __xdata src, uint16_t len)
-{
-	__xdata uint8_t *d = dst;
-	__xdata const uint8_t *s = src;
-	while (len--)
-		*d++ = *s++;
-}
-
-void memcpyc(register __xdata uint8_t *dst, register __code uint8_t *src, register uint16_t len)
-{
-	while (len--)
-		*dst++ = *src++;
-}
-
-
-void memset(register __xdata uint8_t *dst, register __xdata uint8_t v, register uint8_t len)
-{
-	while (len--)
-		*dst++ = v;
-}
-
-uint16_t strtox(register __xdata uint8_t *dst, register __code const char *s)
-{
-	__xdata uint8_t *b = dst;
-	while (*s)
-		*dst++ = *s++;
-	*dst = 0;
-	return dst - b;
-}
-
-
-uint16_t strlen(register __code const char *s)
-{
-	uint16_t l = 0;
-	while (s[l])
-		l++;
-	return l;
-}
-
-
-uint16_t strlen_x(register __xdata const char *s)
-{
-	uint16_t l = 0;
-	while (s[l])
-		l++;
-	return l;
-}
-
-
-char strcmp(register __xdata const uint8_t *a, register __code const uint8_t *b)
-{
-	uint8_t i = 0;
-
-	while (b[i] && (b[i] == a[i]))
-		i++;
-
-	if (a[i] < b[i])
-		return -1;
-	else if (a[i] > b[i])
-		return 1;
-	return 0;
-}
+/*
+ * memcpy/memcpyc/memset/strtox/strlen/strlen_x/strcmp are implemented in
+ * hand-written assembly (rtlplayground_mem.asm) for speed and code size.
+ */
 
 
 void print_short(uint16_t a)
@@ -386,21 +321,6 @@ void print_long(uint32_t a)
 	print_byte(a0);
 }
 
-void print_byte(uint8_t a)
-{
-	char high = (a >> 4) + '0';
-	if (high > '9') {
-		high += 'a' - ('0' + 10);
-	}
-	write_char(high);
-
-	char low = (a & 0xf) + '0';
-	if (low > '9') {
-		low += 'a' - ('0' + 10);
-	}
-	write_char(low);
-}
-
 extern __xdata uint8_t cli_mode;
 
 void print_cmd_prompt(void)
@@ -423,12 +343,14 @@ void print_cmd_prompt(void)
 
 /*
  * External IRQ 0 Service Routine: Called on link change?
- * Note that all registers are being put on the STACK because of calling a subroutine
+ * Sets a flag instead of writing to the UART directly; calling write_char()
+ * from an ISR could busy-wait on the UART and deadlock because the serial
+ * ISR (which releases the UART) cannot preempt an equal-priority ISR.
  */
 void isr_ext0(void) __interrupt(0)
 {
 	EX0 = 0;	// Disable interrupt for the moment
-	write_char('X');
+	ext_irq_flags |= 0x01;	// 'X'
 	IT0 = 1;	// Trigger on falling edge of external interrupt
 	EX0 = 1;	// Re-enable interrupt
 }
@@ -436,36 +358,44 @@ void isr_ext0(void) __interrupt(0)
 
 /*
  * External IRQ 1 Service Routine, triggered by the NIC recieving a packet
- * Note that all registers are being put on the STACK because of calling
- * a subroutine (write_char), we shold do better...
  */
 void isr_ext1(void) __interrupt(2)
 {
 	// This flag should only be reset after all packets have been read
 	EX1 = 0;
-	write_char('Y');
+	ext_irq_flags |= 0x02;	// 'Y'
 	EX1 = 1;
 }
 
 /*
  * External IRQ 2 Service Routine
- * Note that all registers are being put on the STACK because of calling a subroutine
  */
 void isr_ext2(void) __interrupt(8)
 {
 	EXIF &= 0xef;	// Clear IRQ flag (bit 7) in EXIF
-	write_char('Z');
+	ext_irq_flags |= 0x04;	// 'Z'
 	PCON |= 1; // Enter Idle mode until interrupt occurs
 }
 
 /*
  * External IRQ 3 Service Routine
- * Note that all registers are being put on the STACK because of calling a subroutine
  */
 void isr_ext3(void) __interrupt(9)
 {
 	EXIF &= 0xdf;	// Clear IRQ flag (bit 6) in EXIF
-	write_char('W');
+	ext_irq_flags |= 0x08;	// 'W'
+}
+
+/* Reports the external IRQ flags set by the ISRs (called from the main loop) */
+static void report_ext_irqs(void)
+{
+	if (!ext_irq_flags)
+		return;
+	if (ext_irq_flags & 0x01) write_char('X');
+	if (ext_irq_flags & 0x02) write_char('Y');
+	if (ext_irq_flags & 0x04) write_char('Z');
+	if (ext_irq_flags & 0x08) write_char('W');
+	ext_irq_flags = 0;
 }
 
 // Timer2: handles system tick.
@@ -2194,6 +2124,7 @@ void main(void)
 
 	while (1) {
 		cmd_edit();
+		report_ext_irqs();
 		idle(); // Enter Idle mode until interrupt occurs
 	}
 }

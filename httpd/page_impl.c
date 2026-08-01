@@ -83,38 +83,34 @@ void byte_to_html(uint8_t val)
 
 /* Converts a uint8_t to raw string.
    Suppress leading zeros.
+   Uses repeated subtraction instead of division so no 16-bit division
+   library routine (__divuint/__moduint) gets linked in.
 */
 void itoa_html(uint8_t v)
 {
-	uint8_t t = (v / 100);
-	// when print_zeros is not zero, we know that a non-zero number has printed.
-	// That have to print all the next numbers.
-	uint8_t print_zeros = t;
-	if (print_zeros)
-		char_to_html('0' + t);
-	t = (v / 10) % 10;
-	print_zeros |= t;
-	if (print_zeros)
-		char_to_html('0' + t);
-	char_to_html('0' + (v % 10));
+	uint8_t t, print_zeros = 0;
+	t = 0;
+	while (v >= 100) { v -= 100; t++; }
+	if (t || print_zeros) { char_to_html('0' + t); print_zeros = 1; }
+	t = 0;
+	while (v >= 10) { v -= 10; t++; }
+	if (t || print_zeros) { char_to_html('0' + t); print_zeros = 1; }
+	char_to_html('0' + v);
 }
 
 void itoa16_html(uint16_t v) /* sufficient for VLAN IDs (max 4094) */
 {
-	uint8_t print_zeros = 0;
-	uint8_t d;
-	d = v / 1000;
-	if (d) { char_to_html('0' + d); print_zeros = 1; }
-	d = (v / 100) % 10;
+	uint8_t d, print_zeros = 0;
+	d = 0;
+	while (v >= 1000) { v -= 1000; d++; }
 	if (d || print_zeros) { char_to_html('0' + d); print_zeros = 1; }
-	d = (v / 10) % 10;
+	d = 0;
+	while (v >= 100) { v -= 100; d++; }
+	if (d || print_zeros) { char_to_html('0' + d); print_zeros = 1; }
+	d = 0;
+	while (v >= 10) { v -= 10; d++; }
 	if (d || print_zeros) char_to_html('0' + d);
-	char_to_html('0' + (v % 10));
-}
-
-void string_to_html(__code char *s)
-{
-	while (*s) char_to_html(*s++);
+	char_to_html('0' + v);
 }
 
 uint16_t stat_content(void)
@@ -561,7 +557,10 @@ void send_eee(void)
 	uint8_t eee_ablty = sfr_data[3];
 
 	char_to_html('[');
-	for (uint8_t i = machine.min_port; i <= machine.max_port; i++) {
+	// Iterate in physical port order (1..N) so the display matches the
+	// front-panel labels; the chip register access uses the logical port.
+	for (uint8_t p = 0; p <= machine.max_port - machine.min_port; p++) {
+		uint8_t i = machine.phys_to_log_port[p];
 		slen += strtox(outbuf + slen, "{\"portNum\":");
 		itoa_html(machine.log_to_phys_port[i]);
 
@@ -593,7 +592,7 @@ void send_eee(void)
 			bool_to_html(eee_ablty & (1 << i));
 		}
 		char_to_html('}');
-		if (i < machine.max_port)
+		if (p < machine.max_port - machine.min_port)
 			char_to_html(',');
 		else
 			char_to_html(']');
@@ -606,7 +605,10 @@ void send_bandwidth(void)
 	dbg_string("send_bandwidth called\n");
 	slen = strtox(outbuf, HTTP_RESPONCE_JSON);
 	char_to_html('[');
-	for (uint8_t i = machine.min_port; i <= machine.max_port; i++) {
+	// Iterate in physical port order (1..N) so the display matches the
+	// front-panel labels; the chip register access uses the logical port.
+	for (uint8_t p = 0; p <= machine.max_port - machine.min_port; p++) {
+		uint8_t i = machine.phys_to_log_port[p];
 		slen += strtox(outbuf + slen, "{\"portNum\":");
 		itoa_html(machine.log_to_phys_port[i]);
 		slen += strtox(outbuf + slen, ",\"iLimited\":");
@@ -636,7 +638,7 @@ void send_bandwidth(void)
 		byte_to_html(sfr_data[3]);
 		char_to_html('"');
 		char_to_html('}');
-		if (i < machine.max_port)
+		if (p < machine.max_port - machine.min_port)
 			char_to_html(',');
 		else
 			char_to_html(']');
@@ -649,7 +651,10 @@ void send_mtu(void)
 	dbg_string("send_mtu called\n");
 	slen = strtox(outbuf, HTTP_RESPONCE_JSON);
 	char_to_html('[');
-	for (uint8_t i = machine.min_port; i <= machine.max_port; i++) {
+	// Iterate in physical port order (1..N) so the display matches the
+	// front-panel labels; the chip register access uses the logical port.
+	for (uint8_t p = 0; p <= machine.max_port - machine.min_port; p++) {
+		uint8_t i = machine.phys_to_log_port[p];
 		slen += strtox(outbuf + slen, "{\"portNum\":");
 		itoa_html(machine.log_to_phys_port[i]);
 		slen += strtox(outbuf + slen, ",\"mtu\":\"0x");
@@ -659,7 +664,7 @@ void send_mtu(void)
 		byte_to_html(mtu & 0xff);
 		char_to_html('"');
 		char_to_html('}');
-		if (i < machine.max_port)
+		if (p < machine.max_port - machine.min_port)
 			char_to_html(',');
 		else
 			char_to_html(']');
@@ -673,7 +678,10 @@ void send_status(void)
 	dbg_string("sending status\n");
 	char_to_html('[');
 
-	for (uint8_t i = machine.min_port; i <= machine.max_port; i++) {
+	// Iterate in physical port order (1..N) so the dashboard matches the
+	// front-panel labels; the chip register access uses the logical port.
+	for (uint8_t p = 0; p <= machine.max_port - machine.min_port; p++) {
+		uint8_t i = machine.phys_to_log_port[p];
 		slen += strtox(outbuf + slen, "{\"portNum\":");
 		itoa_html(machine.log_to_phys_port[i]);
 		slen += strtox(outbuf + slen, ",\"logPort\":");
@@ -767,7 +775,7 @@ void send_status(void)
 		STAT_GET(STAT_COUNTER_ERR_PKTS, i);
 		reg_to_html(RTL837X_STAT_V_HIGH);	// 32bit RX packet errors
 		slen += strtox(outbuf + slen, "\"}");
-		if (i < machine.max_port)
+		if (p < machine.max_port - machine.min_port)
 			char_to_html(',');
 		else
 			char_to_html(']');
@@ -779,7 +787,10 @@ void send_sfp_diag(void)
 	slen = strtox(outbuf, HTTP_RESPONCE_JSON);
 	char_to_html('[');
 	uint8_t first = 1;
-	for (uint8_t i = machine.min_port; i <= machine.max_port; i++) {
+	// Iterate in physical port order (1..N) so the display matches the
+	// front-panel labels; the chip register access uses the logical port.
+	for (uint8_t p = 0; p <= machine.max_port - machine.min_port; p++) {
+		uint8_t i = machine.phys_to_log_port[p];
 		if (!machine.is_sfp[i]) continue;
 		uint8_t sfp = machine.is_sfp[i] - 1;
 		if (!first) char_to_html(',');

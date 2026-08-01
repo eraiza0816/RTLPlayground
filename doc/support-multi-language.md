@@ -124,12 +124,24 @@ No special flags are needed. The `html/` directory is embedded by `fileadder` du
 
 ## Script Load Order
 
-`i18n.js` must be loaded after `main.js` (which defines `t()`'s dependencies like `LANG`) but before any page-specific JS that calls `t()`:
+`i18n.js` defines `LANG`, `rtlLang` and `t()`; `main.js` uses them, so `i18n.js` must load before `main.js`.
 
-```html
-<script src="/main.js"></script>
-<script src="/i18n.js"></script>
-<script src="/eee.js"></script>    <!-- uses t() -->
-```
+To avoid parallel requests corrupting the switch's single-buffer HTTP server,
+scripts are loaded sequentially after `DOMContentLoaded` (see
+`doc/webui-performance.md`):
 
-The `navigation.js` script is loaded last (bottom of `<body>`).
+- `index.html` (bottom of `<body>`):
+  ```html
+  <script>
+  document.addEventListener('DOMContentLoaded', function() {
+    function loadScript(src, onload) {
+      var s = document.createElement('script');
+      s.src = src;
+      if (onload) s.onload = onload;
+      document.head.appendChild(s);
+    }
+    loadScript('/i18n.js', function() { loadScript('/main.js'); });
+  });
+  </script>
+  ```
+- `login.html` loads only `i18n.js` the same way (no `main.js`).

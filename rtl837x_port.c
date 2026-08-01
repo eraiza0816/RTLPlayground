@@ -422,7 +422,10 @@ void port_l2_setup(void) __banked
 void port_stats_print(void) __banked
 {
 	print_string("\nPort\tState\tLink\tTxGood\t\tTxBad\t\tRxGood\t\tRxBad\n");
-	for (uint8_t i = machine.min_port; i <= machine.max_port; i++) {
+	// Iterate in physical port order (1..N) to match the front-panel labels;
+	// the chip register access uses the logical port.
+	for (uint8_t p = 0; p <= machine.max_port - machine.min_port; p++) {
+		uint8_t i = machine.phys_to_log_port[p];
 		write_char('0' + machine.log_to_phys_port[i]); write_char('\t');
 
 		if (!machine.is_sfp[i]) {
@@ -708,8 +711,10 @@ void port_eee_disable_all(void) __banked
 
 void port_eee_status_all(void) __banked
 {
-	for (uint8_t i = machine.min_port; i <= machine.max_port; i++) {
-		port_eee_status(i);
+	// Iterate in physical port order (1..N) to match the front-panel labels;
+	// the chip register access uses the logical port.
+	for (uint8_t p = 0; p <= machine.max_port - machine.min_port; p++) {
+		port_eee_status(machine.phys_to_log_port[p]);
 	}
 }
 
@@ -800,8 +805,10 @@ void vlan_dump(void) __banked
 {
 	print_string("Ingress VLAN configuration:\n");
 	print_string("Port\tPVID\tType\tFiltering\n");
-	for (uint8_t port = machine.min_port; port <= machine.max_port; port++) {
-		print_vlan_ingress_port(port);
+	// Iterate in physical port order (1..N) to match the front-panel labels;
+	// the chip register access uses the logical port.
+	for (uint8_t p = 0; p <= machine.max_port - machine.min_port; p++) {
+		print_vlan_ingress_port(machine.phys_to_log_port[p]);
 	}
 	print_vlan_ingress_port(9);
 

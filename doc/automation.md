@@ -42,8 +42,10 @@ You can automate upload of the firmware via WEB with curl:
     curl -b cookies.txt http://${SWITCH_IP}/upload -F "uploadedfile=@${FIRMWARE_FILE_PATH}" -i
     ```
 
-    You can expect that server will close connection, without responding to request.
-    Wait for SWITCH_IP to be responding again.
+    On success the server responds `HTTP/1.1 200 OK` with body `OK` and then
+    resets (the connection drops). On a CRC16 mismatch it responds
+    `400 Bad Request` with body `CRC mismatch`.
+    Wait for SWITCH_IP to be responding again after the reset.
 
 ## Port status
 

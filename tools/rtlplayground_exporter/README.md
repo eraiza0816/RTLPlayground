@@ -49,11 +49,11 @@ scrape_configs:
 - `rtl_port_rx_bad_packets_total{port, name, logical_port}`
 
 ### SFP diagnostics (per SFP port)
-- `rtl_sfp_temperature_celsius{port, vendor, model}`
+- `rtl_sfp_temperature_celsius{port, vendor, model}` — SFF-8472 signed/256 °C
 - `rtl_sfp_voltage_volts{port}`
 - `rtl_sfp_tx_bias_amperes{port}`
-- `rtl_sfp_tx_power_dbm{port}`
-- `rtl_sfp_rx_power_dbm{port}`
+- `rtl_sfp_tx_power_dbm{port}` — NaN when the module reports 0 mW
+- `rtl_sfp_rx_power_dbm{port}` — NaN when no light is received (LOS)
 
 ### MIB counters (55 per port)
 - `rtl_port_mib_counter{port, counter="In Octets"}` — individual MIB counters indexed by name
@@ -65,9 +65,9 @@ scrape_configs:
 
 ### Feature config
 - `rtl_mirror_enabled`, `rtl_mirror_monitor_port` — port mirroring
-- `rtl_lag_members{lag_num}` — link aggregation groups
+- `rtl_lag_members{lag_num}` — link aggregation groups (1 if the group has members)
 - `rtl_eee_active{port}` — Energy Efficient Ethernet
-- `rtl_port_bandwidth_ingress|egress_limit_bytes{port}` — rate limits
+- `rtl_port_bandwidth_ingress|egress_limit_bytes{port}` — rate limits (0 = unlimited)
 - `rtl_port_mtu_bytes{port}` — max frame length
 
 ### Collector health
@@ -136,11 +136,11 @@ scrape_configs:
 - `rtl_port_rx_good_packets_total` / `rtl_port_rx_bad_packets_total`
 
 ### SFP 診断（SFP ポートのみ）
-- `rtl_sfp_temperature_celsius{port, vendor, model}`
+- `rtl_sfp_temperature_celsius{port, vendor, model}` — SFF-8472 符号付き /256 °C
 - `rtl_sfp_voltage_volts{port}`
 - `rtl_sfp_tx_bias_amperes{port}`
-- `rtl_sfp_tx_power_dbm{port}`
-- `rtl_sfp_rx_power_dbm{port}`
+- `rtl_sfp_tx_power_dbm{port}` — 0 mW 報告時は NaN
+- `rtl_sfp_rx_power_dbm{port}` — 受信光なし (LOS) 時は NaN
 
 ### MIB カウンタ（ポートあたり55種）
 - `rtl_port_mib_counter{port, counter="In Octets"}` — 個別 MIB カウンタ
@@ -152,9 +152,9 @@ scrape_configs:
 
 ### 機能設定
 - `rtl_mirror_enabled`, `rtl_mirror_monitor_port` — ポートミラーリング
-- `rtl_lag_members{lag_num}` — リンクアグリゲーション
+- `rtl_lag_members{lag_num}` — リンクアグリゲーション（メンバーあり=1）
 - `rtl_eee_active{port}` — Energy Efficient Ethernet
-- `rtl_port_bandwidth_ingress|egress_limit_bytes{port}` — 帯域制限
+- `rtl_port_bandwidth_ingress|egress_limit_bytes{port}` — 帯域制限（0=無制限）
 - `rtl_port_mtu_bytes{port}` — 最大フレーム長
 
 ### コレクター健全性

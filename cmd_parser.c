@@ -187,45 +187,6 @@ uint8_t atoi_hex(uint8_t idx)
 }
 
 
-uint8_t atoi_byte(__xdata uint8_t *out, uint8_t idx)
-{
-	uint8_t err = 1;
-	uint8_t num = 0;
-
-	while (isnumber(cmd_buffer[idx])) {
-		err = 0;
-		uint8_t digit = cmd_buffer[idx] - '0';
-		if (num > 25 || (num == 25 && digit > 5)) {
-			return 1;
-		}
-		num = (num * 10) + digit;
-		idx++;
-	}
-
-	*out = num;
-	return err;
-}
-
-
-uint8_t atoi_short(__xdata uint16_t *vlan, uint8_t idx)
-{
-	uint8_t err = 1;
-	*vlan = 0;
-
-	while (isnumber(cmd_buffer[idx])) {
-		err = 0;
-		uint8_t digit = cmd_buffer[idx] - '0';
-		if (*vlan > 6553 || (*vlan == 6553 && digit > 5)) {
-			return 1;
-		}
-		*vlan = (*vlan * 10) + digit;
-		idx++;
-	}
-
-	return err;
-}
-
-
 uint8_t parse_ip(uint8_t idx)
 {
 	__xdata uint8_t b;
@@ -1391,9 +1352,14 @@ void parse_hostname(void)
 	if (cmd_words_len >= 2) {
 		uint8_t i = cmd_words_b[1];
 		uint8_t j = 0;
+		// A hostname (RFC 1123 DNS label) must not contain a dot, the dot is
+		// only a separator between labels of an FQDN. The default machine name
+		// (e.g. "PCB-K0402WS-V3.0") may contain one, so the name is truncated
+		// at the first invalid character (here: the dot).
 		while (cmd_buffer[i] && j < 31) {
 			uint8_t c = cmd_buffer[i];
 			if (!isletter(c) && !isnumber(c) && c != '-' && c != '_') {
+				hostname[j] = '\0';
 				print_string("Error: invalid character in hostname\n");
 				return;
 			}

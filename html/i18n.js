@@ -1,3 +1,4 @@
+// @ts-check
 var LANG = {
   en: {
     nav_overview: 'Overview',
@@ -365,7 +366,7 @@ var LANG = {
 var rtlLang = (function() {
   var saved = localStorage.getItem('rtl_lang');
   if (saved && LANG[saved]) return saved;
-  var browser = (navigator.language || navigator.userLanguage || 'en').substring(0, 2);
+  var browser = (navigator.language || navigator['userLanguage'] || 'en').substring(0, 2);
   return LANG[browser] ? browser : 'en';
 })();
 

@@ -498,12 +498,19 @@ void send_vlanlist(int s)
 	struct json_object *arr, *v;
 	const char *jstring;
         char *header = "HTTP/1.1 200 OK\r\n"
-                       "Content-Type: application/json; charset=UTF-8\r\n\r\n";
+                       "Content-Type: application/json; charset=UTF-8\r\n"
+                       "Cache-Control: private, max-age=1\r\n\r\n";
 
 	arr = json_object_new_array();
 	v = json_object_new_object();
 	json_object_object_add(v, "id", json_object_new_int(1));
 	json_object_object_add(v, "name", json_object_new_string("Default"));
+	json_object_object_add(v, "members", json_object_new_string("0x00000001"));
+	json_object_array_add(arr, v);
+	v = json_object_new_object();
+	json_object_object_add(v, "id", json_object_new_int(2));
+	json_object_object_add(v, "name", json_object_new_string("Test"));
+	json_object_object_add(v, "members", json_object_new_string("0x00000601"));
 	json_object_array_add(arr, v);
 
         write(s, header, strlen(header));
@@ -1018,7 +1025,7 @@ void launch(struct Server *server)
 			write(new_socket, response, strlen(response));
 
 			write(new_socket, mime, strlen(mime));
-			response = "; charset=UTF-8\r\nCache-Control: max-age=60, must-revalidate\r\n"
+			response = "; charset=UTF-8\r\nCache-Control: no-cache, no-store, must-revalidate\r\n"
 				   "Access-Control-Allow-Origin: *\r\n"
 				   "Content-Security-Policy: style-src 'self' 'unsafe-inline'\r\n\r\n";
 			write(new_socket, response, strlen(response));
@@ -1042,12 +1049,16 @@ bad_request:
 }
 
 
-int main()
+int main(int argc, char **argv)
 {
 	// Make sure we can handle writes to a dead client without a signal handler
 	signal(SIGPIPE, SIG_IGN);
 
-	struct Server server = serverConstructor(8080, launch);
+	int port = 8080;
+	if (argc > 1)
+		port = atoi(argv[1]);
+
+	struct Server server = serverConstructor(port, launch);
 	server.launch(&server);
 
 	return 0;

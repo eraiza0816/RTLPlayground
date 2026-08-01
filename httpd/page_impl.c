@@ -113,11 +113,6 @@ void itoa16_html(uint16_t v) /* sufficient for VLAN IDs (max 4094) */
 	char_to_html('0' + v);
 }
 
-void string_to_html(__code char *s)
-{
-	while (*s) char_to_html(*s++);
-}
-
 uint16_t stat_content(void)
 {
 	dbg_string("stat_content called\n");

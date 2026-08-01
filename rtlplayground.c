@@ -261,21 +261,6 @@ void write_char(char c)
 	write_char_no_syslog(c);
 }
 
-void itoa(uint8_t v)
-{
-	uint8_t t = (v / 100);
-	// when print_zeros is not zero, we know that a non-zero number has printed.
-	// That have to print all the next numbers.
-	uint8_t print_zeros = t;
-	if (print_zeros)
-		write_char('0' + t);
-	t = (v / 10) % 10;
-	print_zeros |= t;
-	if (print_zeros)
-		write_char('0' + t);
-	write_char('0' + (v % 10));
-}
-
 
 void print_string(__code char *p)
 {
@@ -326,21 +311,6 @@ void print_long(uint32_t a)
 	print_byte(a16);
 	print_byte(a8);
 	print_byte(a0);
-}
-
-void print_byte(uint8_t a)
-{
-	char high = (a >> 4) + '0';
-	if (high > '9') {
-		high += 'a' - ('0' + 10);
-	}
-	write_char(high);
-
-	char low = (a & 0xf) + '0';
-	if (low > '9') {
-		low += 'a' - ('0' + 10);
-	}
-	write_char(low);
 }
 
 extern __xdata uint8_t cli_mode;

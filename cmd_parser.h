@@ -9,6 +9,10 @@ extern __xdata uint8_t cmd_buffer[CMD_BUF_SIZE];
 extern volatile __xdata uint8_t cmd_available;
 extern __xdata uint8_t err_status;
 
+/* Implemented in hand-written assembly (rtlplayground_util.asm) */
+uint8_t atoi_byte(__xdata uint8_t *out, uint8_t idx);
+uint8_t atoi_short(__xdata uint16_t *vlan, uint8_t idx);
+
 void cmd_tokenize(void) __banked;
 void cmd_parser(void) __banked;
 void execute_config(void) __banked __reentrant;

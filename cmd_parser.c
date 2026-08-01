@@ -187,45 +187,6 @@ uint8_t atoi_hex(uint8_t idx)
 }
 
 
-uint8_t atoi_byte(__xdata uint8_t *out, uint8_t idx)
-{
-	uint8_t err = 1;
-	uint8_t num = 0;
-
-	while (isnumber(cmd_buffer[idx])) {
-		err = 0;
-		uint8_t digit = cmd_buffer[idx] - '0';
-		if (num > 25 || (num == 25 && digit > 5)) {
-			return 1;
-		}
-		num = (num * 10) + digit;
-		idx++;
-	}
-
-	*out = num;
-	return err;
-}
-
-
-uint8_t atoi_short(__xdata uint16_t *vlan, uint8_t idx)
-{
-	uint8_t err = 1;
-	*vlan = 0;
-
-	while (isnumber(cmd_buffer[idx])) {
-		err = 0;
-		uint8_t digit = cmd_buffer[idx] - '0';
-		if (*vlan > 6553 || (*vlan == 6553 && digit > 5)) {
-			return 1;
-		}
-		*vlan = (*vlan * 10) + digit;
-		idx++;
-	}
-
-	return err;
-}
-
-
 uint8_t parse_ip(uint8_t idx)
 {
 	__xdata uint8_t b;

@@ -200,20 +200,7 @@ bool is_word_x(__xdata uint8_t *lhs_str_p, __xdata uint8_t *rhs_str_p)
 }
 
 
-uint8_t parse_short(__xdata uint8_t *p)
-{
-	uint8_t err = 1;
-	uint8_t c = 0;
-
-	short_parsed = 0;
-	while(1) {
-		c = *p++ - '0';
-		if (c > 9) { break; }
-		err = 0;
-		short_parsed = (short_parsed * 10) + c;
-	}
-	return err;
-}
+uint8_t parse_short(__xdata uint8_t *p);
 
 
 void send_not_found(void)

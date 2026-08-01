@@ -1031,7 +1031,7 @@ void parse_sfp(void)
 			print_string(" Write failed!\n");
 		} else {
 			print_string(" OK - verified\n");
-			if (off >= 0x00 && off <= 0x3E)
+			if (off <= 0x3E)
 				print_string(" WARNING: update checksum with: sfp "); write_char('1' + slot); print_string(" checksum --fix\n");
 		}
 		return;

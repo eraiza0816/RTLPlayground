@@ -46,8 +46,8 @@ __xdata uint32_t cont_addr;
 
 // HTTP header properties
 __xdata uint8_t boundary[72];
-__xdata uint8_t *content_type = 0;
-__xdata uint8_t *session = 0;
+__xdata uint8_t * __xdata content_type = 0;
+__xdata uint8_t * __xdata session = 0;
 
 // Global variables holding POST state
 __xdata uint16_t bindex; // Current index into the boundary
@@ -246,8 +246,8 @@ void send_unauthorized(void)
 __xdata uint8_t *skip_boundary(__xdata uint8_t *p)
 {
 	while (*p) {
-		if (is_word_x(p, boundary))
-			return p + strlen_x(boundary);
+		if (is_word_x(p, boundary + 2))
+			return p + strlen_x(boundary + 2);
 		p++;
 	}
 	return p;
@@ -524,9 +524,7 @@ void handle_post(void)
 			p = scan_header(p);
 			if (!*p)
 				goto bad_request;
-			if (!content_type) // We are waiting for the part with the octet stream
-				continue;
-		} while (!is_word(content_type, "application/octet-stream"));
+		} while (!content_type || !is_word(content_type, "application/octet-stream"));
 		dbg_string("Have content octets\n");
 		p += 4; // Skip \r\n\r\n sequence at end of preamble of part
 
@@ -667,8 +665,10 @@ void httpd_appcall(void)
 			goto do_send;
 		}
 
+#ifdef DEBUG
 		if (is_word(p, "GET"))
 			dbg_string("GET request ");
+#endif
 		p += 4;
 		scan_header(p);
 		__xdata uint8_t *q = p;
@@ -748,7 +748,7 @@ void httpd_appcall(void)
 
 			slen = strtox(outbuf, "HTTP/1.1 200 OK\r\nContent-Type: ");
 			slen += strtox(outbuf + slen, mime_strings[f_data[entry].mime]);
-			slen += strtox(outbuf + slen, "; charset=UTF-8\r\nCache-Control: max-age=60, must-revalidate\r\nAccess-Control-Allow-Origin: *\r\nContent-Security-Policy: style-src 'self' 'unsafe-inline'\r\n\r\n");
+			slen += strtox(outbuf + slen, "; charset=UTF-8\r\nCache-Control: no-cache, no-store, must-revalidate\r\nAccess-Control-Allow-Origin: *\r\nContent-Security-Policy: style-src 'self' 'unsafe-inline'\r\n\r\n");
 
 			len_left = f_data[entry].len;
 			if (len_left > (TCP_OUTBUF_SIZE - slen)) {
@@ -793,3 +793,4 @@ do_send:
 		uip_len = 0;
 	}
 }
+

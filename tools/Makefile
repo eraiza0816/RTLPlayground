@@ -20,8 +20,8 @@ $(BUILDDIR)/fileadder: fileadder.c
 $(BUILDDIR)/crc_calculator: crc_calculator.c
 	gcc $^ $(CCFLAGS) $@
 
-$(BUILDDIR)/httpd_sim: httpd_sim.c httpd_sim.h
-	gcc $< $(CCFLAGS) $@ -I/usr/include/json-c -ljson-c
+$(BUILDDIR)/httpd_sim: httpd_sim.c httpd_sim.h ../crypto/aead.c ../crypto/chacha20.c ../crypto/poly1305.c rtl837x_common.h
+	gcc -O2 -Wall -Wno-unknown-pragmas -I. -include rtl837x_common.h $< ../crypto/aead.c ../crypto/chacha20.c ../crypto/poly1305.c $(CCFLAGS) $@ -I/usr/include/json-c -ljson-c
 
 $(BUILDDIR)/imagebuilder: imagebuilder.c
 	gcc $^ $(CCFLAGS) $@

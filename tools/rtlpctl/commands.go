@@ -271,6 +271,23 @@ func cmdCmd(client *Client, args []string, asJSON bool) error {
 	return nil
 }
 
+// cmdEnc sends a command through the encrypted /enc endpoint (PSK auth).
+func cmdEnc(client *Client, args []string, asJSON bool) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: enc-cmd <command-text>")
+	}
+	if len(client.psk) != aeadKeyLen {
+		return fmt.Errorf("pre-shared key not configured: set RTLP_PSK=<64-hex-chars> or use --psk")
+	}
+	cmdText := strings.Join(args, " ")
+	respText, err := client.PostEnc(cmdText)
+	if err != nil {
+		return err
+	}
+	fmt.Println(respText)
+	return nil
+}
+
 func cmdUpload(client *Client, args []string, asJSON bool) error {
 	if len(args) < 2 {
 		return fmt.Errorf("usage: upload firmware <file>")
@@ -314,6 +331,7 @@ func printHelp() {
 Global flags:
   --host HOST         Switch IP address (env: RTLP_HOST, default: 192.168.1.1)
   --password PASS     Login password (env: RTLP_PASSWORD)
+  --psk HEX64         Pre-shared key for /enc (env: RTLP_PSK, 64 hex chars)
   --env-file FILE     Load .env file (default: .env)
   --mode MODE         CLI mode: default or arista (env: MODE, default: default)
   --json              Output raw JSON
@@ -337,6 +355,7 @@ Commands (default mode):
   config                     Show running configuration
   config upload <file>       Upload configuration file
   cmd <text>                 Execute CLI command
+  enc-cmd <text>             Execute CLI command via encrypted /enc (PSK)
   cmd-log                    Show command history log
   cmd-log clear              Clear command history
   upload firmware <file>     Upload firmware image

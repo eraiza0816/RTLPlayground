@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 type Client struct {
 	baseURL  string
 	password string
+	psk      []byte
 	http     *http.Client
 }
 
@@ -86,6 +88,49 @@ func (c *Client) get(path string) (*http.Response, error) {
 	return c.http.Do(req)
 }
 
+// PostEnc sends a command encrypted with the pre-shared key to the /enc
+// endpoint and returns the decrypted response text.
+// Body format: nonce[12] || ciphertext || tag[16].
+func (c *Client) PostEnc(cmd string) (string, error) {
+	if len(c.psk) != aeadKeyLen {
+		return "", fmt.Errorf("pre-shared key not configured (need %d bytes)", aeadKeyLen)
+	}
+	nonce := make([]byte, aeadNonceLen)
+	if _, err := rand.Read(nonce); err != nil {
+		return "", err
+	}
+	pkt, err := aeadEncrypt(c.psk, nonce, []byte(cmd))
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequest("POST", c.baseURL+"/enc", bytes.NewReader(pkt))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/octet-stream")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("enc request failed (status %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	if len(body) < aeadNonceLen+aeadTagLen {
+		return "", fmt.Errorf("short encrypted response (%d bytes)", len(body))
+	}
+	pt, err := aeadDecrypt(c.psk, body[:aeadNonceLen],
+		body[aeadNonceLen:len(body)-aeadTagLen], body[len(body)-aeadTagLen:])
+	if err != nil {
+		return "", fmt.Errorf("response decrypt failed: %w", err)
+	}
+	return string(pt), nil
+}
 func (c *Client) GetJSON(path string) (interface{}, error) {
 	resp, err := c.get(path)
 	if err != nil {

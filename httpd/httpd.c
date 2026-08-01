@@ -6,6 +6,7 @@
 #include "cmd_parser.h"
 #include "rtl837x_flash.h"
 #include "uip.h"
+#include "crypto/aead.h"
 #ifndef NO_WEBUI
 #include "html_data.h"
 #endif
@@ -28,6 +29,7 @@ extern __code struct f_data f_data[];
 extern __code char * __code mime_strings[];
 #endif
 extern __xdata struct flash_region_t flash_region;
+extern __xdata uint8_t cli_mode;
 extern __xdata uint32_t flash_size;
 
 // Flash buffer to optimize flash writing speed, write_len is the current filling position
@@ -58,6 +60,7 @@ __xdata uint16_t short_parsed;
 __xdata char passwd[21];
 __xdata char session_id[SESSION_ID_LENGTH + 1];
 __xdata uint8_t authenticated;
+__xdata uint8_t preshared_key[AEAD_KEY_LEN];
 __xdata uint32_t now;
 __xdata uint8_t *timeptr;
 __xdata uint32_t last_session_use;
@@ -403,11 +406,66 @@ uint8_t stream_upload(uint16_t bptr)
 }
 
 
+/* POST /enc: body is nonce[12] || ciphertext || tag[16].
+ * The plaintext is command text, verified against the pre-shared key.
+ * The response body is nonce[12] || ciphertext || tag[16] of a JSON string. */
+void handle_enc(__xdata uint8_t *body) __reentrant
+{
+	static __xdata uint16_t body_len;
+	static __xdata uint16_t ct_len;
+	static __xdata uint8_t i;
+	static __xdata uint8_t psk_set;
+	static __xdata uint8_t resp_nonce[AEAD_NONCE_LEN];
+	static __xdata uint8_t resp_json[16];
+	static __code uint8_t resp_ok[] = "{\"result\":\"ok\"}";
+
+	body_len = uip_len - (body - uip_appdata);
+	psk_set = 0;
+
+	for (i = 0; i < AEAD_KEY_LEN; i++)
+		psk_set |= preshared_key[i];
+	if (!psk_set) {
+		send_unauthorized();
+		return;
+	}
+	if (body_len < AEAD_NONCE_LEN + AEAD_TAG_LEN + 1) {
+		send_bad_request();
+		return;
+	}
+	ct_len = body_len - AEAD_NONCE_LEN - AEAD_TAG_LEN;
+	if (ct_len > CMD_BUF_SIZE - 1) {
+		send_bad_request();
+		return;
+	}
+	if (aead_decrypt(preshared_key, body, 0, 0, body + AEAD_NONCE_LEN, ct_len,
+			 body + AEAD_NONCE_LEN, body + AEAD_NONCE_LEN + ct_len)) {
+		send_unauthorized();
+		return;
+	}
+	body[AEAD_NONCE_LEN + ct_len] = '\0';
+	cli_mode = MODE_CONFIG;
+	execute_commands(body + AEAD_NONCE_LEN);
+	cli_mode = MODE_EXEC;
+	if (err_status != ERR_OK) {
+		send_bad_request();
+		return;
+	}
+	slen = strtox(outbuf, "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n\r\n");
+	gen_random_bytes(resp_nonce, AEAD_NONCE_LEN);
+	for (i = 0; i < AEAD_NONCE_LEN; i++)
+		outbuf[slen++] = resp_nonce[i];
+	memcpyc(resp_json, resp_ok, 16);
+	aead_encrypt(preshared_key, resp_nonce, 0, 0, resp_json, 16,
+		     outbuf + slen, outbuf + slen + 16);
+	slen += AEAD_TAG_LEN * 2;
+}
+
+
 void handle_post(void)
 {
 	__xdata struct httpd_state * __xdata s = &(uip_conn->appstate);
 	__xdata uint8_t *p = uip_appdata;
-	__xdata uint8_t *request_path = p + 6;
+	__xdata uint8_t *request_path = p + 5;
 
 	// Was the multipart header sent in multiple packets?
 	if (s->tstate != TSTATE_MULTIPART) {
@@ -427,7 +485,11 @@ void handle_post(void)
 			send_not_found();
 			return;
 		}
-		if (is_word(request_path, "upload")) {
+		if (is_word(request_path, "/upload")) {
+			if (!authenticated) {
+				send_unauthorized();
+				return;
+			}
 			if (flash_size < FIRMWARE_UPLOAD_START*2)
 			{
 				print_string("Flash too small for firmware upload!\n");
@@ -438,7 +500,7 @@ void handle_post(void)
 			uptr = FIRMWARE_UPLOAD_START;
 			verify_crc = 1;
 			max_upload = 1024576;
-		} else if (is_word(request_path, "config")) {
+		} else if (is_word(request_path, "/config")) {
 			if (!authenticated) {
 				send_unauthorized();
 				return;
@@ -460,12 +522,17 @@ void handle_post(void)
 			send_unauthorized();
 			return;
 		}
+		cli_mode = MODE_CONFIG;
 		execute_commands(p);
+		cli_mode = MODE_EXEC;
 		if (err_status != ERR_OK) {
 			send_bad_request();
 			return;
 		}
-	} else if (is_word(request_path, "login")) {
+	} else if (is_word(request_path, "/enc")) {
+		handle_enc(p + 4);
+		return;
+	} else if (is_word(request_path, "/login")) {
 		dbg_string("POST login\n");
 
 		if (!content_type || !is_word(content_type, "application/x-www-form-urlencoded")) {
@@ -490,7 +557,7 @@ void handle_post(void)
 			slen = strtox(outbuf, "HTTP/1.1 302 Found\r\nLocation: login.html\r\n\r\n");
 		}
 		return;
-	} else if (s->tstate == TSTATE_MULTIPART || is_word(request_path, "upload") || is_word(request_path, "config")) {
+	} else if (s->tstate == TSTATE_MULTIPART || is_word(request_path, "/upload") || is_word(request_path, "/config")) {
 		dbg_string("POST upload/config request\n");
 		if (!authenticated) {
 			send_unauthorized();

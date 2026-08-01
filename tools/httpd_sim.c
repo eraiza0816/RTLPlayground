@@ -10,10 +10,33 @@
 #include <json.h>
 #include <signal.h>
 #include "../version.h"
+#include "../crypto/aead.h"
 
 #define SESSION_ID "1234567890ab"
 #define PASSWORD "1234"
 #define SESSION_TIMEOUT 200
+
+/* Test pre-shared key for the /enc endpoint (32 bytes) */
+static const uint8_t psk[AEAD_KEY_LEN] = {
+	0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,0x0a,0x0b,0x0c,0x0d,0x0e,0x0f,
+	0x10,0x11,0x12,0x13,0x14,0x15,0x16,0x17,0x18,0x19,0x1a,0x1b,0x1c,0x1d,0x1e,0x1f };
+
+void print_string(const char *s)
+{
+	printf("%s", s);
+	fflush(stdout);
+}
+
+void print_byte(unsigned char b)
+{
+	printf("%02x", b);
+	fflush(stdout);
+}
+
+void memcpyc(void *dst, const void *src, unsigned int len)
+{
+	memcpy(dst, src, len);
+}
 
 #define PORTS 6
 #define NSFP 1
@@ -737,6 +760,25 @@ void launch(struct Server *server)
 			buffer[bytesRead] = '\0';  // Null terminate the string
 			puts(buffer);
 
+			// For POST requests, keep reading until the whole body (Content-Length) arrived
+			if (is_word(buffer, "POST")) {
+				char *hdr_end = strstr(buffer, "\r\n\r\n");
+				char *cl = strstr(buffer, "Content-Length:");
+				if (hdr_end && cl) {
+					int need = atoi(cl + 15);
+					int total = (hdr_end + 4 - buffer) + need;
+					while (bytesRead < total && bytesRead < BUFFER_SIZE - 1) {
+						ssize_t n = read(new_socket, buffer + bytesRead,
+								 BUFFER_SIZE - 1 - bytesRead);
+						if (n <= 0)
+							break;
+						bytesRead += n;
+					}
+					buffer[bytesRead] = '\0';
+					printf("bytesRead after body: %ld\n", bytesRead);
+				}
+			}
+
 			if (is_word(buffer, "GET")) {
 				scan_header(buffer);
 				if (!strncmp(&buffer[4], "/status.json", 12)) {
@@ -922,7 +964,7 @@ void launch(struct Server *server)
 					send_bad_request(new_socket);
 					goto done;
 				}
-				if (!authenticated && !is_word(&buffer[5], "/login")) {
+				if (!authenticated && !is_word(&buffer[5], "/login") && !is_word(&buffer[5], "/enc")) {
 					send_unauthorized(new_socket);
 					goto done;
 				}
@@ -955,6 +997,50 @@ void launch(struct Server *server)
 							   "Location: login.html\r\n\r\n";
 					}
 					write(new_socket, response, strlen(response));
+					goto done;
+				} else if (is_word(&buffer[5], "/enc")) {
+					/* body: nonce[12] || ciphertext || tag[16], plaintext = command text */
+					char *body = p + 4;
+					int body_len = bytesRead - (body - buffer);
+					char out[512];
+					int olen;
+					uint8_t resp_nonce[AEAD_NONCE_LEN];
+					uint8_t resp_json[16];
+					int i;
+
+					printf("POST enc, body_len %d\n", body_len);
+					if (body_len < AEAD_NONCE_LEN + AEAD_TAG_LEN + 1) {
+						send_bad_request(new_socket);
+						goto done;
+					}
+					int ct_len = body_len - AEAD_NONCE_LEN - AEAD_TAG_LEN;
+					if (aead_decrypt((uint8_t *)psk, (uint8_t *)body, NULL, 0,
+							 (uint8_t *)body + AEAD_NONCE_LEN, ct_len,
+							 (uint8_t *)body + AEAD_NONCE_LEN,
+							 (uint8_t *)body + AEAD_NONCE_LEN + ct_len)) {
+						printf("Tag mismatch, unauthorized\n");
+						send_unauthorized(new_socket);
+						goto done;
+					}
+					body[AEAD_NONCE_LEN + ct_len] = '\0';
+					printf("CMD: %s\n", body + AEAD_NONCE_LEN);
+					strcpy(cmd_history[cmd_ptr], body + AEAD_NONCE_LEN);
+					cmd_ptr++;
+					print_cmd_history();
+
+					/* encrypted response: nonce || {"result":"ok"} || tag */
+					olen = snprintf(out, sizeof(out),
+							"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n\r\n");
+					for (i = 0; i < AEAD_NONCE_LEN; i++)
+						resp_nonce[i] = (uint8_t)(rand() & 0xff);
+					for (i = 0; i < AEAD_NONCE_LEN; i++)
+						out[olen++] = (char)resp_nonce[i];
+					memcpy(resp_json, "{\"result\":\"ok\"}", 16);
+					aead_encrypt((uint8_t *)psk, resp_nonce, NULL, 0,
+						     resp_json, 16, (uint8_t *)out + olen,
+						     (uint8_t *)out + olen + 16);
+					olen += 32;
+					write(new_socket, out, olen);
 					goto done;
 				} else if (is_word(&buffer[5], "/upload") || is_word(&buffer[5], "/config")) {
 					printf("POST upload/config request\n");
@@ -1053,6 +1139,7 @@ int main(int argc, char **argv)
 {
 	// Make sure we can handle writes to a dead client without a signal handler
 	signal(SIGPIPE, SIG_IGN);
+	setvbuf(stdout, NULL, _IONBF, 0);
 
 	int port = 8080;
 	if (argc > 1)

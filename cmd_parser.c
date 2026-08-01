@@ -39,6 +39,7 @@ extern __xdata uint8_t flash_buf[FLASH_BUF_SIZE];
 extern __xdata struct flash_region_t flash_region;
 
 extern __xdata char passwd[21];
+extern __xdata uint8_t preshared_key[32];
 
 extern __xdata struct dhcp_state dhcp_state;
 extern __xdata char hostname[32];
@@ -1347,6 +1348,48 @@ void parse_passwd(void)
 	print_string("Missing password\n");
 }
 
+void parse_preshared_key(void) __reentrant
+{
+	uint8_t i, j, c, hi, lo;
+
+	if (cmd_words_len < 2) {
+		for (i = 0; i < 32; i++)
+			preshared_key[i] = 0;
+		print_string("Pre-shared key cleared\n");
+		return;
+	}
+	i = cmd_words_b[1];
+	for (j = 0; j < 32; j++) {
+		hi = 0xff;
+		lo = 0xff;
+		c = cmd_buffer[i++];
+		if (c >= '0' && c <= '9')
+			hi = c - '0';
+		else if (c >= 'a' && c <= 'f')
+			hi = c - 'a' + 10;
+		else if (c >= 'A' && c <= 'F')
+			hi = c - 'A' + 10;
+		c = cmd_buffer[i++];
+		if (c >= '0' && c <= '9')
+			lo = c - '0';
+		else if (c >= 'a' && c <= 'f')
+			lo = c - 'a' + 10;
+		else if (c >= 'A' && c <= 'F')
+			lo = c - 'A' + 10;
+		if (hi > 15 || lo > 15) {
+			print_string("Error: key must be 64 hex chars\n");
+			return;
+		}
+		preshared_key[j] = (hi << 4) | lo;
+	}
+	c = cmd_buffer[i];
+	if (c != '\0' && c != ' ' && c != '\n' && c != '\r') {
+		print_string("Error: key must be exactly 64 hex chars\n");
+		return;
+	}
+	print_string("Pre-shared key set\n");
+}
+
 void parse_hostname(void)
 {
 	if (cmd_words_len >= 2) {
@@ -1747,6 +1790,7 @@ __code struct mode_entry mode_allow[] = {
 	{"eee",         (1<<MODE_CONFIG)},
 	{"bw",          (1<<MODE_CONFIG)},
 	{"passwd",      (1<<MODE_CONFIG)},
+	{"preshared_key", (1<<MODE_CONFIG)},
 	{"telnet",      (1<<MODE_CONFIG)},
 	{"web",         (1<<MODE_CONFIG)},
 	{"show",        (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
@@ -1968,6 +2012,8 @@ void cmd_parser(void) __banked
 			parse_rnd();
 		} else if (cmd_compare(0, "passwd")) {
 			parse_passwd();
+		} else if (cmd_compare(0, "preshared_key")) {
+			parse_preshared_key();
 		} else if (cmd_compare(0, "eee")) {
 			parse_eee();
 		} else if (cmd_compare(0, "bw")) {
@@ -2053,6 +2099,8 @@ void execute_config(void) __banked __reentrant
 
 	// Set default password, it can be overwritten in the configuration file
 	strtox(passwd, PASSWORD);
+	// Pre-shared key is unset by default, it can be set in the configuration file
+	memset(preshared_key, 0, 32);
 	save_cmd = 0;
 
 	uint8_t cmd_idx = 0;

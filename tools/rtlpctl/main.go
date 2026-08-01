@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strings"
@@ -10,6 +11,7 @@ import (
 type config struct {
 	host     string
 	password string
+	psk      string
 	jsonMode bool
 	mode     string
 }
@@ -42,6 +44,15 @@ func main() {
 
 	client := NewClient(cfg.host, cfg.password)
 
+	if cfg.psk != "" {
+		key, err := hex.DecodeString(cfg.psk)
+		if err != nil || len(key) != aeadKeyLen {
+			fmt.Fprintln(os.Stderr, "Error: RTLP_PSK must be 64 hex characters")
+			os.Exit(1)
+		}
+		client.psk = key
+	}
+
 	if len(args) == 0 {
 		interactiveModeWithMode(client, cfg.mode)
 		return
@@ -57,6 +68,7 @@ func parseFlags() config {
 	cfg := config{
 		host:     envOr("RTLP_HOST", ""),
 		password: envOr("RTLP_PASSWORD", ""),
+		psk:      envOr("RTLP_PSK", ""),
 		mode:     envOr("MODE", ""),
 	}
 	return cfg
@@ -81,6 +93,11 @@ func filterFlags(args []string, cfg *config) []string {
 			cfg.password = args[i]
 		case strings.HasPrefix(args[i], "--password="):
 			cfg.password = args[i][11:]
+		case args[i] == "--psk" && i+1 < len(args):
+			i++
+			cfg.psk = args[i]
+		case strings.HasPrefix(args[i], "--psk="):
+			cfg.psk = args[i][6:]
 		case args[i] == "--env-file" && i+1 < len(args):
 			i++
 			loadDotEnv(args[i])
@@ -143,6 +160,8 @@ func runCmd(client *Client, args []string, cfg config) error {
 		return cmdCmdLog(client, cmdArgs, cfg.jsonMode)
 	case "cmd":
 		return cmdCmd(client, cmdArgs, cfg.jsonMode)
+	case "enc-cmd", "enccmd":
+		return cmdEnc(client, cmdArgs, cfg.jsonMode)
 	case "upload":
 		return cmdUpload(client, cmdArgs, cfg.jsonMode)
 	case "reset":

@@ -47,7 +47,7 @@ extern __xdata char sfp_module_serial[2][17];
 extern __xdata uint8_t sfp_options[2];
 extern __xdata char hostname[32];
 
-__code uint8_t * __code HTTP_RESPONCE_JSON = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n";
+__code uint8_t * __code HTTP_RESPONCE_JSON = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nCache-Control: private, max-age=1\r\n\r\n";
 __code uint8_t * __code HTTP_RESPONCE_TXT = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
 
 // Convert uint8_t to ascii HEX char push on html-buffer.
@@ -888,7 +888,7 @@ void send_vlanlist(void)
 		if (!(sfr_data[0] & 0x02)) /* bit 1: VLAN table entry valid */
 			continue;
 
-		if (slen + 139 > TCP_OUTBUF_SIZE) /* 138 bytes worst-case entry + 1 byte for closing ']' */
+		if (slen + 162 > TCP_OUTBUF_SIZE) /* 160 bytes worst-case entry + 1 for separator + 1 for closing ']' */
 			break;
 
 		if (!first)
@@ -905,6 +905,11 @@ void send_vlanlist(void)
 				char_to_html(vlan_names[n++]);
 		}
 
+		/* members: low 10 bits = member ports, bits 10-19 = untagged ports.
+		 * (See /vlan.json). Inlined here so the frontend needs no N+1 fetches. */
+		slen += strtox(outbuf + slen, "\",\"members\":\"0x");
+		vlan_get(i);
+		sfr_data_to_html();
 		slen += strtox(outbuf + slen, "\"}");
 
 	}

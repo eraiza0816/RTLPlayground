@@ -1,0 +1,351 @@
+package main
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
+
+func cmdLogin(client *Client, args []string, asJSON bool) error {
+	if len(args) == 0 {
+		if client.password == "" {
+			return fmt.Errorf("usage: login <password>")
+		}
+	} else {
+		client.password = args[0]
+	}
+	if err := client.Login(); err != nil {
+		return err
+	}
+	fmt.Println("OK")
+	return nil
+}
+
+func cmdStatus(client *Client, args []string, asJSON bool) error {
+	data, err := client.GetJSON("/status.json")
+	if err != nil {
+		return err
+	}
+	ports, ok := data.([]interface{})
+	if !ok {
+		// some firmware returns object wrapper
+		if m, ok2 := data.(map[string]interface{}); ok2 {
+			if p, ok3 := m["ports"]; ok3 {
+				ports, _ = p.([]interface{})
+			}
+		}
+		if ports == nil {
+			return fmt.Errorf("unexpected response format")
+		}
+	}
+	fmtPortStatus(ports, asJSON)
+	return nil
+}
+
+func cmdInfo(client *Client, args []string, asJSON bool) error {
+	data, err := client.GetJSON("/information.json")
+	if err != nil {
+		return err
+	}
+	info, ok := data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected response format")
+	}
+	fmtInformation(info, asJSON)
+	return nil
+}
+
+func cmdVLAN(client *Client, args []string, asJSON bool) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: vlan <vid> | vlan list")
+	}
+	if args[0] == "list" {
+		data, err := client.GetJSON("/vlanlist")
+		if err != nil {
+			return err
+		}
+		list, _ := data.([]interface{})
+		fmtVLANList(list, asJSON)
+		return nil
+	}
+	vid := args[0]
+	if err := validateVLANID(vid); err != nil {
+		return err
+	}
+	data, err := client.GetJSON(fmt.Sprintf("/vlan.json?vid=%s", vid))
+	if err != nil {
+		return err
+	}
+	vlan, ok := data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected response format")
+	}
+	fmt.Printf("VLAN %s:\n", vid)
+	fmtVLAN(vlan, asJSON)
+	return nil
+}
+
+func cmdCounters(client *Client, args []string, asJSON bool) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: counters <port>")
+	}
+	if err := validateCountersPort(args[0]); err != nil {
+		return err
+	}
+	port, err := strconv.Atoi(args[0])
+	if err != nil {
+		return fmt.Errorf("invalid port number: %s", args[0])
+	}
+	data, err := client.GetJSON(fmt.Sprintf("/counters.json?port=%d", port))
+	if err != nil {
+		return err
+	}
+	fmtCounters(port, data, asJSON)
+	return nil
+}
+
+func cmdEEE(client *Client, args []string, asJSON bool) error {
+	data, err := client.GetJSON("/eee.json")
+	if err != nil {
+		return err
+	}
+	ports, ok := data.([]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected response format")
+	}
+	fmtEEE(ports, asJSON)
+	return nil
+}
+
+func cmdBandwidth(client *Client, args []string, asJSON bool) error {
+	data, err := client.GetJSON("/bandwidth.json")
+	if err != nil {
+		return err
+	}
+	ports, ok := data.([]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected response format")
+	}
+	fmtBandwidth(ports, asJSON)
+	return nil
+}
+
+func cmdMirror(client *Client, args []string, asJSON bool) error {
+	data, err := client.GetJSON("/mirror.json")
+	if err != nil {
+		return err
+	}
+	mirror, ok := data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected response format")
+	}
+	fmtMirror(mirror, asJSON)
+	return nil
+}
+
+func cmdLAG(client *Client, args []string, asJSON bool) error {
+	data, err := client.GetJSON("/lag.json")
+	if err != nil {
+		return err
+	}
+	lags, ok := data.([]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected response format")
+	}
+	fmtLAG(lags, asJSON)
+	return nil
+}
+
+func cmdMTU(client *Client, args []string, asJSON bool) error {
+	data, err := client.GetJSON("/mtu.json")
+	if err != nil {
+		return err
+	}
+	ports, ok := data.([]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected response format")
+	}
+	fmtMTU(ports, asJSON)
+	return nil
+}
+
+func cmdL2(client *Client, args []string, asJSON bool) error {
+	if len(args) > 0 && args[0] == "delete" {
+		if len(args) < 2 {
+			return fmt.Errorf("usage: l2 delete <idx>")
+		}
+		if err := validateL2Idx(args[1]); err != nil {
+			return err
+		}
+		data, err := client.GetJSON(fmt.Sprintf("/l2_del.json?idx=%s", args[1]))
+		if err != nil {
+			return err
+		}
+		result, ok := data.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected response format")
+		}
+		fmtL2Delete(result, asJSON)
+		return nil
+	}
+	idx := "0"
+	if len(args) > 0 && args[0] != "get" {
+		idx = args[0]
+	} else if len(args) > 1 && args[0] == "get" {
+		idx = args[1]
+	}
+	if err := validateL2Idx(idx); err != nil {
+		return err
+	}
+	data, err := client.GetJSON(fmt.Sprintf("/l2.json?idx=%s", idx))
+	if err != nil {
+		return err
+	}
+	entries, ok := data.([]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected response format")
+	}
+	fmtL2(entries, asJSON)
+	return nil
+}
+
+func cmdConfig(client *Client, args []string, asJSON bool) error {
+	if len(args) > 0 && args[0] == "upload" {
+		if len(args) < 2 {
+			return fmt.Errorf("usage: config upload <file>")
+		}
+		if err := validateFile(args[1]); err != nil {
+			return err
+		}
+		return client.UploadFile("/config", "configuration", args[1])
+	}
+	text, err := client.GetText("/config")
+	if err != nil {
+		return err
+	}
+	if asJSON {
+		printJSON(map[string]string{"config": text})
+	} else {
+		fmt.Print(text)
+		if !strings.HasSuffix(text, "\n") {
+			fmt.Println()
+		}
+	}
+	return nil
+}
+
+func cmdCmdLog(client *Client, args []string, asJSON bool) error {
+	if len(args) > 0 && args[0] == "clear" {
+		_, err := client.GetText("/cmd_log_clear")
+		if err != nil {
+			return err
+		}
+		fmt.Println("OK")
+		return nil
+	}
+	text, err := client.GetText("/cmd_log")
+	if err != nil {
+		return err
+	}
+	if asJSON {
+		printJSON(map[string]string{"cmd_log": text})
+	} else {
+		fmt.Print(text)
+		if !strings.HasSuffix(text, "\n") {
+			fmt.Println()
+		}
+	}
+	return nil
+}
+
+func cmdCmd(client *Client, args []string, asJSON bool) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: cmd <command-text>")
+	}
+	cmdText := strings.Join(args, " ")
+	err := client.PostRaw("/cmd", "text/plain", strings.NewReader(cmdText))
+	if err != nil {
+		return err
+	}
+	fmt.Println("OK")
+	return nil
+}
+
+func cmdUpload(client *Client, args []string, asJSON bool) error {
+	if len(args) < 2 {
+		return fmt.Errorf("usage: upload firmware <file>")
+	}
+	if args[0] != "firmware" {
+		return fmt.Errorf("unknown upload type: %s (use: firmware)", args[0])
+	}
+	if err := validateFile(args[1]); err != nil {
+		return err
+	}
+	return client.UploadFile("/upload", "uploadedfile", args[1])
+}
+
+func cmdReset(client *Client, args []string, asJSON bool) error {
+	// The firmware closes the connection without sending an HTTP response,
+	// so a response is not expected (nor required) here.
+	resp, err := client.get("/reset")
+	if err == nil {
+		resp.Body.Close()
+	}
+	fmt.Println("reset command sent")
+	return nil
+}
+
+func cmdSfpDiag(client *Client, args []string, asJSON bool) error {
+	data, err := client.GetJSON("/sfp_diag.json")
+	if err != nil {
+		return err
+	}
+	ports, ok := data.([]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected response format")
+	}
+	fmtSfpDiag(ports, asJSON)
+	return nil
+}
+
+func printHelp() {
+	fmt.Println(`Usage: rtlpctl [global flags] <command> [args...]
+
+Global flags:
+  --host HOST         Switch IP address (env: RTLP_HOST, default: 192.168.1.1)
+  --password PASS     Login password (env: RTLP_PASSWORD)
+  --env-file FILE     Load .env file (default: .env)
+  --mode MODE         CLI mode: default or arista (env: MODE, default: default)
+  --json              Output raw JSON
+  --help              Show this help
+
+Commands (default mode):
+  login <password>           Authenticate with the switch
+  status                     Show port status and counters
+  info                       Show system information
+  vlan <vid>                 Show VLAN details (1-4094)
+  vlan list                  List all VLANs
+  counters <port>            Show port hardware counters (1-8)
+  eee                        Show EEE configuration
+  bandwidth                  Show bandwidth settings
+  mirror                     Show port mirroring configuration
+  lag                        Show link aggregation groups
+  mtu                        Show per-port MTU settings
+  sfp-diag                   Show SFP module diagnostics (DDM)
+  l2 [idx]                   Show L2 forwarding table (decimal 0-4095)
+  l2 delete <idx>            Delete an L2 table entry (decimal 0-4095)
+  config                     Show running configuration
+  config upload <file>       Upload configuration file
+  cmd <text>                 Execute CLI command
+  cmd-log                    Show command history log
+  cmd-log clear              Clear command history
+  upload firmware <file>     Upload firmware image
+  reset                      Reboot the switch
+
+Arista mode (--mode arista):
+  Use Arista EOS-style commands (show interfaces status, show vlan, etc.)
+  Combined with --json outputs EAPI-compatible JSON-RPC format.
+
+Interactive mode:
+  Run without arguments to enter interactive shell.`)
+}

@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <link rel="icon" href="data:,">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title data-i18n="index_title">RTLPlayground</title>
   <style>
@@ -179,7 +180,6 @@
       .port-grid { grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); }
     }
   </style>
-  <script src="/i18n.js"></script>
 </head>
 <body>
 
@@ -460,6 +460,16 @@
 </div>
 
 </main>
-<script src="/main.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  function loadScript(src, onload) {
+    var s = document.createElement('script');
+    s.src = src;
+    if (onload) s.onload = onload;
+    document.head.appendChild(s);
+  }
+  loadScript('/i18n.js', function() { loadScript('/main.js'); });
+});
+</script>
 </body>
 </html>

@@ -406,17 +406,84 @@ uint8_t stream_upload(uint16_t bptr)
 }
 
 
+/* Execute a JSON API request.  q is a NUL-terminated path (e.g. "/status.json").
+ * On success the response (HTTP header + JSON body) is written to outbuf and
+ * slen is updated.  Returns 1 on success, 0 if the path is unknown. */
+static uint8_t handle_api_path(__xdata uint8_t *q)
+{
+	if (!strcmp(q, "/status.json")) {
+		send_status();
+		return 1;
+	} else if (!strcmp(q, "/information.json")) {
+		send_basic_info();
+		return 1;
+	} else if (!strcmp(q, "/vlan.json")) {
+		parse_short(q + 15);
+		send_vlan(short_parsed);
+		return 1;
+	} else if (is_word(q, "/sfp_diag.json")) {
+		send_sfp_diag();
+		return 1;
+	} else if (is_word(q, "/counters.json")) {
+		send_counters(q[20] - '0');
+		return 1;
+	} else if (is_word(q, "/eee.json")) {
+		send_eee();
+		return 1;
+	} else if (is_word(q, "/bandwidth.json")) {
+		send_bandwidth();
+		return 1;
+	} else if (is_word(q, "/l2.json")) {
+		parse_short(q + 13);
+		send_l2(short_parsed);
+		return 1;
+	} else if (is_word(q, "/l2_del.json")) {
+		parse_short(q + 17);
+		l2_delete(short_parsed);
+		return 1;
+	} else if (is_word(q, "/mirror.json")) {
+		send_mirror();
+		return 1;
+	} else if (is_word(q, "/mtu.json")) {
+		send_mtu();
+		return 1;
+	} else if (is_word(q, "/lag.json")) {
+		send_lag();
+		return 1;
+	} else if (is_word(q, "/sfp_eeprom.json")) {
+		parse_short(q + 20);
+		send_sfp_eeprom(short_parsed);
+		return 1;
+	} else if (is_word(q, "/vlanlist")) {
+		send_vlanlist();
+		return 1;
+	} else if (is_word(q, "/config")) {
+		send_config();
+		return 1;
+	} else if (is_word(q, "/cmd_log")) {
+		send_cmd_log();
+		return 1;
+	} else if (is_word(q, "/cmd_log_clear")) {
+		clear_command_history();
+		send_mtu(); /* dummy response */
+		return 1;
+	}
+	return 0;
+}
+
+
 /* POST /enc: body is nonce[12] || ciphertext || tag[16].
  * The plaintext is command text, verified against the pre-shared key.
  * The response body is nonce[12] || ciphertext || tag[16] of a JSON string. */
-void handle_enc(__xdata uint8_t *body) __reentrant
+void handle_enc(__xdata uint8_t *body)
 {
 	static __xdata uint16_t body_len;
 	static __xdata uint16_t ct_len;
-	static __xdata uint8_t i;
+	static __xdata uint16_t i;
 	static __xdata uint8_t psk_set;
 	static __xdata uint8_t resp_nonce[AEAD_NONCE_LEN];
 	static __xdata uint8_t resp_json[16];
+	static __xdata uint8_t enc_scratch[TCP_OUTBUF_SIZE];
 	static __code uint8_t resp_ok[] = "{\"result\":\"ok\"}";
 
 	body_len = uip_len - (body - uip_appdata);
@@ -443,6 +510,57 @@ void handle_enc(__xdata uint8_t *body) __reentrant
 		return;
 	}
 	body[AEAD_NONCE_LEN + ct_len] = '\0';
+	if (is_word(body + AEAD_NONCE_LEN, "api")) {
+		/* API mode: "api <path>" renders a JSON API response and returns it
+		 * encrypted (nonce[12] || ct || tag[16]).  The renderer writes
+		 * "HTTP/1.1 ... \r\n\r\n" plus the JSON body into outbuf; copy the
+		 * body into a scratch buffer and assemble the encrypted response. */
+		if (!handle_api_path(body + AEAD_NONCE_LEN + 4)) {
+			send_not_found();
+			return;
+		}
+		body_len = 0;
+		while (body_len + 3 < slen && !(outbuf[body_len] == '\r' &&
+		       outbuf[body_len + 1] == '\n' && outbuf[body_len + 2] == '\r' &&
+		       outbuf[body_len + 3] == '\n'))
+			body_len++;
+		body_len += 4;
+		ct_len = slen - body_len;
+		if (!ct_len || ct_len > TCP_OUTBUF_SIZE) {
+			send_bad_request();
+			return;
+		}
+		for (i = 0; i < ct_len; i++)
+			enc_scratch[i] = outbuf[body_len + i];
+		slen = strtox(outbuf, "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n\r\n");
+		gen_random_bytes(resp_nonce, AEAD_NONCE_LEN);
+		for (i = 0; i < AEAD_NONCE_LEN; i++)
+			outbuf[slen++] = resp_nonce[i];
+		aead_encrypt(preshared_key, resp_nonce, 0, 0,
+			     enc_scratch, ct_len,
+			     outbuf + slen, outbuf + slen + ct_len);
+		slen += ct_len + AEAD_TAG_LEN;
+		return;
+	}
+	if (is_word(body + AEAD_NONCE_LEN, "session")) {
+		/* Issue a web session cookie so the browser can use /upload
+		 * and /config (multipart POST) without the password login. */
+		gen_random_bytes(session_id, SESSION_ID_LENGTH);
+		session_id[SESSION_ID_LENGTH] = '\0';
+		read_reg_timer(&last_session_use);
+		slen = strtox(outbuf, "HTTP/1.1 200 OK\r\nSet-Cookie: session=");
+		for (i = 0; i < SESSION_ID_LENGTH; i++)
+			outbuf[slen++] = session_id[i];
+		slen += strtox(outbuf + slen, "; Path=/; SameSite=Strict\r\nContent-Type: application/octet-stream\r\n\r\n");
+		gen_random_bytes(resp_nonce, AEAD_NONCE_LEN);
+		for (i = 0; i < AEAD_NONCE_LEN; i++)
+			outbuf[slen++] = resp_nonce[i];
+		memcpyc(resp_json, resp_ok, 16);
+		aead_encrypt(preshared_key, resp_nonce, 0, 0, resp_json, 16,
+			     outbuf + slen, outbuf + slen + 16);
+		slen += AEAD_TAG_LEN * 2;
+		return;
+	}
 	cli_mode = MODE_CONFIG;
 	execute_commands(body + AEAD_NONCE_LEN);
 	cli_mode = MODE_EXEC;
@@ -742,54 +860,8 @@ void httpd_appcall(void)
 				goto do_send;
 			}
 			dbg_string("Not file entry\n");
-			if (!strcmp(q, "/status.json")) {
-				send_status();
-			} else if (!strcmp(q, "/information.json")) {
-				send_basic_info();
-			} else if (!strcmp(q, "/vlan.json")) {
-			// TODO: validate short_parsed <= 4095 before send_vlan
-				parse_short(q + 15);
-				send_vlan(short_parsed);
-			} else if (is_word(q, "/sfp_diag.json")) {
-				send_sfp_diag();
-			} else if (is_word(q, "/counters.json")) {
-			// TODO: validate q[20] is a digit before send_counters
-				send_counters(q[20]-'0');
-			} else if (is_word(q, "/eee.json")) {
-				send_eee();
-			} else if (is_word(q, "/bandwidth.json")) {
-				send_bandwidth();
-			} else if (is_word(q, "/l2.json")) {
-				parse_short(q + 13); // e.g.: /l2.json?idx=10
-				send_l2(short_parsed);
-			} else if (is_word(q, "/l2_del.json")) {
-			// TODO: validate short_parsed <= 4095 before l2_delete
-				parse_short(q + 17);
-				l2_delete(short_parsed);
-			} else if (is_word(q, "/mirror.json")) {
-				send_mirror();
-			} else if (is_word(q, "/mtu.json")) {
-				send_mtu();
-			} else if (is_word(q, "/lag.json")) {
-				send_lag();
-			} else if (is_word(q, "/sfp_eeprom.json")) {
-				parse_short(q + 20);
-				send_sfp_eeprom(short_parsed);
-			} else if (is_word(q, "/vlanlist")) {
-				send_vlanlist();
-			} else if (is_word(q, "/config")) {
-				send_config();
-			} else if (is_word(q, "/cmd_log")) {
-				send_cmd_log();
-			} else if (is_word(q, "/cmd_log_clear")) {
-				clear_command_history();
-				send_mtu(); // dummy response
-			} else if (is_word(q, "/reset")) {
-				uip_close();
-				delay(1000);
-				reset_chip();
-		} else {
-			send_not_found();
+			if (!handle_api_path(q)) {
+				send_not_found();
 			}
 		}
 #ifndef NO_WEBUI

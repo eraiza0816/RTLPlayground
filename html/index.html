@@ -413,6 +413,14 @@
   <div id="sys-tab-advanced" class="tab-content">
     <h3 data-i18n="sys_advanced">Advanced Settings</h3>
     <div class="input-row">
+      <label style="font-weight:600;">Pre-Shared Key (encrypted access):</label>
+    </div>
+    <div class="input-row">
+      <input type="text" id="psk-input" placeholder="64 hex chars (32 bytes)" style="width:400px;font-family:monospace;" autocapitalize="off" autocorrect="off" spellcheck="false">
+      <button class="btn" onclick="setPSK(document.getElementById('psk-input').value)">Set PSK</button>
+    </div>
+    <p style="color:#64748b;font-size:12px;">After setting, the Web UI switches to encrypted (ChaCha20-Poly1305) mode. Set the same key on the login page and in rtlpctl (RTLP_PSK).</p>
+    <div class="input-row">
       <label style="font-weight:600;" data-i18n="sys_startup_config">Startup configuration:</label>
     </div>
     <textarea id="config-window" rows="10" style="width:100%;font-family:monospace;font-size:12px;"></textarea>
@@ -459,7 +467,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (onload) s.onload = onload;
     document.head.appendChild(s);
   }
-  loadScript('/i18n.js', function() { loadScript('/main.js'); });
+  loadScript('/chacha20poly1305.js', function() { loadScript('/i18n.js', function() { loadScript('/main.js'); }); });
 });
 </script>
 </body>

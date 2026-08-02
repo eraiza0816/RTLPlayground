@@ -22,6 +22,68 @@ var reqQ = [], busy = false, inFlight = null;
 var poller = null, systemInterval = null, l2Interval = null;
 var isFlashing = false;
 
+/** PSK (pre-shared key) support: all API calls go through encrypted /enc **/
+var rtlPSK = null;
+
+function pskHex() { return localStorage.getItem('rtlpsk') || ''; }
+function pskStore(hex) { localStorage.setItem('rtlpsk', hex); }
+
+function pskReady() {
+  var h = pskHex();
+  if (!/^[0-9a-fA-F]{64}$/.test(h)) return false;
+  rtlPSK = RTLAEAD.fromHex(h);
+  return true;
+}
+
+function rtlNonce() {
+  var n = new Uint8Array(12);
+  if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(n);
+  else for (var i = 0; i < 12; i++) n[i] = Math.floor(Math.random() * 256);
+  return n;
+}
+
+/* Encode a command into an /enc body: nonce || ct || tag */
+function rtlEncode(cmdText) {
+  var nonce = rtlNonce();
+  var pt = new TextEncoder().encode(cmdText);
+  var enc = RTLAEAD.encrypt(rtlPSK, nonce, pt);
+  var body = new Uint8Array(12 + pt.length + 16);
+  body.set(nonce, 0);
+  body.set(enc.ct, 12);
+  body.set(enc.tag, 12 + pt.length);
+  return body;
+}
+
+/* Decode an /enc response body (nonce || ct || tag) to text, or null */
+function rtlDecode(bodyArr) {
+  if (!bodyArr || bodyArr.length < 28) return null;
+  var nonce = bodyArr.slice(0, 12);
+  var tag = bodyArr.slice(bodyArr.length - 16);
+  var ct = bodyArr.slice(12, bodyArr.length - 16);
+  var pt = RTLAEAD.decrypt(rtlPSK, nonce, ct, tag);
+  return pt ? new TextDecoder().decode(pt) : null;
+}
+
+/* Issue a web session cookie via /enc for multipart uploads (/upload, /config).
+ * When no PSK is configured the plaintext session (password login) is used. */
+function rtlSession(cb) {
+  if (!pskReady()) { if (cb) cb(true); return; }
+  var x = new XMLHttpRequest();
+  x.open('POST', '/enc', true);
+  x.responseType = 'arraybuffer';
+  x.setRequestHeader('Content-Type', 'application/octet-stream');
+  x.onload = function() { if (cb) cb(x.status === 200); };
+  x.onerror = function() { if (cb) cb(false); };
+  x.send(rtlEncode('session'));
+}
+
+/* Map a fetchAPI request to an /enc command, or null for non-encrypted paths */
+function rtlCmdFor(method, url, data) {
+  if (method === 'GET') return 'api ' + url;
+  if (method === 'POST' && url === '/cmd') return data;
+  return null;
+}
+
 function fetchAPI(method, url, cb, data) {
   if (isFlashing) return;
   var key = url + '|' + method + '|' + (data || '');
@@ -39,22 +101,114 @@ function processQ() {
   busy = true;
   var r = reqQ.shift();
   inFlight = { url: r.url, method: r.method, key: r.key, cbs: r.cbs };
+
   var x = new XMLHttpRequest();
-  x.open(r.method, r.url, true);
   x.timeout = 4000;
   x.onreadystatechange = function() {
     if (x.readyState === 4) {
       inFlight = null;
       if (isFlashing) return;
       if (x.status === 200) {
-        r.cbs.forEach(function(c) { c(x.responseText); });
+        var text;
+        if (x.responseType === 'arraybuffer') {
+          text = rtlDecode(new Uint8Array(x.response));
+          if (text === null) { notify('PSK decryption failed', 'error'); setTimeout(processQ, 10); return; }
+        } else {
+          text = x.responseText;
+        }
+        r.cbs.forEach(function(c) { c(text); });
       }
       else if (x.status === 401) { document.location = '/login.html'; return; }
       setTimeout(processQ, 10);
     }
   };
   x.ontimeout = x.onerror = function() { inFlight = null; setTimeout(processQ, 20); };
-  x.send(r.data);
+
+  var cmd = rtlCmdFor(r.method, r.url, r.data);
+  if (cmd === null || !pskReady()) {
+    /* Non-encrypted path (e.g. /upload) or PSK not configured yet: plain XHR */
+    x.open(r.method, r.url, true);
+    x.send(r.data);
+  } else {
+    x.open('POST', '/enc', true);
+    x.responseType = 'arraybuffer';
+    x.setRequestHeader('Content-Type', 'application/octet-stream');
+    x.send(rtlEncode(cmd));
+  }
+}
+
+/* Promise-based encrypted GET for code that previously used raw fetch().
+ * Falls back to plaintext GET when no PSK is configured yet. */
+function encFetch(url) {
+  return new Promise(function(resolve, reject) {
+    if (!pskReady()) {
+      var x0 = new XMLHttpRequest();
+      x0.open('GET', url, true);
+      x0.timeout = 4000;
+      x0.onload = function() {
+        if (x0.status === 200) resolve({ ok: true, status: 200, text: function() { return Promise.resolve(x0.responseText); } });
+        else reject(new Error('status ' + x0.status));
+      };
+      x0.onerror = function() { reject(new Error('network')); };
+      x0.send();
+      return;
+    }
+    var x = new XMLHttpRequest();
+    x.open('POST', '/enc', true);
+    x.responseType = 'arraybuffer';
+    x.timeout = 4000;
+    x.setRequestHeader('Content-Type', 'application/octet-stream');
+    x.onload = function() {
+      if (x.status === 200) {
+        var text = rtlDecode(new Uint8Array(x.response));
+        if (text !== null) resolve({ ok: true, status: 200, text: function() { return Promise.resolve(text); } });
+        else reject(new Error('decrypt failed'));
+      } else if (x.status === 401) { document.location = '/login.html'; reject(new Error('unauthorized')); }
+      else reject(new Error('status ' + x.status));
+    };
+    x.onerror = function() { reject(new Error('network')); };
+    x.send(rtlEncode('api ' + url));
+  });
+}
+
+/* Set the pre-shared key from the Web UI.  Uses /enc when a PSK is already
+ * active, otherwise the plaintext /cmd endpoint (password session).  The
+ * key is persisted with "commit" and stored in localStorage so that the
+ * UI switches to encrypted mode immediately. */
+function setPSK(hex) {
+  var h = (hex || '').trim().toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(h)) {
+    notify('PSK must be 64 hex characters (32 bytes)', 'error');
+    return;
+  }
+  var doCmd = function(cmd, cb) {
+    if (pskReady()) {
+      var x = new XMLHttpRequest();
+      x.open('POST', '/enc', true);
+      x.responseType = 'arraybuffer';
+      x.setRequestHeader('Content-Type', 'application/octet-stream');
+      x.onload = function() { cb(x.status === 200); };
+      x.onerror = function() { cb(false); };
+      x.send(rtlEncode(cmd));
+    } else {
+      var x = new XMLHttpRequest();
+      x.open('POST', '/cmd', true);
+      x.onload = function() { cb(x.status === 200); };
+      x.onerror = function() { cb(false); };
+      x.send(cmd);
+    }
+  };
+  doCmd('preshared_key ' + h, function(ok1) {
+    if (!ok1) { notify('Failed to set PSK', 'error'); return; }
+    doCmd('commit', function(ok2) {
+      if (!ok2) notify('PSK set, but commit failed', 'warning');
+      else notify('PSK set. Encrypted mode active.', 'success');
+      pskStore(h);
+      rtlPSK = RTLAEAD.fromHex(h);
+      var inp = document.getElementById('psk-input');
+      if (inp) inp.value = '';
+    });
+  });
 }
 
 /** GLOBALS **/
@@ -1068,6 +1222,8 @@ function parseConf(s) {
 var isFlushing = false;
 
 async function sendConfig(c) {
+  /* /config is a multipart POST that needs the web session cookie */
+  await new Promise(function(resolve) { rtlSession(resolve); });
   var form = new FormData();
   form.append('MAX_FILE_SIZE', '4096');
   form.append('configuration', new Blob([c], {type: 'application/octet-stream'}), 'config.txt');
@@ -1086,13 +1242,13 @@ async function flashSaveConfig() {
   notify('Merging and saving to flash...', 'info');
   try {
     configuration = [];
-    var resConfig = await fetch('/config');
+    var resConfig = await encFetch('/config');
     if (resConfig.ok) parseConf(await resConfig.text());
-    var resLog = await fetch('/cmd_log');
+    var resLog = await encFetch('/cmd_log');
     if (resLog.ok) parseConf(await resLog.text());
     var body = configuration.join('\n') + '\n';
     await sendConfig(body);
-    setTimeout(function() { fetch('/cmd_log_clear', { method: 'GET' }).catch(function() {}); }, 1000);
+    setTimeout(function() { encFetch('/cmd_log_clear').catch(function() {}); }, 1000);
     $in('config-window').value = body;
   } catch (err) {} finally { isFlushing = false; }
 }
@@ -1100,22 +1256,12 @@ async function flashSaveConfig() {
 function saveManualConfig() {
   var text = $in('config-window').value.replace(/[^\x09\x0A\x0D\x20-\x7E]/g, '');
   sendConfig(text).then(function() {
-    setTimeout(function() { fetch('/cmd_log_clear', { method: 'GET' }).catch(function() {}); }, 1000);
+    setTimeout(function() { encFetch('/cmd_log_clear').catch(function() {}); }, 1000);
   });
 }
 
 /** FIRMWARE UPDATE **/
-function startFlash() {
-  var file = $in('binFile').files[0];
-  if (!file || !file.name.toLowerCase().endsWith('.bin')) return notify('Select a valid .bin file.', 'error');
-  if (!confirm('WARNING: Flashing interrupts traffic. Do not power off. Proceed?')) return;
-
-  isFlashing = true;
-  clearInterval(poller); poller = null;
-  clearInterval(systemInterval); systemInterval = null;
-  clearInterval(l2Interval); l2Interval = null;
-  reqQ = []; inFlight = null;
-
+function doFlash(file) {
   var bar = document.getElementById('fBar');
   var text = document.getElementById('fText');
   var status = document.getElementById('fStatus');
@@ -1154,6 +1300,28 @@ function startFlash() {
   fd.append('MAX_FILE_SIZE', '1000000');
   fd.append('uploadedfile', new Blob([file], {type: 'application/octet-stream'}), 'update.bin');
   xhr.send(fd);
+}
+
+function startFlash() {
+  var file = $in('binFile').files[0];
+  if (!file || !file.name.toLowerCase().endsWith('.bin')) return notify('Select a valid .bin file.', 'error');
+  if (!confirm('WARNING: Flashing interrupts traffic. Do not power off. Proceed?')) return;
+
+  isFlashing = true;
+  clearInterval(poller); poller = null;
+  clearInterval(systemInterval); systemInterval = null;
+  clearInterval(l2Interval); l2Interval = null;
+  reqQ = []; inFlight = null;
+
+  /* Obtain a web session cookie first: /upload requires session auth */
+  rtlSession(function(ok) {
+    if (!ok) {
+      isFlashing = false;
+      document.location = '/login.html';
+      return;
+    }
+    doFlash(file);
+  });
 }
 
 /** SFP EEPROM **/

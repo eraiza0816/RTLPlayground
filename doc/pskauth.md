@@ -439,3 +439,44 @@ rtlpctl --host <host> --psk <64hex> enc-cmd "hostname MY-SWITCH"
   hostname 等の設定変更は "Command not available in this mode"。
 - **まとめ**: PSK 方式は「操作 (設定変更・情報取得)」をセキュアに行う
   手段。WebUI ページの閲覧や telnet は対象外 (平文 or セッション認証)。
+
+### 8.11 PSK 方式での JSON API アクセス (`enc-api`) と WebUI の PSK 化 (2026-08-02)
+
+#### 8.11.1 `/enc` の API モード (`api <path>`)
+- `POST /enc` に復号コマンドとして `api /status.json` を送ると、
+  対応する JSON API のレスポンスを暗号化して返す。
+- 対象: /status.json, /information.json, /vlan.json?vid=N, /sfp_diag.json,
+  /counters.json?port=N, /eee.json, /bandwidth.json, /l2.json?idx=N,
+  /l2_del.json, /mirror.json, /mtu.json, /lag.json, /sfp_eeprom.json?slot=N,
+  /vlanlist, /config, /cmd_log, /cmd_log_clear
+- 認証は PSK のみ (セッション不要)。
+- 実装: httpd.c の `handle_api_path()` (既存 GET の JSON API 分岐を関数化)
+  + `handle_enc` の api 分岐。レスポンスは enc_scratch 経由で構築
+  (シフトなし)。ループ変数は uint16_t (255B 超の JSON で無限ループする
+  ため)。
+
+#### 8.11.2 `/enc` の `session` コマンド
+- `POST /enc` に復号コマンドとして `session` を送ると、Web セッション
+  cookie (`Set-Cookie: session=<id>`) を発行する。
+- /upload (ファームウェア更新) と /config (設定アップロード) は multipart
+  POST のため従来のセッション認証が必要。PSK で発行した cookie で認証
+  される (パスワードログイン不要)。
+
+#### 8.11.3 WebUI (ブラウザ) の PSK 化
+- `html/chacha20poly1305.js` (新規): 純 JS の ChaCha20-Poly1305 (RFC 8439)。
+  - HTTP (平文) では crypto.subtle が使えないため BigInt ベースで実装。
+  - 実機 (C 実装) と相互運用検証済み (node で実機 /enc と暗号化通信)。
+- `html/main.js`: fetchAPI/processQ を /enc 経由に変更。全 API 呼び出しが
+  「api <path>」またはコマンドとして暗号化送信される。PSK は
+  localStorage に保存。
+- `html/login.html`: パスワード入力 → PSK (64 hex) 入力に変更。
+- `html/index.html`: chacha20poly1305.js の読み込み追加。
+- ファームウェア更新 (startFlash) と設定保存 (sendConfig) は session
+  コマンドで cookie を発行してから multipart POST する。
+- 制約: ページ本体 (index.html 等) は認証なしで配信される (SPA 構造)。
+  平文 HTTP のため MITM による JS 改ざんのリスクは残る (パスワード平文
+  送信よりは安全)。
+
+#### 8.11.4 rtlpctl `enc-api` サブコマンド
+- `rtlpctl enc-api /status.json` — PSK で JSON API を暗号化取得して表示。
+- Go 実装 (tools/rtlpctl)。既存の PostEnc() を再利用。

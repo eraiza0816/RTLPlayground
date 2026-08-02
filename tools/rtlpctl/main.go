@@ -162,6 +162,8 @@ func runCmd(client *Client, args []string, cfg config) error {
 		return cmdCmd(client, cmdArgs, cfg.jsonMode)
 	case "enc-cmd", "enccmd":
 		return cmdEnc(client, cmdArgs, cfg.jsonMode)
+	case "enc-api", "encapi":
+		return cmdEncAPI(client, cmdArgs, cfg.jsonMode)
 	case "upload":
 		return cmdUpload(client, cmdArgs, cfg.jsonMode)
 	case "reset":

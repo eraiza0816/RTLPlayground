@@ -288,6 +288,25 @@ func cmdEnc(client *Client, args []string, asJSON bool) error {
 	return nil
 }
 
+func cmdEncAPI(client *Client, args []string, asJSON bool) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: enc-api <path> (e.g. /status.json)")
+	}
+	if len(client.psk) != aeadKeyLen {
+		return fmt.Errorf("pre-shared key not configured: set RTLP_PSK=<64-hex-chars> or use --psk")
+	}
+	path := args[0]
+	if path[0] != '/' {
+		path = "/" + path
+	}
+	respText, err := client.PostEnc("api " + path)
+	if err != nil {
+		return err
+	}
+	fmt.Println(respText)
+	return nil
+}
+
 func cmdUpload(client *Client, args []string, asJSON bool) error {
 	if len(args) < 2 {
 		return fmt.Errorf("usage: upload firmware <file>")

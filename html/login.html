@@ -114,6 +114,46 @@
       document.title = t('login_title');
     });
   </script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      document.getElementById('loginForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        var h = document.getElementById('psk').value.trim().toLowerCase();
+        var p = document.getElementById('pwd').value;
+        if (h) {
+          if (!/^[0-9a-f]{64}$/.test(h)) {
+            document.getElementById('incorrect').innerHTML = 'PSK must be 64 hex characters (32 bytes)';
+            document.getElementById('incorrect').style.display = 'block';
+            return;
+          }
+          localStorage.setItem('rtlpsk', h);
+          window.location.href = '/index.html';
+        } else if (p) {
+          /* Password mode: forget any stored PSK so the UI falls back to
+           * plaintext (session) mode instead of encrypting with a stale key. */
+          localStorage.removeItem('rtlpsk');
+          var x = new XMLHttpRequest();
+          x.open('POST', '/login', true);
+          x.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+          x.onload = function() {
+            if (x.status === 200 || x.status === 302) window.location.href = '/index.html';
+            else {
+              document.getElementById('incorrect').innerHTML = 'Login failed';
+              document.getElementById('incorrect').style.display = 'block';
+            }
+          };
+          x.onerror = function() {
+            document.getElementById('incorrect').innerHTML = 'Network error';
+            document.getElementById('incorrect').style.display = 'block';
+          };
+          x.send('pwd=' + encodeURIComponent(p));
+        } else {
+          document.getElementById('incorrect').innerHTML = 'Enter a PSK or the system password';
+          document.getElementById('incorrect').style.display = 'block';
+        }
+      });
+    });
+  </script>
 </head>
 <body>
   <div class="login-card">
@@ -123,12 +163,18 @@
     </div>
     <div class="card-body">
       <div id="incorrect" class="error-msg"></div>
-      <form method="post" action="login">
+      <form id="loginForm">
         <div class="input-group">
-          <label for="pwd" data-i18n="login_password">System Password</label>
-          <input type="password" id="pwd" name="pwd" placeholder="••••••••" onclick="removeNote()" required autofocus />
+          <label for="psk" data-i18n="login_password">Pre-Shared Key</label>
+          <input type="text" id="psk" name="psk" placeholder="64 hex chars (32 bytes)" autocapitalize="off" autocorrect="off" spellcheck="false" onclick="removeNote()" />
+          <button type="submit" class="btn" data-i18n="login_login">Login (PSK)</button>
         </div>
-        <button type="submit" class="btn" data-i18n="login_login">Login</button>
+        <div style="text-align:center;color:var(--text-muted);margin:16px 0;font-size:0.85rem;">or (PSK not set yet)</div>
+        <div class="input-group">
+          <label for="pwd">System Password</label>
+          <input type="password" id="pwd" name="pwd" placeholder="••••••••" onclick="removeNote()" />
+          <button type="submit" class="btn" style="background:#546e7a;">Password Login</button>
+        </div>
       </form>
     </div>
   </div>

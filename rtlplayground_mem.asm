@@ -38,20 +38,20 @@
 ; direct vs. MOVX accesses would disagree.
 ;--------------------------------------------------------
 	.area	OSEG	(OVR,DATA)
-_memcpy_PARM_3::
-	.ds 2
 _memcpyc_PARM_2::
 	.ds 2
-_memcpyc_PARM_3::
-	.ds 2
-_memset_PARM_3::
-	.ds 1
 _strtox_PARM_2::
 	.ds 2
 _strcmp_PARM_2::
 	.ds 2
 
 	.area	XSEG	(XDATA)
+_memcpyc_PARM_3::
+	.ds 2
+_memset_PARM_3::
+	.ds 1
+_memcpy_PARM_3::
+	.ds 2
 _memcpy_PARM_2::
 	.ds 2
 _memset_PARM_2::
@@ -74,8 +74,12 @@ _memcpy:
 	inc	dptr
 	movx	a, @dptr
 	mov	r5, a			; r4:r5 = src
-	mov	r6, _memcpy_PARM_3
-	mov	r7, (_memcpy_PARM_3 + 1)	; r6:r7 = len
+	mov	dptr, #_memcpy_PARM_3
+	movx	a, @dptr
+	mov	r6, a
+	inc	dptr
+	movx	a, @dptr
+	mov	r7, a	; r6:r7 = len
 	mov	dpl, r4
 	mov	dph, r5			; DPTR = src
 memcpy_loop:
@@ -108,8 +112,12 @@ _memcpyc:
 	mov	r1, dpl
 	mov	r4, _memcpyc_PARM_2
 	mov	r5, (_memcpyc_PARM_2 + 1)
-	mov	r6, _memcpyc_PARM_3
-	mov	r7, (_memcpyc_PARM_3 + 1)
+	mov	dptr, #_memcpyc_PARM_3
+	movx	a, @dptr
+	mov	r6, a
+	inc	dptr
+	movx	a, @dptr
+	mov	r7, a
 	mov	dpl, r4
 	mov	dph, r5			; DPTR = src (code)
 memcpyc_loop:
@@ -144,7 +152,9 @@ _memset:
 	mov	dptr, #_memset_PARM_2
 	movx	a, @dptr
 	mov	r5, a			; value
-	mov	r4, _memset_PARM_3	; len (8 bit)
+	mov	dptr, #_memset_PARM_3
+	movx	a, @dptr
+	mov	r4, a	; len (8 bit)
 	mov	a, r4
 	jz	memset_done
 	mov	a, r5

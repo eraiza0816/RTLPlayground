@@ -4,6 +4,7 @@ output/
 html_data.c
 html_data.h
 version.h
+sfp_pw_dict.inc
 tools/httpd_sim
 tools/injector
 tools/fileadder

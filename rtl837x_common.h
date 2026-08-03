@@ -87,7 +87,9 @@ struct vlan_tag {
 
 // Store update image after running image
 #define FIRMWARE_UPLOAD_START 0x80000
-#define SFP_EEPROM_BACKUP 0x54000
+// SFP EEPROM backup area, must not overlap the web filesystem (0x40000-0x5D000)
+// or the config area (0x70000)
+#define SFP_EEPROM_BACKUP 0x6e000
 
 // Constants for the circular command buffer, the size must be 2^n
 #define CMD_HISTORY_SIZE 0x400
@@ -152,9 +154,9 @@ uint8_t reg_bit_test(uint16_t reg_addr, char bit);
 void sfr_mask_data(uint8_t n, uint8_t mask, uint8_t set);
 void sfr_set_zero(void);
 void reset_chip(void);
-void memcpy(__xdata void * __xdata dst, __xdata const void * __xdata src, uint16_t len);
-void memcpyc(register __xdata uint8_t *dst, register __code uint8_t *src, register uint16_t len);
-void memset(register __xdata uint8_t *dst, register __xdata uint8_t v, register uint8_t len);
+void memcpy(__xdata void * __xdata dst, __xdata const void * __xdata src, __xdata uint16_t len);
+void memcpyc(register __xdata uint8_t *dst, register __code uint8_t *src, __xdata uint16_t len);
+void memset(register __xdata uint8_t *dst, register __xdata uint8_t v, __xdata uint8_t len);
 uint16_t strlen(register __code const char *s);
 uint16_t strlen_x(register __xdata const char *s);
 uint16_t strtox(register __xdata uint8_t *dst, register __code const char *s);

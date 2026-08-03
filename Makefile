@@ -1,4 +1,4 @@
-VERSION=0.2.22
+VERSION=0.2.23
 
 # WebUI option: WEB=1 (default) to enable, WEB=0 to disable
 WEB ?= 1
@@ -40,6 +40,7 @@ create_build_dir:
 	mkdir -p $(BUILDDIR)/uip
 	mkdir -p $(BUILDDIR)/httpd
 	mkdir -p $(BUILDDIR)/telnetd
+	mkdir -p $(BUILDDIR)/crypto
 
 SRCS = rtlplayground.c rtl837x_flash.c rtl837x_leds.c rtl837x_phy.c rtl837x_port.c cmd_parser.c html_data.c rtl837x_igmp.c
 SRCS += rtl837x_stp.c rtl837x_pins.c dhcp.c machine.c cmd_editor.c rtl837x_bandwidth.c rtl837x_init.c
@@ -51,6 +52,7 @@ SRCS += cmd_commit.c
 SRCS += cmd_help.c
 SRCS += cmd_mode.c
 SRCS += cmd_xmodem.c
+SRCS += crypto/chacha20.c crypto/poly1305.c crypto/aead.c
 
 ifeq ($(WEB),0)
 	CC_FLAGS += -DNO_WEBUI
@@ -92,6 +94,9 @@ TELNET_FLAGS = $(CC_FLAGS) --stack-auto
 
 $(BUILDDIR)/telnetd/%.rel: telnetd/%.c
 	$(CC) -MMD $(TELNET_FLAGS) -DMACHINE_$(MACHINE) -o $@ -c $<
+
+$(BUILDDIR)/crypto/%.rel: crypto/%.c
+	$(CC) -MMD $(CC_FLAGS) -o $@ -c $<
 
 $(BUILDDIR)/%.rel: %.c
 	$(CC) -MMD $(CC_FLAGS) -o $@ -c $<

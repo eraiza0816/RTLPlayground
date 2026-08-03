@@ -19,182 +19,76 @@ extern __xdata struct flash_region_t flash_region;
 __xdata uint8_t sfp_pw[4];
 __xdata uint8_t sfp_pw_pending;
 
-static void gpio_set(uint8_t pin, uint8_t hi) __reentrant
-{
-	if (pin >= 32) {
-		if (hi) reg_bit_clear(RTL837X_REG_GPIO_32_63_DIRECTION, pin % 32);
-		else { reg_bit_clear(RTL837X_REG_GPIO_32_63_OUTPUT, pin % 32); reg_bit_set(RTL837X_REG_GPIO_32_63_DIRECTION, pin % 32); }
-	} else {
-		if (hi) reg_bit_clear(RTL837X_REG_GPIO_00_31_DIRECTION, pin % 32);
-		else { reg_bit_clear(RTL837X_REG_GPIO_00_31_OUTPUT, pin % 32); reg_bit_set(RTL837X_REG_GPIO_00_31_DIRECTION, pin % 32); }
-	}
-}
-
-static void i2c_delay(void)
-{
-	__xdata uint8_t i;
-	for (i = 0; i < 100; i++);
-}
-
-static uint8_t gpio_read(uint8_t pin) __reentrant
-{
-	if (pin >= 32) reg_read_m(RTL837X_REG_GPIO_32_63_INPUT);
-	else reg_read_m(RTL837X_REG_GPIO_00_31_INPUT);
-	return !!(sfr_data[3-((pin>>3)&3)] & (1 << (pin & 7)));
-}
-
-static void send_pw(uint8_t scl, uint8_t sda)
-{
-	uint8_t mask, i;
-	gpio_set(sda, 0);
-	i2c_delay();
-	gpio_set(scl, 0);
-	i2c_delay();
-	for (mask = 0x80; mask; mask >>= 1) {
-		gpio_set(sda, !(0xA4 & mask));
-		i2c_delay();
-		gpio_set(scl, 1);
-		i2c_delay();
-		gpio_set(scl, 0);
-		i2c_delay();
-	}
-	gpio_set(sda, 1);
-	i2c_delay();
-	gpio_set(scl, 1);
-	i2c_delay();
-	gpio_read(sda);
-	gpio_set(scl, 0);
-	i2c_delay();
-	for (mask = 0x80; mask; mask >>= 1) {
-		gpio_set(sda, !(0x7B & mask));
-		i2c_delay();
-		gpio_set(scl, 1);
-		i2c_delay();
-		gpio_set(scl, 0);
-		i2c_delay();
-	}
-	gpio_set(sda, 1);
-	i2c_delay();
-	gpio_set(scl, 1);
-	i2c_delay();
-	gpio_read(sda);
-	gpio_set(scl, 0);
-	i2c_delay();
-	for (i = 0; i < 4; i++) {
-		for (mask = 0x80; mask; mask >>= 1) {
-			gpio_set(sda, !(sfp_pw[i] & mask));
-			i2c_delay();
-			gpio_set(scl, 1);
-			i2c_delay();
-			gpio_set(scl, 0);
-			i2c_delay();
-		}
-		gpio_set(sda, 1);
-		i2c_delay();
-		gpio_set(scl, 1);
-		i2c_delay();
-		gpio_read(sda);
-		gpio_set(scl, 0);
-		i2c_delay();
-	}
-	gpio_set(sda, 0);
-	i2c_delay();
-	gpio_set(scl, 1);
-	i2c_delay();
-	gpio_set(sda, 1);
-	i2c_delay();
-	sfp_pw_pending = 0;
-}
+// Only the most common key stays inline; the full dictionary lives in
+// sfp_pw_dict.inc (not committed).
+// CI builds create the file empty, in which case only the inline entry is used.
+static __code uint8_t sfp_pw_dict[][4] = {
+	{ 0x00, 0x00, 0x00, 0x00 },   // empty protection key
+#include "sfp_pw_dict.inc"
+};
 
 uint8_t sfp_write_reg(uint8_t slot, uint8_t reg, uint8_t data) __reentrant
 {
 	uint8_t scl = machine.sfp_port[slot].i2c.scl;
 	uint8_t sda = machine.sfp_port[slot].i2c.sda;
-	uint8_t mask, err = 0;
-	uint8_t saved[4], i;
+	uint8_t scl_bus = i2c_bus_from_scl_pin(scl);
+	uint8_t sda_bus = i2c_bus_from_sda_pin(sda);
+	uint8_t attempt, k;
+	uint8_t ndict = sizeof(sfp_pw_dict) / sizeof(sfp_pw_dict[0]);
 
-	reg_read_m(RTL837X_PIN_MUX_1);
-	for (i = 0; i < 4; i++) saved[i] = sfr_data[i];
-	gpio_mux_setup(scl);
-	gpio_mux_setup(sda);
-	gpio_set(scl, 1);
-	i2c_delay();
-	gpio_set(sda, 1);
-	i2c_delay();
+	for (attempt = 0; attempt <= ndict; attempt++) {
+		if (attempt == 0 && !sfp_pw_pending) {
+			// no password given: plain write, no unlock
+			REG_WRITE(RTL837X_REG_I2C_CTRL, 0x00, 0x10, 0x02, 0x80 | 0x04);
+			reg_read_m(RTL837X_REG_I2C_CTRL);
+			sfr_mask_data(1, 0xfc, scl_bus << 5 | sda_bus << 2);
+			reg_write_m(RTL837X_REG_I2C_CTRL);
+		} else {
+			// unlock: write the 4-byte password to the A2h device (0x51) 0x7B-0x7E
+			if (attempt > 0) {
+				for (k = 0; k < 4; k++) sfp_pw[k] = sfp_pw_dict[attempt - 1][k];
+			}
+			sfp_pw_pending = 0;
+			REG_WRITE(RTL837X_REG_I2C_CTRL, 0x00, 0x13, 0x02, 0x88 | 0x04);
+			reg_read_m(RTL837X_REG_I2C_CTRL);
+			sfr_mask_data(1, 0xfc, scl_bus << 5 | sda_bus << 2);
+			reg_write_m(RTL837X_REG_I2C_CTRL);
+			REG_WRITE(RTL837X_REG_I2C_IN, 0, 0, 0, 0x7B);
+			REG_WRITE(RTL837X_REG_I2C_OUT, sfp_pw[3], sfp_pw[2], sfp_pw[1], sfp_pw[0]);
+			reg_bit_set(RTL837X_REG_I2C_CTRL, 0);
+			do {
+				reg_read_m(RTL837X_REG_I2C_CTRL);
+			} while (sfr_data[3] & 0x1);
+			// the module's MCU needs time to process the password before
+			// the unlock window opens; the window is short, so write promptly
+			delay(2);
+			// write config for the A0h device (0x50)
+			REG_WRITE(RTL837X_REG_I2C_CTRL, 0x00, 0x10, 0x02, 0x80 | 0x04);
+			reg_read_m(RTL837X_REG_I2C_CTRL);
+			sfr_mask_data(1, 0xfc, scl_bus << 5 | sda_bus << 2);
+			reg_write_m(RTL837X_REG_I2C_CTRL);
+		}
 
-	if (sfp_pw_pending) send_pw(scl, sda);
+		REG_WRITE(RTL837X_REG_I2C_IN, 0, 0, 0, reg);
+		REG_WRITE(RTL837X_REG_I2C_OUT, 0, 0, 0, data);
 
-	gpio_set(sda, 0);
-	i2c_delay();
-	gpio_set(scl, 0);
-	i2c_delay();
+		reg_bit_set(RTL837X_REG_I2C_CTRL, 0);
+		do {
+			reg_read_m(RTL837X_REG_I2C_CTRL);
+		} while (sfr_data[3] & 0x1);
+		if (sfr_data[3] & 0x02) return 1;
 
-	err = 0;
-	for (mask = 0x80; mask; mask >>= 1) {
-		gpio_set(sda, !(0xA0 & mask));
-		i2c_delay();
-		gpio_set(scl, 1);
-		i2c_delay();
-		gpio_set(scl, 0);
-		i2c_delay();
+		// the module's EEPROM update lags the controller's write completion
+		// (observed on the bus-3 port), so poll the readback for a while
+		{
+			uint8_t ri;
+			for (ri = 0; ri < 5; ri++) {
+				delay(10);
+				if (sfp_read_reg(slot, reg) == data) return 0;
+			}
+		}
 	}
-	gpio_set(sda, 1);
-	i2c_delay();
-	gpio_set(scl, 1);
-	i2c_delay();
-	if (gpio_read(sda)) err = 1;
-	gpio_set(scl, 0);
-	i2c_delay();
-
-	if (!err) for (mask = 0x80; mask; mask >>= 1) {
-		gpio_set(sda, !(reg & mask));
-		i2c_delay();
-		gpio_set(scl, 1);
-		i2c_delay();
-		gpio_set(scl, 0);
-		i2c_delay();
-	}
-	if (!err) {
-		gpio_set(sda, 1);
-		i2c_delay();
-		gpio_set(scl, 1);
-		i2c_delay();
-		if (gpio_read(sda)) err = 1;
-		gpio_set(scl, 0);
-		i2c_delay();
-	}
-
-	if (!err) for (mask = 0x80; mask; mask >>= 1) {
-		gpio_set(sda, !(data & mask));
-		i2c_delay();
-		gpio_set(scl, 1);
-		i2c_delay();
-		gpio_set(scl, 0);
-		i2c_delay();
-	}
-	if (!err) {
-		gpio_set(sda, 1);
-		i2c_delay();
-		gpio_set(scl, 1);
-		i2c_delay();
-		if (gpio_read(sda)) err = 1;
-		gpio_set(scl, 0);
-		i2c_delay();
-	}
-
-	gpio_set(sda, 0);
-	i2c_delay();
-	gpio_set(scl, 1);
-	i2c_delay();
-	gpio_set(sda, 1);
-	i2c_delay();
-
-	for (i = 0; i < 4; i++) sfr_data[i] = saved[i];
-	reg_write_m(RTL837X_PIN_MUX_1);
-
-	if (err) return 1;
-	delay(2);
-	return sfp_read_reg(slot, reg) == data ? 0 : 1;
+	return 1;
 }
 
 void sfp_dump_eeprom(uint8_t slot) __reentrant
@@ -240,20 +134,22 @@ uint8_t sfp_eeprom_fix(uint8_t slot) __reentrant
 
 uint8_t sfp_save_backup(uint8_t slot) __reentrant
 {
-	uint8_t i;
+	uint16_t i;
 	for (i = 0; i < 256; i++)
 		flash_buf[i] = sfp_read_reg(slot, i);
 	flash_region.addr = SFP_EEPROM_BACKUP;
+	flash_init(0);
 	flash_sector_erase();
 	flash_region.addr = SFP_EEPROM_BACKUP + (uint32_t)slot * 256;
 	flash_region.len = 256;
 	flash_write_bytes(flash_buf);
+	flash_init(1);
 	return 0;
 }
 
 uint8_t sfp_restore_backup(uint8_t slot) __reentrant
 {
-	uint8_t i;
+	uint16_t i;
 	flash_region.addr = SFP_EEPROM_BACKUP + (uint32_t)slot * 256;
 	flash_region.len = 256;
 	flash_read_bulk(flash_buf);
@@ -267,7 +163,7 @@ uint8_t sfp_restore_backup(uint8_t slot) __reentrant
 
 uint8_t sfp_bulk_write(uint8_t slot) __reentrant
 {
-	uint8_t i;
+	uint16_t i;
 	for (i = 0; i < 256; i++) {
 		if (sfp_write_reg(slot, i, flash_buf[i]))
 			return 1;

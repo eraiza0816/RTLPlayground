@@ -268,7 +268,7 @@ void vlan_setup(void) __banked
 		reg_bit_clear(RTL837X_VLAN_PORT_EGR_TAG, i << 1);
 		reg_bit_clear(RTL837X_VLAN_PORT_EGR_TAG, (i << 1) + 1);
 		// Enable INGRESS filtering for port: discard packets not belonging to member VLAN on that port
-		port_ingress_vlan_filter_set(i, true);
+		port_ingress_vlan_filter_set(i);
 
 #ifdef DEBUG
 		print_string("\n");
@@ -820,7 +820,7 @@ void vlan_dump(void) __banked
 
 
 /** Set the ingress VLAN filtering */
-bool port_ingress_vlan_filter_set(__xdata uint8_t port, __xdata bool enabled) __banked
+bool port_ingress_vlan_filter_set(__xdata uint8_t port) __banked
 {
 	if (port < machine.min_port || port > machine.max_port && port != 9) {
 		return false;

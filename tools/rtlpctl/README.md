@@ -28,6 +28,32 @@ rtlpctl [--host HOST] [--password PASS] [--json] <command> [args...]
 | `--env-file FILE` | — | `.env` | Load a .env file |
 | `--mode MODE` | `MODE` | `default` | CLI mode (`default` / `arista`) |
 | `--json` | — | — | Output raw JSON (with arista mode: EAPI JSON-RPC format) |
+| `--force` | — | — | Bypass local command validation (`cmd` / `enc-cmd`) |
+
+### Command Validation
+
+The firmware has deliberately minimal input validation to save code space
+(commit 6a28c58), so `cmd` / `enc-cmd` command text is validated on the host
+before it is sent. All known write commands are checked:
+
+- `preshared_key` — key must be exactly 64 hex chars (the firmware no longer
+  validates this and would silently store `0xff` bytes)
+- `hostname` — 1-31 chars, letters/digits/`-`/`_` only (the firmware now
+  truncates silently at the first invalid character)
+- `passwd` — 5-20 chars
+- `ip` / `gw` / `netmask` — dotted-quad IPv4 (`ip dhcp` allowed)
+- `port`, `mtu`, `pvid`, `vlan`, `ingress`, `isolate`, `mirror`, `lag`,
+  `laghash`, `eee`, `bw`, `stp`, `igmp`, `telnet`, `web`, `l2`, `sfp`,
+  `regget`/`regset`/`sdsget`/`sdsset`/`phyget`/`physet`, `commit`, `reset`
+  — argument counts, port numbers, VLAN IDs, speeds, hex values etc.
+
+Unknown or read-only commands pass through unchanged, so future firmware
+commands are never blocked. To send a command that fails validation anyway
+(e.g. on an older firmware), use `--force`:
+
+```bash
+rtlpctl cmd "hostname my-switch.old-firmware" --force
+```
 
 ### Commands
 
@@ -85,7 +111,7 @@ rtlpctl status
 
 # Execute CLI commands (change settings)
 rtlpctl cmd "ip 192.168.1.100"
-rtlpctl cmd "vlan add 100 1-4t"
+rtlpctl cmd "vlan 100 1t 2t"
 
 # Delete L2 entry (decimal index)
 rtlpctl l2 delete 16
@@ -262,6 +288,7 @@ go test ./...
 Tests cover:
 - Argument parsing (`splitArgs`, `filterFlags`)
 - Output formatting (`fmtLink`, `fmtBool`, `fmtInt`, `fmtStr`, table formatting)
+- Command validation (`validateCmdText` and per-command validators)
 - HTTP client (authentication, all endpoints, error handling)
 - Binary E2E (actual binary execution against httptest server)
 - Interactive mode

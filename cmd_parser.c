@@ -39,6 +39,7 @@ extern __xdata uint8_t flash_buf[FLASH_BUF_SIZE];
 extern __xdata struct flash_region_t flash_region;
 
 extern __xdata char passwd[21];
+extern __xdata uint8_t preshared_key[32];
 
 extern __xdata struct dhcp_state dhcp_state;
 extern __xdata char hostname[32];
@@ -192,28 +193,30 @@ uint8_t parse_ip(uint8_t idx)
 	__xdata uint8_t b;
 	__xdata uint16_t val;
 
+	/* IP validation must stay on the device: a malformed address would
+	 * silently change the switch IP and lock out remote management. */
 	for (b = 0; b < 4; b++) {
 		val = 0;
 		if (!isnumber(cmd_buffer[idx])) {
-			print_string("Error in IP format: missing octet\n");
+			print_string("Bad IP: missing octet\n");
 			return -1;
 		}
 		while (isnumber(cmd_buffer[idx])) {
 			val = val * 10 + (cmd_buffer[idx] - '0');
 			if (val > 255) {
-				print_string("Error in IP format: octet > 255\n");
+				print_string("Bad IP: octet > 255\n");
 				return -1;
 			}
 			idx++;
 		}
 		ip[b] = val;
 		if (b < 3 && cmd_buffer[idx++] != '.') {
-			print_string("Error in IP format, expecting '.'\n");
+			print_string("Bad IP: expected '.'\n");
 			return -1;
 		}
 	}
 	if (cmd_buffer[idx] != '\0' && cmd_buffer[idx] != ' ') {
-		print_string("Error in IP format: trailing characters\n");
+		print_string("Bad IP: trailing chars\n");
 		return -1;
 	}
 	return 0;
@@ -275,7 +278,7 @@ void parse_lag(void)
 	port_lag_members_set(group, members);
 	return;
 err:
-	print_string("Error: lag <lag> [port]...\n");
+	print_string("Bad lag cmd\n");
 }
 
 
@@ -304,7 +307,7 @@ void parse_lag_hash(void)
 		else if (cmd_compare(w, "dport"))
 			hash |= LAG_HASH_L4_DPORT;
 		else {
-			print_string("Error: invalid hash type:");
+			print_string("Bad hash type:");
 			print_string_x(&cmd_buffer[cmd_words_b[w]]);
 			write_char('\n');
 		}
@@ -381,7 +384,7 @@ void parse_vlan(void)
 	}
 	return;
 err:
-	print_string("Error: vlan (<vlan-id>|show) [port][t/u]...\n");
+	print_string("Bad vlan cmd\n");
 }
 
 
@@ -449,7 +452,7 @@ void parse_isolate(void)
 	return;
 
 err:
-	print_string("Error: isolate <port> [show|off] [port]...\n");
+	print_string("Bad isolate cmd\n");
 }
 
 
@@ -483,7 +486,7 @@ void parse_ingress(void)
 		// Setting mode for all ports at once
 		for (log_port = machine.min_port; log_port <= machine.max_port; log_port++) {
 			if (!port_ingress_filter(log_port, mode)) {
-				print_string("Error setting ingress filter for port "); print_byte(machine.log_to_phys_port[log_port]); write_char('\n');
+				print_string("Ingress fail p"); print_byte(machine.log_to_phys_port[log_port]); write_char('\n');
 				return;
 			}
 			print_string("All ports ingress filter set to: ");
@@ -497,16 +500,16 @@ void parse_ingress(void)
 				continue;
 			}
 			if (p - '1' > 9) {
-				print_string("Invalid physical port number: "); write_char(p); write_char('\n');
+				print_string("Bad port: "); write_char(p); write_char('\n');
 				continue;
 			}
 			log_port = machine.phys_to_log_port[p - '1'];
 			if (!vlan_ingress_mode_parse(cmd_buffer[cmd_words_b[w] + 1], &mode)) {
-				print_string("Invalid ingress mode for port "); write_char(p); print_string(" in ingress command\n");
+				print_string("Bad ingress: p"); write_char(p); print_string(" in ingress command\n");
 				goto err;
 			}
 			if (!port_ingress_filter(log_port, mode)) {
-				print_string("Error setting ingress filter for port "); write_char(p); write_char('\n');
+				print_string("Ingress fail p"); write_char(p); write_char('\n');
 				return;
 			}
 			print_string("Port "); write_char(p);
@@ -516,7 +519,7 @@ void parse_ingress(void)
 		return;	
 	}
 err:
-	print_string("Error: ingress [p]<u/t/a>... \n");
+	print_string("Bad ingress cmd\n");
 }
 
 void parse_mirror(void)
@@ -552,7 +555,6 @@ void parse_mirror(void)
 	}
 
 	if (cmd_words_len < 2 || !isnumber(cmd_buffer[cmd_words_b[1]])) {
-		print_string("Port/command missing: mirror [status/off/<mirroring port> [port][t/r]]...\n");
 		return;
 	}
 
@@ -613,7 +615,7 @@ void parse_port(void)
 	phy_settings.port = cmd_buffer[cmd_words_b[1]] - '1';
 	phy_settings.port = machine.phys_to_log_port[phy_settings.port];
 	if (phy_settings.port > machine.max_port || phy_settings.port < machine.min_port) {
-		print_string("This machine has no port with the specified number\n");
+		print_string("No such port\n");
 		return;
 	}
 
@@ -690,7 +692,7 @@ void parse_port(void)
 			phy_settings.duplex = PHY_DUPLEX_HALF;
 		phy_set_duplex();
 	} else {
-		print_string("Unknown port command\n");
+		print_string("Bad port cmd\n");
 	}
 }
 
@@ -713,13 +715,12 @@ void parse_mtu(void)
 	p = machine.phys_to_log_port[p];
 	print_byte(p);
 	if (cmd_words_len != 3) {
-		print_string("mtu [port] [size]\n");
 		return;
 	}
 	// TODO: validate atoi_short() return value; check min MTU >= 64
 	atoi_short(&mtu, cmd_words_b[2]);
 	if (mtu > 0x3fff) {
-		print_string("Maximum MTU is 16383\n");
+		print_string("MTU max 16383\n");
 		return;
 	}
 	REG_WRITE(RTL8373_REG_MAC_L2_PORT_MAX_LEN + ((uint16_t) p << 8), (mtu >> 10) & 0xf, (mtu >> 2) & 0xff,
@@ -748,6 +749,254 @@ __xdata uint16_t sfp_sum;
 __xdata uint8_t sfp_v;
 __xdata uint8_t sfp_err;
 
+static __xdata uint8_t sfp_csum_base;
+static __xdata uint8_t sfp_csum_ext;
+
+static void sfp_calc_checksum(uint8_t slot)
+{
+	static __xdata uint8_t sum = 0;
+	sum = 0;
+	for (sfp_i = 0; sfp_i < 0x3F; sfp_i++) sum += sfp_read_reg(slot, sfp_i);
+	sfp_csum_base = sum;
+	sum = 0;
+	for (sfp_i = 0x40; sfp_i < 0x5F; sfp_i++) sum += sfp_read_reg(slot, sfp_i);
+	sfp_csum_ext = sum;
+}
+
+static uint8_t sfp_hex(char c)
+{
+	if (c >= 'a') return c - 'a' + 10;
+	if (c >= 'A') return c - 'A' + 10;
+	return c - '0';
+}
+
+static uint8_t sfp_pw_check(void)
+{
+	if (sfp_pw_ok == 0) { print_string(" Invalid password\n"); return 0; }
+	if (sfp_pw_ok == 2) {
+		print_string(" Using password ");
+		print_byte(sfp_pw[0]); print_byte(sfp_pw[1]); print_byte(sfp_pw[2]); print_byte(sfp_pw[3]);
+		write_char('\n');
+	}
+	return 1;
+}
+
+static void sfp_cmd_describe(uint8_t slot)
+{
+	sfp_v = sfp_read_reg(slot, 0);
+	print_string("Identifier: 0x"); print_byte(sfp_v);
+	if (sfp_v == 3) print_string(" (SFP)");
+	else if (sfp_v == 4) print_string(" (SFP+)");
+	else print_string(" (?)");
+	write_char('\n');
+	sfp_v = sfp_read_reg(slot, 2);
+	print_string("Connector: 0x"); print_byte(sfp_v);
+	if (sfp_v == 3) print_string(" (LC)");
+	else if (sfp_v == 7) print_string(" (MPO)");
+	else if (sfp_v == 9) print_string(" (Copper)");
+	else if (sfp_v == 0x0B) print_string(" (RJ-45)");
+	else print_string(" (?)");
+	write_char('\n');
+	print_string("Vendor: ");
+	for (sfp_i = 0; sfp_i < 16; sfp_i++) { sfp_v = sfp_read_reg(slot, 20 + sfp_i); if (sfp_v < 0x20 || sfp_v >= 0x7F) break; write_char(sfp_v); }
+	write_char('\n');
+	print_string("PN: ");
+	for (sfp_i = 0; sfp_i < 16; sfp_i++) { sfp_v = sfp_read_reg(slot, 40 + sfp_i); if (sfp_v < 0x20 || sfp_v >= 0x7F) break; write_char(sfp_v); }
+	write_char('\n');
+	print_string("Rev: ");
+	for (sfp_i = 0; sfp_i < 4; sfp_i++) { sfp_v = sfp_read_reg(slot, 56 + sfp_i); if (sfp_v < 0x20 || sfp_v >= 0x7F) break; write_char(sfp_v); }
+	write_char('\n');
+	print_string("SN: ");
+	for (sfp_i = 0; sfp_i < 16; sfp_i++) { sfp_v = sfp_read_reg(slot, 68 + sfp_i); if (sfp_v < 0x20 || sfp_v >= 0x7F) break; write_char(sfp_v); }
+	write_char('\n');
+	print_string("Date: ");
+	for (sfp_i = 0; sfp_i < 6; sfp_i++) { sfp_v = sfp_read_reg(slot, 84 + sfp_i); if (sfp_v < 0x20 || sfp_v >= 0x7F) break; write_char(sfp_v); }
+	write_char('\n');
+	print_string("Rate: "); print_byte(sfp_read_reg(slot, 12)); print_string(" x100MBd\n");
+	sfp_v = sfp_read_reg(slot, 3);
+	print_string("Compliance: ");
+	if (sfp_v & 0x20) print_string("10GBase-LR ");
+	if (sfp_v & 0x10) print_string("10GBase-SR ");
+	sfp_v = sfp_read_reg(slot, 6);
+	if (sfp_v & 2) print_string("1000Base-LX ");
+	if (sfp_v & 1) print_string("1000Base-SX ");
+	write_char('\n');
+	sfp_calc_checksum(slot);
+	sfp_v = sfp_read_reg(slot, 0x3F);
+	print_string("CC_BASE: 0x"); print_byte(sfp_v);
+	if (sfp_v == sfp_csum_base) print_string(" (OK)"); else print_string(" (BAD)");
+	write_char('\n');
+	sfp_v = sfp_read_reg(slot, 0x5F);
+	print_string("CC_EXT: 0x"); print_byte(sfp_v);
+	if (sfp_v == sfp_csum_ext) print_string(" (OK)"); else print_string(" (BAD)");
+	write_char('\n');
+}
+
+static void sfp_cmd_dump(uint8_t slot)
+{
+	sfp_dump_eeprom(slot);
+}
+
+static void sfp_cmd_save(uint8_t slot)
+{
+	print_string(" Saving EEPROM to flash...\n");
+	sfp_save_backup(slot);
+	print_string(" OK\n");
+}
+
+static void sfp_cmd_restore(uint8_t slot)
+{
+	print_string(" Restoring EEPROM from flash...\n");
+	if (sfp_restore_backup(slot))
+		print_string(" Restore failed!\n");
+	else
+		print_string(" OK\n");
+}
+
+static void sfp_cmd_fix(uint8_t slot)
+{
+	if (sfp_eeprom_fix(slot))
+		print_string(" Fix failed!\n");
+	else
+		print_string(" OK - 1xCOPPER PAS\n");
+}
+
+static void sfp_cmd_patch(uint8_t slot)
+{
+	if (!sfp_pw_check()) return;
+	sfp_pw_pending = sfp_pw_ok == 2;
+	if (sfp_write_reg(slot, 3, 0x20)) { print_string(" Patch failed!\n"); return; }
+	sfp_pw_pending = sfp_pw_ok == 2;
+	if (sfp_write_reg(slot, 6, 0x02)) { print_string(" Patch failed!\n"); return; }
+	sfp_pw_pending = sfp_pw_ok == 2;
+	if (sfp_write_reg(slot, 7, 0x00)) { print_string(" Patch failed!\n"); return; }
+	sfp_pw_pending = sfp_pw_ok == 2;
+	if (sfp_write_reg(slot, 9, 0x00)) { print_string(" Patch failed!\n"); return; }
+	sfp_calc_checksum(slot);
+	sfp_pw_pending = sfp_pw_ok == 2;
+	if (sfp_write_reg(slot, 0x3F, sfp_csum_base)) { print_string(" Checksum fix failed!\n"); return; }
+	print_string(" Patch OK\n");
+}
+
+static void sfp_cmd_clone(uint8_t slot)
+{
+	if (!sfp_pw_check()) return;
+	print_string(" Cloning...\n");
+	for (sfp_sum = 0; sfp_sum < 256; sfp_sum++) {
+		sfp_pw_pending = sfp_pw_ok == 2;
+		if (sfp_write_reg(slot, (uint8_t)sfp_sum, flash_buf[sfp_sum]))
+			{ print_string(" Clone failed!\n"); return; }
+	}
+	delay(2);
+	sfp_err = 0;
+	sfp_calc_checksum(slot);
+	if (sfp_csum_base != sfp_read_reg(slot, 0x3F))
+		if (sfp_write_reg(slot, 0x3F, sfp_csum_base)) sfp_err = 1;
+	if (sfp_csum_ext != sfp_read_reg(slot, 0x5F))
+		if (sfp_write_reg(slot, 0x5F, sfp_csum_ext)) sfp_err = 1;
+	if (sfp_err) { print_string(" Checksum fix failed!\n"); return; }
+	print_string(" Clone OK\n");
+}
+
+static void sfp_cmd_checksum(uint8_t slot)
+{
+	uint8_t w;
+	uint8_t do_fix = 0;
+	for (w = 2; w < cmd_words_len; w++) {
+		if (cmd_compare(w, "--fix")) { do_fix = 1; break; }
+	}
+	if (do_fix) {
+		if (sfp_pw_ok == 0) { print_string(" Invalid password\n"); return; }
+		sfp_err = 0;
+		sfp_calc_checksum(slot);
+		if (sfp_csum_base != sfp_read_reg(slot, 0x3F)) {
+			sfp_pw_pending = sfp_pw_ok == 2;
+			if (sfp_write_reg(slot, 0x3F, sfp_csum_base)) sfp_err = 1;
+		}
+		if (sfp_csum_ext != sfp_read_reg(slot, 0x5F)) {
+			sfp_pw_pending = sfp_pw_ok == 2;
+			if (sfp_write_reg(slot, 0x5F, sfp_csum_ext)) sfp_err = 1;
+		}
+		if (sfp_err) print_string(" Checksum fix failed!\n");
+		else print_string(" Checksums fixed\n");
+	} else {
+		sfp_calc_checksum(slot);
+		print_string("CC_BASE: 0x"); print_byte(sfp_read_reg(slot, 0x3F));
+		print_string(" (expected 0x"); print_byte(sfp_csum_base); print_string(")\n");
+		print_string("CC_EXT:  0x"); print_byte(sfp_read_reg(slot, 0x5F));
+		print_string(" (expected 0x"); print_byte(sfp_csum_ext); print_string(")\n");
+	}
+}
+
+static void sfp_cmd_bulk(uint8_t slot)
+{
+	if (cmd_words_len < 4) return;
+	uint8_t bulk_idx = cmd_words_b[3];
+	for (uint16_t bulk_i = 0; bulk_i < 256; bulk_i++) {
+		uint8_t bh = sfp_hex(cmd_buffer[bulk_idx]);
+		uint8_t bl = sfp_hex(cmd_buffer[bulk_idx + 1]);
+		if (bh > 15 || bl > 15) { print_string("Invalid hex\n"); break; }
+		flash_buf[bulk_i] = (bh << 4) | bl;
+		bulk_idx += 2;
+	}
+	sfp_bulk_write(slot);
+	print_string(" Bulk write OK\n");
+}
+
+static void sfp_cmd_write(uint8_t slot)
+{
+	if (cmd_words_len < 5) return;
+	uint8_t hsz = atoi_hex(cmd_words_b[3]);
+	if (hsz == 0) { print_string(" Invalid offset\n"); return; }
+	uint8_t off = hexvalue[0];
+	hsz = atoi_hex(cmd_words_b[4]);
+	if (hsz == 0) { print_string(" Invalid value\n"); return; }
+	uint8_t val = hexvalue[0];
+	if (!sfp_pw_check()) return;
+	print_string(" Write 0x"); print_byte(off); print_string(" = 0x"); print_byte(val); print_string("...\n");
+	sfp_pw_pending = sfp_pw_ok == 2;
+	if (sfp_write_reg(slot, off, val)) {
+		print_string(" Write failed!\n");
+	} else {
+		print_string(" OK - verified\n");
+		// Keep the checksums consistent so the module stays valid:
+		// the write changes bytes 0x00-0x3E (CC_BASE) or 0x40-0x5E (CC_EXT).
+		if (off <= 0x3E || (off >= 0x40 && off <= 0x5E)) {
+			sfp_calc_checksum(slot);
+			sfp_pw_pending = sfp_pw_ok == 2;
+			if (off <= 0x3E && sfp_csum_base != sfp_read_reg(slot, 0x3F)) {
+				if (sfp_write_reg(slot, 0x3F, sfp_csum_base))
+					print_string(" CC_BASE update failed!\n");
+				else
+					print_string(" CC_BASE updated\n");
+			}
+			sfp_pw_pending = sfp_pw_ok == 2;
+			if (off >= 0x40 && off <= 0x5E && sfp_csum_ext != sfp_read_reg(slot, 0x5F)) {
+				if (sfp_write_reg(slot, 0x5F, sfp_csum_ext))
+					print_string(" CC_EXT update failed!\n");
+				else
+					print_string(" CC_EXT updated\n");
+			}
+		}
+	}
+}
+
+static __code struct {
+	__code uint8_t *name;
+	void (*fn)(uint8_t);
+} sfp_cmds[] = {
+	{"describe", sfp_cmd_describe},
+	{"dump", sfp_cmd_dump},
+	{"save", sfp_cmd_save},
+	{"restore", sfp_cmd_restore},
+	{"fix", sfp_cmd_fix},
+	{"patch", sfp_cmd_patch},
+	{"clone", sfp_cmd_clone},
+	{"checksum", sfp_cmd_checksum},
+	{"bulk", sfp_cmd_bulk},
+	{"write", sfp_cmd_write},
+};
+
 void parse_sfp(void)
 {
 	uint8_t slot;
@@ -770,12 +1019,12 @@ void parse_sfp(void)
 		return;
 	}
 	if (cmd_buffer[cmd_words_b[1]] < '1' || cmd_buffer[cmd_words_b[1]] > '2' || cmd_buffer[cmd_words_b[1] + 1] != ' ' ) {
-		print_string("Illegal SFP slot number\n");
+		print_string("Bad SFP slot\n");
 		return;
 	}
 	slot = cmd_buffer[cmd_words_b[1]] - '1';
 	if (slot >= machine.n_sfp) {
-		print_string("SFP slot not present\n");
+		print_string("No SFP slot\n");
 		return;
 	}
 
@@ -786,16 +1035,10 @@ void parse_sfp(void)
 		uint8_t idx = cmd_words_b[sfp_i + 1];
 		uint8_t j;
 		for (j = 0; j < 4; j++) {
-			sfp_v = cmd_buffer[idx++];
-			if (sfp_v >= 'a') sfp_v -= 'a' - 10;
-			else if (sfp_v >= 'A') sfp_v -= 'A' - 10;
-			else sfp_v -= '0';
+			sfp_v = sfp_hex(cmd_buffer[idx++]);
 			if (sfp_v > 15) { sfp_pw_ok = 0; break; }
 			sfp_pw[j] = sfp_v << 4;
-			sfp_v = cmd_buffer[idx++];
-			if (sfp_v >= 'a') sfp_v -= 'a' - 10;
-			else if (sfp_v >= 'A') sfp_v -= 'A' - 10;
-			else sfp_v -= '0';
+			sfp_v = sfp_hex(cmd_buffer[idx++]);
 			if (sfp_v > 15) { sfp_pw_ok = 0; break; }
 			sfp_pw[j] |= sfp_v;
 		}
@@ -804,198 +1047,11 @@ void parse_sfp(void)
 		break;
 	}
 
-	if (cmd_compare(2, "describe")) {
-		sfp_v = sfp_read_reg(slot, 0);
-		print_string("Identifier: 0x"); print_byte(sfp_v);
-		if (sfp_v == 3) print_string(" (SFP)");
-		else if (sfp_v == 4) print_string(" (SFP+)");
-		else print_string(" (?)");
-		write_char('\n');
-		sfp_v = sfp_read_reg(slot, 2);
-		print_string("Connector: 0x"); print_byte(sfp_v);
-		if (sfp_v == 3) print_string(" (LC)");
-		else if (sfp_v == 7) print_string(" (MPO)");
-		else if (sfp_v == 9) print_string(" (Copper)");
-		else if (sfp_v == 0x0B) print_string(" (RJ-45)");
-		else print_string(" (?)");
-		write_char('\n');
-		print_string("Vendor: ");
-		for (sfp_i = 0; sfp_i < 16; sfp_i++) { sfp_v = sfp_read_reg(slot, 20 + sfp_i); if (sfp_v < 0x20 || sfp_v >= 0x7F) break; write_char(sfp_v); }
-		write_char('\n');
-		print_string("PN: ");
-		for (sfp_i = 0; sfp_i < 16; sfp_i++) { sfp_v = sfp_read_reg(slot, 40 + sfp_i); if (sfp_v < 0x20 || sfp_v >= 0x7F) break; write_char(sfp_v); }
-		write_char('\n');
-		print_string("Rev: ");
-		for (sfp_i = 0; sfp_i < 4; sfp_i++) { sfp_v = sfp_read_reg(slot, 56 + sfp_i); if (sfp_v < 0x20 || sfp_v >= 0x7F) break; write_char(sfp_v); }
-		write_char('\n');
-		print_string("SN: ");
-		for (sfp_i = 0; sfp_i < 16; sfp_i++) { sfp_v = sfp_read_reg(slot, 68 + sfp_i); if (sfp_v < 0x20 || sfp_v >= 0x7F) break; write_char(sfp_v); }
-		write_char('\n');
-		print_string("Date: ");
-		for (sfp_i = 0; sfp_i < 6; sfp_i++) { sfp_v = sfp_read_reg(slot, 84 + sfp_i); if (sfp_v < 0x20 || sfp_v >= 0x7F) break; write_char(sfp_v); }
-		write_char('\n');
-		print_string("Rate: "); print_byte(sfp_read_reg(slot, 12)); print_string(" x100MBd\n");
-		sfp_v = sfp_read_reg(slot, 3);
-		print_string("Compliance: ");
-		if (sfp_v & 0x20) print_string("10GBase-LR ");
-		if (sfp_v & 0x10) print_string("10GBase-SR ");
-		sfp_v = sfp_read_reg(slot, 6);
-		if (sfp_v & 2) print_string("1000Base-LX ");
-		if (sfp_v & 1) print_string("1000Base-SX ");
-		write_char('\n');
-		sfp_sum = 0;
-		for (sfp_i = 0; sfp_i < 0x3F; sfp_i++) sfp_sum += sfp_read_reg(slot, sfp_i);
-		sfp_v = sfp_read_reg(slot, 0x3F);
-		print_string("CC_BASE: 0x"); print_byte(sfp_v);
-		if (sfp_v == (uint8_t)(sfp_sum & 0xFF)) print_string(" (OK)"); else print_string(" (BAD)");
-		write_char('\n');
-		sfp_sum = 0;
-		for (sfp_i = 0x40; sfp_i < 0x5F; sfp_i++) sfp_sum += sfp_read_reg(slot, sfp_i);
-		sfp_v = sfp_read_reg(slot, 0x5F);
-		print_string("CC_EXT: 0x"); print_byte(sfp_v);
-		if (sfp_v == (uint8_t)(sfp_sum & 0xFF)) print_string(" (OK)"); else print_string(" (BAD)");
-		write_char('\n');
-		return;
-	}
-	if (cmd_compare(2, "dump")) {
-		sfp_dump_eeprom(slot);
-		return;
-	}
-	if (cmd_compare(2, "save")) {
-		print_string(" Saving EEPROM to flash...\n");
-		sfp_save_backup(slot);
-		print_string(" OK\n");
-		return;
-	}
-	if (cmd_compare(2, "restore")) {
-		print_string(" Restoring EEPROM from flash...\n");
-		if (sfp_restore_backup(slot))
-			print_string(" Restore failed!\n");
-		else
-			print_string(" OK\n");
-		return;
-	}
-	if (cmd_compare(2, "fix")) {
-		if (sfp_eeprom_fix(slot))
-			print_string(" Fix failed!\n");
-		else
-			print_string(" OK - 1xCOPPER PAS\n");
-		return;
-	}
-	if (cmd_compare(2, "patch")) {
-		if (sfp_pw_ok == 0) { print_string(" Invalid password\n"); return; }
-		if (sfp_pw_ok == 2) { print_string(" Using password "); print_byte(sfp_pw[0]); print_byte(sfp_pw[1]); print_byte(sfp_pw[2]); print_byte(sfp_pw[3]); write_char('\n'); }
-		sfp_pw_pending = sfp_pw_ok == 2;
-		if (sfp_write_reg(slot, 3, 0x20)) { print_string(" Patch failed!\n"); return; }
-		sfp_pw_pending = sfp_pw_ok == 2;
-		if (sfp_write_reg(slot, 6, 0x02)) { print_string(" Patch failed!\n"); return; }
-		sfp_pw_pending = sfp_pw_ok == 2;
-		if (sfp_write_reg(slot, 7, 0x00)) { print_string(" Patch failed!\n"); return; }
-		sfp_pw_pending = sfp_pw_ok == 2;
-		if (sfp_write_reg(slot, 9, 0x00)) { print_string(" Patch failed!\n"); return; }
-		sfp_sum = 0;
-		for (sfp_i = 0; sfp_i < 0x3F; sfp_i++) sfp_sum += sfp_read_reg(slot, sfp_i);
-		sfp_pw_pending = sfp_pw_ok == 2;
-		if (sfp_write_reg(slot, 0x3F, (uint8_t)(sfp_sum & 0xFF))) { print_string(" Checksum fix failed!\n"); return; }
-		print_string(" Patch OK\n");
-		return;
-	}
-	if (cmd_compare(2, "clone")) {
-		if (sfp_pw_ok == 0) { print_string(" Invalid password\n"); return; }
-		if (sfp_pw_ok == 2) { print_string(" Using password "); print_byte(sfp_pw[0]); print_byte(sfp_pw[1]); print_byte(sfp_pw[2]); print_byte(sfp_pw[3]); write_char('\n'); }
-		print_string(" Cloning...\n");
-		for (sfp_sum = 0; sfp_sum < 256; sfp_sum++) {
-			sfp_pw_pending = sfp_pw_ok == 2;
-			if (sfp_write_reg(slot, (uint8_t)sfp_sum, flash_buf[sfp_sum]))
-				{ print_string(" Clone failed!\n"); return; }
+	for (sfp_i = 0; sfp_i < sizeof(sfp_cmds) / sizeof(sfp_cmds[0]); sfp_i++) {
+		if (cmd_compare(2, sfp_cmds[sfp_i].name)) {
+			sfp_cmds[sfp_i].fn(slot);
+			return;
 		}
-		delay(2);
-		sfp_err = 0;
-		sfp_sum = 0;
-		for (sfp_i = 0; sfp_i < 0x3F; sfp_i++) sfp_sum += sfp_read_reg(slot, sfp_i);
-		sfp_v = (uint8_t)(sfp_sum & 0xFF);
-		if (sfp_v != sfp_read_reg(slot, 0x3F))
-			if (sfp_write_reg(slot, 0x3F, sfp_v)) sfp_err = 1;
-		sfp_sum = 0;
-		for (sfp_i = 0x40; sfp_i < 0x5F; sfp_i++) sfp_sum += sfp_read_reg(slot, sfp_i);
-		sfp_v = (uint8_t)(sfp_sum & 0xFF);
-		if (sfp_v != sfp_read_reg(slot, 0x5F))
-			if (sfp_write_reg(slot, 0x5F, sfp_v)) sfp_err = 1;
-		if (sfp_err) { print_string(" Checksum fix failed!\n"); return; }
-		print_string(" Clone OK\n");
-		return;
-	}
-	if (cmd_compare(2, "checksum")) {
-		uint8_t w;
-		uint8_t do_fix = 0;
-		for (w = 2; w < cmd_words_len; w++) {
-			if (cmd_compare(w, "--fix")) { do_fix = 1; break; }
-		}
-		if (do_fix) {
-			if (sfp_pw_ok == 0) { print_string(" Invalid password\n"); return; }
-			sfp_err = 0;
-			sfp_sum = 0;
-			for (sfp_i = 0; sfp_i < 0x3F; sfp_i++) sfp_sum += sfp_read_reg(slot, sfp_i);
-			sfp_v = (uint8_t)(sfp_sum & 0xFF);
-			if (sfp_v != sfp_read_reg(slot, 0x3F)) {
-				sfp_pw_pending = sfp_pw_ok == 2;
-				if (sfp_write_reg(slot, 0x3F, sfp_v)) sfp_err = 1;
-			}
-			sfp_sum = 0;
-			for (sfp_i = 0x40; sfp_i < 0x5F; sfp_i++) sfp_sum += sfp_read_reg(slot, sfp_i);
-			sfp_v = (uint8_t)(sfp_sum & 0xFF);
-			if (sfp_v != sfp_read_reg(slot, 0x5F)) {
-				sfp_pw_pending = sfp_pw_ok == 2;
-				if (sfp_write_reg(slot, 0x5F, sfp_v)) sfp_err = 1;
-			}
-			if (sfp_err) print_string(" Checksum fix failed!\n");
-			else print_string(" Checksums fixed\n");
-		} else {
-			sfp_sum = 0;
-			for (sfp_i = 0; sfp_i < 0x3F; sfp_i++) sfp_sum += sfp_read_reg(slot, sfp_i);
-			print_string("CC_BASE: 0x"); print_byte(sfp_read_reg(slot, 0x3F));
-			print_string(" (expected 0x"); print_byte((uint8_t)(sfp_sum & 0xFF)); print_string(")\n");
-			sfp_sum = 0;
-			for (sfp_i = 0x40; sfp_i < 0x5F; sfp_i++) sfp_sum += sfp_read_reg(slot, sfp_i);
-			print_string("CC_EXT:  0x"); print_byte(sfp_read_reg(slot, 0x5F));
-			print_string(" (expected 0x"); print_byte((uint8_t)(sfp_sum & 0xFF)); print_string(")\n");
-		}
-		return;
-	}
-	if (cmd_words_len >= 4 && cmd_compare(2, "bulk")) {
-		uint8_t bulk_idx = cmd_words_b[3];
-		for (uint16_t bulk_i = 0; bulk_i < 256; bulk_i++) {
-			uint8_t bh = cmd_buffer[bulk_idx];
-			uint8_t bl = cmd_buffer[bulk_idx + 1];
-			if (bh >= 'a') bh -= 'a' - 10; else bh -= '0';
-			if (bl >= 'a') bl -= 'a' - 10; else bl -= '0';
-			if (bh > 15 || bl > 15) { print_string("Invalid hex\n"); break; }
-			flash_buf[bulk_i] = (bh << 4) | bl;
-			bulk_idx += 2;
-		}
-		sfp_bulk_write(slot);
-		print_string(" Bulk write OK\n");
-		return;
-	}
-	if (cmd_words_len >= 5 && cmd_compare(2, "write")) {
-		uint8_t hsz = atoi_hex(cmd_words_b[3]);
-		if (hsz == 0) { print_string(" Invalid offset\n"); return; }
-		uint8_t off = hexvalue[0];
-		hsz = atoi_hex(cmd_words_b[4]);
-		if (hsz == 0) { print_string(" Invalid value\n"); return; }
-		uint8_t val = hexvalue[0];
-		if (sfp_pw_ok == 0) { print_string(" Invalid password\n"); return; }
-		if (sfp_pw_ok == 2) { print_string(" Using password "); print_byte(sfp_pw[0]); print_byte(sfp_pw[1]); print_byte(sfp_pw[2]); print_byte(sfp_pw[3]); write_char('\n'); }
-		print_string(" Write 0x"); print_byte(off); print_string(" = 0x"); print_byte(val); print_string("...\n");
-		sfp_pw_pending = sfp_pw_ok == 2;
-		if (sfp_write_reg(slot, off, val)) {
-			print_string(" Write failed!\n");
-		} else {
-			print_string(" OK - verified\n");
-			if (off <= 0x3E)
-				print_string(" WARNING: update checksum with: sfp "); write_char('1' + slot); print_string(" checksum --fix\n");
-		}
-		return;
 	}
 
 	if (cmd_compare(2, "10g")) {
@@ -1020,7 +1076,7 @@ void parse_sfp(void)
 	handle_sfp();
 	return;
 err:
-	print_string("\nUsage:\n\tsfp\n\tsfp [1|2] [1g|2g5|10g]\n\tsfp [1|2] dump\n\tsfp [1|2] save\n\tsfp [1|2] restore\n\tsfp [1|2] fix\n\tsfp [1|2] patch [--pw <hex8>]\n\tsfp [1|2] describe\n\tsfp [1|2] checksum [--fix] [--pw <hex8>]\n\tsfp [1|2] clone [--pw <hex8>]\n\tsfp [1|2] write <off> <val> [--pw <hex8>]\n\tsfp [1|2] bulk <512hexchars>\n");
+	return;
 }
 
 
@@ -1054,7 +1110,6 @@ void parse_regget(void)
 	return;
 
 err:
-	print_string("usage: regget <hexvalue>\n\tlike: regget 0BB0 or regget 0c");
 	return;
 }
 
@@ -1103,7 +1158,6 @@ void parse_regset(void)
 	return;
 
 err:
-	print_string("usage: regset <hexvalue> <hexvalue>\n\tlike regset 0b abcd1234.");
 }
 
 
@@ -1145,7 +1199,6 @@ void parse_sdsget(void)
 	return;
 
 err:
-	print_string("usage: sdsget <sds-id> <hex:page> <hex:reg>\n");
 	return;
 }
 
@@ -1200,7 +1253,6 @@ void parse_sdsset(void)
 	return;
 
 err:
-	print_string("usage: sdsset <sds-id> <hex:page> <hex:reg> <hex:val>\n");
 	return;
 }
 
@@ -1246,7 +1298,6 @@ void parse_phyget(void)
 	return;
 
 err:
-	print_string("usage: phyget <phy-id> <dev-id> <hex:reg>\n");
 	return;
 }
 
@@ -1303,7 +1354,6 @@ void parse_physet(void)
 	return;
 
 err:
-	print_string("usage: physet <phy-id> <dev-id> <hex:reg> <hex:val>\n");
 	return;
 }
 
@@ -1337,7 +1387,7 @@ void parse_passwd(void)
 		} while (c != '\0' && j < 20);
 		passwd[j] = '\0';
 		if (j < 5) {
-			print_string("Error: password too short (min 4 chars)\n");
+			print_string("Password too short\n");
 			passwd[0] = '\0';
 			return;
 		}
@@ -1345,6 +1395,41 @@ void parse_passwd(void)
 		return;
 	}
 	print_string("Missing password\n");
+}
+
+void parse_preshared_key(void) __reentrant
+{
+	uint8_t i, j, c, hi, lo;
+
+	if (cmd_words_len < 2) {
+		for (i = 0; i < 32; i++)
+			preshared_key[i] = 0;
+		print_string("Pre-shared key cleared\n");
+		return;
+	}
+	i = cmd_words_b[1];
+	for (j = 0; j < 32; j++) {
+		hi = 0xff;
+		lo = 0xff;
+		c = cmd_buffer[i++];
+		if (c >= '0' && c <= '9')
+			hi = c - '0';
+		else if (c >= 'a' && c <= 'f')
+			hi = c - 'a' + 10;
+		else if (c >= 'A' && c <= 'F')
+			hi = c - 'A' + 10;
+		c = cmd_buffer[i++];
+		if (c >= '0' && c <= '9')
+			lo = c - '0';
+		else if (c >= 'a' && c <= 'f')
+			lo = c - 'a' + 10;
+		else if (c >= 'A' && c <= 'F')
+			lo = c - 'A' + 10;
+		/* hex validity is enforced by the CLI (rtlpctl); invalid characters
+		 * simply yield 0xff bytes here (no memory safety impact) */
+		preshared_key[j] = (hi << 4) | lo;
+	}
+	print_string("Pre-shared key set\n");
 }
 
 void parse_hostname(void)
@@ -1357,14 +1442,7 @@ void parse_hostname(void)
 		// (e.g. "PCB-K0402WS-V3.0") may contain one, so the name is truncated
 		// at the first invalid character (here: the dot).
 		while (cmd_buffer[i] && j < 31) {
-			uint8_t c = cmd_buffer[i];
-			if (!isletter(c) && !isnumber(c) && c != '-' && c != '_') {
-				hostname[j] = '\0';
-				print_string("Error: invalid character in hostname\n");
-				return;
-			}
-			hostname[j++] = c;
-			i++;
+			hostname[j++] = cmd_buffer[i++];
 		}
 		hostname[j] = '\0';
 		print_string("Hostname set to ");
@@ -1447,13 +1525,12 @@ void parse_telnet(void)
 		print_string("Telnet enabled\n");
 	} else if (cmd_compare(1, "off")) {
 		if (!web_enabled) {
-			print_string("Error: would disable all remote access (web is also off)\n");
+			print_string("Would lock out all access\n");
 			return;
 		}
 		telnet_enabled = 0;
 		print_string("Telnet disabled\n");
 	} else {
-		print_string("Error: telnet [on|off]\n");
 	}
 }
 
@@ -1473,13 +1550,12 @@ void parse_web(void)
 		print_string("Web interface enabled\n");
 	} else if (cmd_compare(1, "off")) {
 		if (!telnet_enabled) {
-			print_string("Error: would disable all remote access (telnet is also off)\n");
+			print_string("Would lock out all access\n");
 			return;
 		}
 		web_enabled = 0;
-		print_string("Web interface disabled (telnet still available)\n");
+		print_string("Web off (telnet on)\n");
 	} else {
-		print_string("Error: web [on|off]\n");
 	}
 }
 
@@ -1522,7 +1598,7 @@ void parse_eee(void)
 			speed = EEE_2G5;
 		else 
 		{
-			print_string("Speed word invalid, use: [100m|1g|2g5]\n");
+			print_string("Bad speed: [100m|1g|2g5]\n");
 			return;
 		}
 	}
@@ -1542,7 +1618,6 @@ void parse_eee(void)
 		else
 			port_eee_status_all();
 	} else {
-		print_string("eee [on|off|status] [port] [100m|1g|2g5]\n");
 	}
 }
 
@@ -1617,7 +1692,6 @@ void parse_bw(void)
 	return;
 
 err:
-	print_string("usage: bw [in|out|status] <port> [<hexvalue>|off|drop|fc]\n");
 }
 
 // Parse command into words
@@ -1747,6 +1821,7 @@ __code struct mode_entry mode_allow[] = {
 	{"eee",         (1<<MODE_CONFIG)},
 	{"bw",          (1<<MODE_CONFIG)},
 	{"passwd",      (1<<MODE_CONFIG)},
+	{"preshared_key", (1<<MODE_CONFIG)},
 	{"telnet",      (1<<MODE_CONFIG)},
 	{"web",         (1<<MODE_CONFIG)},
 	{"show",        (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
@@ -1802,7 +1877,6 @@ void cmd_parser(void) __banked
 		} else if (cmd_compare(0, "configure") && cmd_compare(1, "terminal")) {
 			parse_configure_terminal();
 		} else if (cmd_compare(0, "configure")) {
-			print_string("Usage: configure terminal\n");
 		} else if (cmd_compare(0, "exit")) {
 			parse_exit();
 		} else if (cmd_compare(0, "end")) {
@@ -1810,7 +1884,7 @@ void cmd_parser(void) __banked
 		} else if (cmd_words_len >= 2 && (cmd_compare(1, "?") || cmd_compare(1, "help"))) {
 			cmd_help();
 		} else if (!cmd_mode_allowed(cmd_words_b[0])) {
-			print_string("Command not available in this mode\n");
+			print_string("Not available here\n");
 		} else if (cmd_compare(0, "reset")) {
 			print_string("\nRESET\n\n");
 			reset_chip();
@@ -1839,7 +1913,7 @@ void cmd_parser(void) __banked
 				print_string("\nJEDEC ID\n");
 				flash_read_jedecid();
 			} else if (c == 'u') {
-				print_string("\nUNIQUE ID (note: only 4 bytes are likely correct here!)\n");
+				print_string("\nUNIQUE ID\n");
 				flash_read_uid();
 			}
 		} else if (cmd_compare(0, "port")) {
@@ -1871,9 +1945,7 @@ void cmd_parser(void) __banked
 					itoa(ip[2]); write_char('.'); itoa(ip[3]); write_char('\n');
 				} else {
 					print_string("Invalid IP address\n");
-					print_string("Error: ip [<ip-address>|dhcp]\n");
-					print_string("  The dhcp option enables the dhcp client, calling ip without options prints the current IP\n");
-					print_string("  Calling with a valid IP address will stop any ongoing dhcp client and set the IP address\n");
+					print_string("Bad ip cmd\n");
 				}
 			}
 		} else if (cmd_compare(0, "gw")) {
@@ -1968,6 +2040,8 @@ void cmd_parser(void) __banked
 			parse_rnd();
 		} else if (cmd_compare(0, "passwd")) {
 			parse_passwd();
+		} else if (cmd_compare(0, "preshared_key")) {
+			parse_preshared_key();
 		} else if (cmd_compare(0, "eee")) {
 			parse_eee();
 		} else if (cmd_compare(0, "bw")) {
@@ -2053,6 +2127,8 @@ void execute_config(void) __banked __reentrant
 
 	// Set default password, it can be overwritten in the configuration file
 	strtox(passwd, PASSWORD);
+	// Pre-shared key is unset by default, it can be set in the configuration file
+	memset(preshared_key, 0, 32);
 	save_cmd = 0;
 
 	uint8_t cmd_idx = 0;

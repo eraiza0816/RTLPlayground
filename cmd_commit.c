@@ -16,6 +16,7 @@ extern __xdata uint8_t stpEnabled;
 extern __xdata uint16_t management_vlan;
 extern __xdata uint8_t telnet_enabled;
 extern __xdata uint8_t web_enabled;
+extern __xdata uint8_t preshared_key[32];
 extern __xdata uint8_t sfr_data[4];
 extern __xdata uint8_t cmd_buffer[128];
 extern __xdata uint8_t cmd_words_b[15];
@@ -23,7 +24,7 @@ extern __xdata uint8_t cmd_words_b[15];
 extern void reg_read_m(uint16_t reg_addr);
 extern void reg_write_m(uint16_t reg_addr);
 
-static __xdata uint8_t commit_pos;
+static __xdata uint16_t commit_pos;
 
 #define COMMIT_PUTC(c) do { \
 	if (commit_pos < FLASH_BUF_SIZE) \
@@ -77,6 +78,17 @@ static __xdata uint8_t commit_pos;
 	COMMIT_BYTE((ip)[1] >> 8); COMMIT_PUTC('\n'); \
 } while(0)
 
+#define COMMIT_HEX_DIGIT(n) do { \
+	uint8_t __n = (n) & 0x0f; \
+	COMMIT_PUTC(__n < 10 ? '0' + __n : 'a' + __n - 10); \
+} while(0)
+
+#define COMMIT_HEX8(v) do { \
+	uint8_t __v = (v); \
+	COMMIT_HEX_DIGIT(__v >> 4); \
+	COMMIT_HEX_DIGIT(__v); \
+} while(0)
+
 static void commit_write_flash(void)
 {
 	uint16_t written = 0;
@@ -99,6 +111,7 @@ void parse_commit(void) __banked
 {
 	commit_pos = 0;
 	flash_region.addr = CONFIG_START;
+	flash_init(0);
 	flash_sector_erase();
 
 	if (hostname[0]) {
@@ -111,6 +124,18 @@ void parse_commit(void) __banked
 
 	if (passwd[0]) {
 		COMMIT_PUTS("passwd "); COMMIT_PUTSX(passwd); COMMIT_PUTC('\n');
+	}
+
+	{
+		uint8_t i, psk_set = 0;
+		for (i = 0; i < 32; i++)
+			psk_set |= preshared_key[i];
+		if (psk_set) {
+			COMMIT_PUTS("preshared_key ");
+			for (i = 0; i < 32; i++)
+				COMMIT_HEX8(preshared_key[i]);
+			COMMIT_PUTC('\n');
+		}
 	}
 
 	if (stpEnabled)
@@ -130,6 +155,7 @@ void parse_commit(void) __banked
 	if (web_enabled) COMMIT_PUTS("on\n"); else COMMIT_PUTS("off\n");
 
 	commit_write_flash();
+	flash_init(1);
 	print_string("Config committed\n");
 }
 

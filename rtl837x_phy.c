@@ -582,7 +582,7 @@ void phy_reset(uint8_t port) __banked
 // Reading only reads the lower 16-bit part of the 32-bit register.
 // When also needing read the upper 16-bits, use register address + 1.
 // Readed values it return via sfr-data.
-void inline rtl8224_read_reg_u16(uint16_t reg) __banked
+void rtl8224_read_reg_u16(uint16_t reg) __banked
 {
 	//	void phy_read(uint8_t phy_id, uint8_t dev_id, uint16_t reg)
 	// phy_read(RTL8224_PHY_ID, PHY_MMD30, reg);
@@ -601,7 +601,7 @@ void inline rtl8224_read_reg_u16(uint16_t reg) __banked
 // Registers names are the same as on the RTL837x.
 // Writing only the lower 16-bit part of the 32-bit register.
 // When also needing to write the upper 16-bits, use register address + 1.
-void inline rtl8224_write_reg_u16(uint16_t reg, uint16_t val) __banked
+void rtl8224_write_reg_u16(uint16_t reg, uint16_t val) __banked
 {
 	SFR_DATA_U16 = val;			    // SFR_A6, SFR_A7
 	SFR_SMI_REG_U16 = reg;			// SFR_C2, SFR_C3

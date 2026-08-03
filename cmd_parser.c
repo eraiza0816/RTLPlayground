@@ -749,6 +749,254 @@ __xdata uint16_t sfp_sum;
 __xdata uint8_t sfp_v;
 __xdata uint8_t sfp_err;
 
+static __xdata uint8_t sfp_csum_base;
+static __xdata uint8_t sfp_csum_ext;
+
+static void sfp_calc_checksum(uint8_t slot)
+{
+	static __xdata uint8_t sum = 0;
+	sum = 0;
+	for (sfp_i = 0; sfp_i < 0x3F; sfp_i++) sum += sfp_read_reg(slot, sfp_i);
+	sfp_csum_base = sum;
+	sum = 0;
+	for (sfp_i = 0x40; sfp_i < 0x5F; sfp_i++) sum += sfp_read_reg(slot, sfp_i);
+	sfp_csum_ext = sum;
+}
+
+static uint8_t sfp_hex(char c)
+{
+	if (c >= 'a') return c - 'a' + 10;
+	if (c >= 'A') return c - 'A' + 10;
+	return c - '0';
+}
+
+static uint8_t sfp_pw_check(void)
+{
+	if (sfp_pw_ok == 0) { print_string(" Invalid password\n"); return 0; }
+	if (sfp_pw_ok == 2) {
+		print_string(" Using password ");
+		print_byte(sfp_pw[0]); print_byte(sfp_pw[1]); print_byte(sfp_pw[2]); print_byte(sfp_pw[3]);
+		write_char('\n');
+	}
+	return 1;
+}
+
+static void sfp_cmd_describe(uint8_t slot)
+{
+	sfp_v = sfp_read_reg(slot, 0);
+	print_string("Identifier: 0x"); print_byte(sfp_v);
+	if (sfp_v == 3) print_string(" (SFP)");
+	else if (sfp_v == 4) print_string(" (SFP+)");
+	else print_string(" (?)");
+	write_char('\n');
+	sfp_v = sfp_read_reg(slot, 2);
+	print_string("Connector: 0x"); print_byte(sfp_v);
+	if (sfp_v == 3) print_string(" (LC)");
+	else if (sfp_v == 7) print_string(" (MPO)");
+	else if (sfp_v == 9) print_string(" (Copper)");
+	else if (sfp_v == 0x0B) print_string(" (RJ-45)");
+	else print_string(" (?)");
+	write_char('\n');
+	print_string("Vendor: ");
+	for (sfp_i = 0; sfp_i < 16; sfp_i++) { sfp_v = sfp_read_reg(slot, 20 + sfp_i); if (sfp_v < 0x20 || sfp_v >= 0x7F) break; write_char(sfp_v); }
+	write_char('\n');
+	print_string("PN: ");
+	for (sfp_i = 0; sfp_i < 16; sfp_i++) { sfp_v = sfp_read_reg(slot, 40 + sfp_i); if (sfp_v < 0x20 || sfp_v >= 0x7F) break; write_char(sfp_v); }
+	write_char('\n');
+	print_string("Rev: ");
+	for (sfp_i = 0; sfp_i < 4; sfp_i++) { sfp_v = sfp_read_reg(slot, 56 + sfp_i); if (sfp_v < 0x20 || sfp_v >= 0x7F) break; write_char(sfp_v); }
+	write_char('\n');
+	print_string("SN: ");
+	for (sfp_i = 0; sfp_i < 16; sfp_i++) { sfp_v = sfp_read_reg(slot, 68 + sfp_i); if (sfp_v < 0x20 || sfp_v >= 0x7F) break; write_char(sfp_v); }
+	write_char('\n');
+	print_string("Date: ");
+	for (sfp_i = 0; sfp_i < 6; sfp_i++) { sfp_v = sfp_read_reg(slot, 84 + sfp_i); if (sfp_v < 0x20 || sfp_v >= 0x7F) break; write_char(sfp_v); }
+	write_char('\n');
+	print_string("Rate: "); print_byte(sfp_read_reg(slot, 12)); print_string(" x100MBd\n");
+	sfp_v = sfp_read_reg(slot, 3);
+	print_string("Compliance: ");
+	if (sfp_v & 0x20) print_string("10GBase-LR ");
+	if (sfp_v & 0x10) print_string("10GBase-SR ");
+	sfp_v = sfp_read_reg(slot, 6);
+	if (sfp_v & 2) print_string("1000Base-LX ");
+	if (sfp_v & 1) print_string("1000Base-SX ");
+	write_char('\n');
+	sfp_calc_checksum(slot);
+	sfp_v = sfp_read_reg(slot, 0x3F);
+	print_string("CC_BASE: 0x"); print_byte(sfp_v);
+	if (sfp_v == sfp_csum_base) print_string(" (OK)"); else print_string(" (BAD)");
+	write_char('\n');
+	sfp_v = sfp_read_reg(slot, 0x5F);
+	print_string("CC_EXT: 0x"); print_byte(sfp_v);
+	if (sfp_v == sfp_csum_ext) print_string(" (OK)"); else print_string(" (BAD)");
+	write_char('\n');
+}
+
+static void sfp_cmd_dump(uint8_t slot)
+{
+	sfp_dump_eeprom(slot);
+}
+
+static void sfp_cmd_save(uint8_t slot)
+{
+	print_string(" Saving EEPROM to flash...\n");
+	sfp_save_backup(slot);
+	print_string(" OK\n");
+}
+
+static void sfp_cmd_restore(uint8_t slot)
+{
+	print_string(" Restoring EEPROM from flash...\n");
+	if (sfp_restore_backup(slot))
+		print_string(" Restore failed!\n");
+	else
+		print_string(" OK\n");
+}
+
+static void sfp_cmd_fix(uint8_t slot)
+{
+	if (sfp_eeprom_fix(slot))
+		print_string(" Fix failed!\n");
+	else
+		print_string(" OK - 1xCOPPER PAS\n");
+}
+
+static void sfp_cmd_patch(uint8_t slot)
+{
+	if (!sfp_pw_check()) return;
+	sfp_pw_pending = sfp_pw_ok == 2;
+	if (sfp_write_reg(slot, 3, 0x20)) { print_string(" Patch failed!\n"); return; }
+	sfp_pw_pending = sfp_pw_ok == 2;
+	if (sfp_write_reg(slot, 6, 0x02)) { print_string(" Patch failed!\n"); return; }
+	sfp_pw_pending = sfp_pw_ok == 2;
+	if (sfp_write_reg(slot, 7, 0x00)) { print_string(" Patch failed!\n"); return; }
+	sfp_pw_pending = sfp_pw_ok == 2;
+	if (sfp_write_reg(slot, 9, 0x00)) { print_string(" Patch failed!\n"); return; }
+	sfp_calc_checksum(slot);
+	sfp_pw_pending = sfp_pw_ok == 2;
+	if (sfp_write_reg(slot, 0x3F, sfp_csum_base)) { print_string(" Checksum fix failed!\n"); return; }
+	print_string(" Patch OK\n");
+}
+
+static void sfp_cmd_clone(uint8_t slot)
+{
+	if (!sfp_pw_check()) return;
+	print_string(" Cloning...\n");
+	for (sfp_sum = 0; sfp_sum < 256; sfp_sum++) {
+		sfp_pw_pending = sfp_pw_ok == 2;
+		if (sfp_write_reg(slot, (uint8_t)sfp_sum, flash_buf[sfp_sum]))
+			{ print_string(" Clone failed!\n"); return; }
+	}
+	delay(2);
+	sfp_err = 0;
+	sfp_calc_checksum(slot);
+	if (sfp_csum_base != sfp_read_reg(slot, 0x3F))
+		if (sfp_write_reg(slot, 0x3F, sfp_csum_base)) sfp_err = 1;
+	if (sfp_csum_ext != sfp_read_reg(slot, 0x5F))
+		if (sfp_write_reg(slot, 0x5F, sfp_csum_ext)) sfp_err = 1;
+	if (sfp_err) { print_string(" Checksum fix failed!\n"); return; }
+	print_string(" Clone OK\n");
+}
+
+static void sfp_cmd_checksum(uint8_t slot)
+{
+	uint8_t w;
+	uint8_t do_fix = 0;
+	for (w = 2; w < cmd_words_len; w++) {
+		if (cmd_compare(w, "--fix")) { do_fix = 1; break; }
+	}
+	if (do_fix) {
+		if (sfp_pw_ok == 0) { print_string(" Invalid password\n"); return; }
+		sfp_err = 0;
+		sfp_calc_checksum(slot);
+		if (sfp_csum_base != sfp_read_reg(slot, 0x3F)) {
+			sfp_pw_pending = sfp_pw_ok == 2;
+			if (sfp_write_reg(slot, 0x3F, sfp_csum_base)) sfp_err = 1;
+		}
+		if (sfp_csum_ext != sfp_read_reg(slot, 0x5F)) {
+			sfp_pw_pending = sfp_pw_ok == 2;
+			if (sfp_write_reg(slot, 0x5F, sfp_csum_ext)) sfp_err = 1;
+		}
+		if (sfp_err) print_string(" Checksum fix failed!\n");
+		else print_string(" Checksums fixed\n");
+	} else {
+		sfp_calc_checksum(slot);
+		print_string("CC_BASE: 0x"); print_byte(sfp_read_reg(slot, 0x3F));
+		print_string(" (expected 0x"); print_byte(sfp_csum_base); print_string(")\n");
+		print_string("CC_EXT:  0x"); print_byte(sfp_read_reg(slot, 0x5F));
+		print_string(" (expected 0x"); print_byte(sfp_csum_ext); print_string(")\n");
+	}
+}
+
+static void sfp_cmd_bulk(uint8_t slot)
+{
+	if (cmd_words_len < 4) return;
+	uint8_t bulk_idx = cmd_words_b[3];
+	for (uint16_t bulk_i = 0; bulk_i < 256; bulk_i++) {
+		uint8_t bh = sfp_hex(cmd_buffer[bulk_idx]);
+		uint8_t bl = sfp_hex(cmd_buffer[bulk_idx + 1]);
+		if (bh > 15 || bl > 15) { print_string("Invalid hex\n"); break; }
+		flash_buf[bulk_i] = (bh << 4) | bl;
+		bulk_idx += 2;
+	}
+	sfp_bulk_write(slot);
+	print_string(" Bulk write OK\n");
+}
+
+static void sfp_cmd_write(uint8_t slot)
+{
+	if (cmd_words_len < 5) return;
+	uint8_t hsz = atoi_hex(cmd_words_b[3]);
+	if (hsz == 0) { print_string(" Invalid offset\n"); return; }
+	uint8_t off = hexvalue[0];
+	hsz = atoi_hex(cmd_words_b[4]);
+	if (hsz == 0) { print_string(" Invalid value\n"); return; }
+	uint8_t val = hexvalue[0];
+	if (!sfp_pw_check()) return;
+	print_string(" Write 0x"); print_byte(off); print_string(" = 0x"); print_byte(val); print_string("...\n");
+	sfp_pw_pending = sfp_pw_ok == 2;
+	if (sfp_write_reg(slot, off, val)) {
+		print_string(" Write failed!\n");
+	} else {
+		print_string(" OK - verified\n");
+		// Keep the checksums consistent so the module stays valid:
+		// the write changes bytes 0x00-0x3E (CC_BASE) or 0x40-0x5E (CC_EXT).
+		if (off <= 0x3E || (off >= 0x40 && off <= 0x5E)) {
+			sfp_calc_checksum(slot);
+			sfp_pw_pending = sfp_pw_ok == 2;
+			if (off <= 0x3E && sfp_csum_base != sfp_read_reg(slot, 0x3F)) {
+				if (sfp_write_reg(slot, 0x3F, sfp_csum_base))
+					print_string(" CC_BASE update failed!\n");
+				else
+					print_string(" CC_BASE updated\n");
+			}
+			sfp_pw_pending = sfp_pw_ok == 2;
+			if (off >= 0x40 && off <= 0x5E && sfp_csum_ext != sfp_read_reg(slot, 0x5F)) {
+				if (sfp_write_reg(slot, 0x5F, sfp_csum_ext))
+					print_string(" CC_EXT update failed!\n");
+				else
+					print_string(" CC_EXT updated\n");
+			}
+		}
+	}
+}
+
+static __code struct {
+	__code uint8_t *name;
+	void (*fn)(uint8_t);
+} sfp_cmds[] = {
+	{"describe", sfp_cmd_describe},
+	{"dump", sfp_cmd_dump},
+	{"save", sfp_cmd_save},
+	{"restore", sfp_cmd_restore},
+	{"fix", sfp_cmd_fix},
+	{"patch", sfp_cmd_patch},
+	{"clone", sfp_cmd_clone},
+	{"checksum", sfp_cmd_checksum},
+	{"bulk", sfp_cmd_bulk},
+	{"write", sfp_cmd_write},
+};
+
 void parse_sfp(void)
 {
 	uint8_t slot;
@@ -787,16 +1035,10 @@ void parse_sfp(void)
 		uint8_t idx = cmd_words_b[sfp_i + 1];
 		uint8_t j;
 		for (j = 0; j < 4; j++) {
-			sfp_v = cmd_buffer[idx++];
-			if (sfp_v >= 'a') sfp_v -= 'a' - 10;
-			else if (sfp_v >= 'A') sfp_v -= 'A' - 10;
-			else sfp_v -= '0';
+			sfp_v = sfp_hex(cmd_buffer[idx++]);
 			if (sfp_v > 15) { sfp_pw_ok = 0; break; }
 			sfp_pw[j] = sfp_v << 4;
-			sfp_v = cmd_buffer[idx++];
-			if (sfp_v >= 'a') sfp_v -= 'a' - 10;
-			else if (sfp_v >= 'A') sfp_v -= 'A' - 10;
-			else sfp_v -= '0';
+			sfp_v = sfp_hex(cmd_buffer[idx++]);
 			if (sfp_v > 15) { sfp_pw_ok = 0; break; }
 			sfp_pw[j] |= sfp_v;
 		}
@@ -805,198 +1047,11 @@ void parse_sfp(void)
 		break;
 	}
 
-	if (cmd_compare(2, "describe")) {
-		sfp_v = sfp_read_reg(slot, 0);
-		print_string("Identifier: 0x"); print_byte(sfp_v);
-		if (sfp_v == 3) print_string(" (SFP)");
-		else if (sfp_v == 4) print_string(" (SFP+)");
-		else print_string(" (?)");
-		write_char('\n');
-		sfp_v = sfp_read_reg(slot, 2);
-		print_string("Connector: 0x"); print_byte(sfp_v);
-		if (sfp_v == 3) print_string(" (LC)");
-		else if (sfp_v == 7) print_string(" (MPO)");
-		else if (sfp_v == 9) print_string(" (Copper)");
-		else if (sfp_v == 0x0B) print_string(" (RJ-45)");
-		else print_string(" (?)");
-		write_char('\n');
-		print_string("Vendor: ");
-		for (sfp_i = 0; sfp_i < 16; sfp_i++) { sfp_v = sfp_read_reg(slot, 20 + sfp_i); if (sfp_v < 0x20 || sfp_v >= 0x7F) break; write_char(sfp_v); }
-		write_char('\n');
-		print_string("PN: ");
-		for (sfp_i = 0; sfp_i < 16; sfp_i++) { sfp_v = sfp_read_reg(slot, 40 + sfp_i); if (sfp_v < 0x20 || sfp_v >= 0x7F) break; write_char(sfp_v); }
-		write_char('\n');
-		print_string("Rev: ");
-		for (sfp_i = 0; sfp_i < 4; sfp_i++) { sfp_v = sfp_read_reg(slot, 56 + sfp_i); if (sfp_v < 0x20 || sfp_v >= 0x7F) break; write_char(sfp_v); }
-		write_char('\n');
-		print_string("SN: ");
-		for (sfp_i = 0; sfp_i < 16; sfp_i++) { sfp_v = sfp_read_reg(slot, 68 + sfp_i); if (sfp_v < 0x20 || sfp_v >= 0x7F) break; write_char(sfp_v); }
-		write_char('\n');
-		print_string("Date: ");
-		for (sfp_i = 0; sfp_i < 6; sfp_i++) { sfp_v = sfp_read_reg(slot, 84 + sfp_i); if (sfp_v < 0x20 || sfp_v >= 0x7F) break; write_char(sfp_v); }
-		write_char('\n');
-		print_string("Rate: "); print_byte(sfp_read_reg(slot, 12)); print_string(" x100MBd\n");
-		sfp_v = sfp_read_reg(slot, 3);
-		print_string("Compliance: ");
-		if (sfp_v & 0x20) print_string("10GBase-LR ");
-		if (sfp_v & 0x10) print_string("10GBase-SR ");
-		sfp_v = sfp_read_reg(slot, 6);
-		if (sfp_v & 2) print_string("1000Base-LX ");
-		if (sfp_v & 1) print_string("1000Base-SX ");
-		write_char('\n');
-		sfp_sum = 0;
-		for (sfp_i = 0; sfp_i < 0x3F; sfp_i++) sfp_sum += sfp_read_reg(slot, sfp_i);
-		sfp_v = sfp_read_reg(slot, 0x3F);
-		print_string("CC_BASE: 0x"); print_byte(sfp_v);
-		if (sfp_v == (uint8_t)(sfp_sum & 0xFF)) print_string(" (OK)"); else print_string(" (BAD)");
-		write_char('\n');
-		sfp_sum = 0;
-		for (sfp_i = 0x40; sfp_i < 0x5F; sfp_i++) sfp_sum += sfp_read_reg(slot, sfp_i);
-		sfp_v = sfp_read_reg(slot, 0x5F);
-		print_string("CC_EXT: 0x"); print_byte(sfp_v);
-		if (sfp_v == (uint8_t)(sfp_sum & 0xFF)) print_string(" (OK)"); else print_string(" (BAD)");
-		write_char('\n');
-		return;
-	}
-	if (cmd_compare(2, "dump")) {
-		sfp_dump_eeprom(slot);
-		return;
-	}
-	if (cmd_compare(2, "save")) {
-		print_string(" Saving EEPROM to flash...\n");
-		sfp_save_backup(slot);
-		print_string(" OK\n");
-		return;
-	}
-	if (cmd_compare(2, "restore")) {
-		print_string(" Restoring EEPROM from flash...\n");
-		if (sfp_restore_backup(slot))
-			print_string(" Restore failed!\n");
-		else
-			print_string(" OK\n");
-		return;
-	}
-	if (cmd_compare(2, "fix")) {
-		if (sfp_eeprom_fix(slot))
-			print_string(" Fix failed!\n");
-		else
-			print_string(" OK - 1xCOPPER PAS\n");
-		return;
-	}
-	if (cmd_compare(2, "patch")) {
-		if (sfp_pw_ok == 0) { print_string(" Invalid password\n"); return; }
-		if (sfp_pw_ok == 2) { print_string(" Using password "); print_byte(sfp_pw[0]); print_byte(sfp_pw[1]); print_byte(sfp_pw[2]); print_byte(sfp_pw[3]); write_char('\n'); }
-		sfp_pw_pending = sfp_pw_ok == 2;
-		if (sfp_write_reg(slot, 3, 0x20)) { print_string(" Patch failed!\n"); return; }
-		sfp_pw_pending = sfp_pw_ok == 2;
-		if (sfp_write_reg(slot, 6, 0x02)) { print_string(" Patch failed!\n"); return; }
-		sfp_pw_pending = sfp_pw_ok == 2;
-		if (sfp_write_reg(slot, 7, 0x00)) { print_string(" Patch failed!\n"); return; }
-		sfp_pw_pending = sfp_pw_ok == 2;
-		if (sfp_write_reg(slot, 9, 0x00)) { print_string(" Patch failed!\n"); return; }
-		sfp_sum = 0;
-		for (sfp_i = 0; sfp_i < 0x3F; sfp_i++) sfp_sum += sfp_read_reg(slot, sfp_i);
-		sfp_pw_pending = sfp_pw_ok == 2;
-		if (sfp_write_reg(slot, 0x3F, (uint8_t)(sfp_sum & 0xFF))) { print_string(" Checksum fix failed!\n"); return; }
-		print_string(" Patch OK\n");
-		return;
-	}
-	if (cmd_compare(2, "clone")) {
-		if (sfp_pw_ok == 0) { print_string(" Invalid password\n"); return; }
-		if (sfp_pw_ok == 2) { print_string(" Using password "); print_byte(sfp_pw[0]); print_byte(sfp_pw[1]); print_byte(sfp_pw[2]); print_byte(sfp_pw[3]); write_char('\n'); }
-		print_string(" Cloning...\n");
-		for (sfp_sum = 0; sfp_sum < 256; sfp_sum++) {
-			sfp_pw_pending = sfp_pw_ok == 2;
-			if (sfp_write_reg(slot, (uint8_t)sfp_sum, flash_buf[sfp_sum]))
-				{ print_string(" Clone failed!\n"); return; }
+	for (sfp_i = 0; sfp_i < sizeof(sfp_cmds) / sizeof(sfp_cmds[0]); sfp_i++) {
+		if (cmd_compare(2, sfp_cmds[sfp_i].name)) {
+			sfp_cmds[sfp_i].fn(slot);
+			return;
 		}
-		delay(2);
-		sfp_err = 0;
-		sfp_sum = 0;
-		for (sfp_i = 0; sfp_i < 0x3F; sfp_i++) sfp_sum += sfp_read_reg(slot, sfp_i);
-		sfp_v = (uint8_t)(sfp_sum & 0xFF);
-		if (sfp_v != sfp_read_reg(slot, 0x3F))
-			if (sfp_write_reg(slot, 0x3F, sfp_v)) sfp_err = 1;
-		sfp_sum = 0;
-		for (sfp_i = 0x40; sfp_i < 0x5F; sfp_i++) sfp_sum += sfp_read_reg(slot, sfp_i);
-		sfp_v = (uint8_t)(sfp_sum & 0xFF);
-		if (sfp_v != sfp_read_reg(slot, 0x5F))
-			if (sfp_write_reg(slot, 0x5F, sfp_v)) sfp_err = 1;
-		if (sfp_err) { print_string(" Checksum fix failed!\n"); return; }
-		print_string(" Clone OK\n");
-		return;
-	}
-	if (cmd_compare(2, "checksum")) {
-		uint8_t w;
-		uint8_t do_fix = 0;
-		for (w = 2; w < cmd_words_len; w++) {
-			if (cmd_compare(w, "--fix")) { do_fix = 1; break; }
-		}
-		if (do_fix) {
-			if (sfp_pw_ok == 0) { print_string(" Invalid password\n"); return; }
-			sfp_err = 0;
-			sfp_sum = 0;
-			for (sfp_i = 0; sfp_i < 0x3F; sfp_i++) sfp_sum += sfp_read_reg(slot, sfp_i);
-			sfp_v = (uint8_t)(sfp_sum & 0xFF);
-			if (sfp_v != sfp_read_reg(slot, 0x3F)) {
-				sfp_pw_pending = sfp_pw_ok == 2;
-				if (sfp_write_reg(slot, 0x3F, sfp_v)) sfp_err = 1;
-			}
-			sfp_sum = 0;
-			for (sfp_i = 0x40; sfp_i < 0x5F; sfp_i++) sfp_sum += sfp_read_reg(slot, sfp_i);
-			sfp_v = (uint8_t)(sfp_sum & 0xFF);
-			if (sfp_v != sfp_read_reg(slot, 0x5F)) {
-				sfp_pw_pending = sfp_pw_ok == 2;
-				if (sfp_write_reg(slot, 0x5F, sfp_v)) sfp_err = 1;
-			}
-			if (sfp_err) print_string(" Checksum fix failed!\n");
-			else print_string(" Checksums fixed\n");
-		} else {
-			sfp_sum = 0;
-			for (sfp_i = 0; sfp_i < 0x3F; sfp_i++) sfp_sum += sfp_read_reg(slot, sfp_i);
-			print_string("CC_BASE: 0x"); print_byte(sfp_read_reg(slot, 0x3F));
-			print_string(" (expected 0x"); print_byte((uint8_t)(sfp_sum & 0xFF)); print_string(")\n");
-			sfp_sum = 0;
-			for (sfp_i = 0x40; sfp_i < 0x5F; sfp_i++) sfp_sum += sfp_read_reg(slot, sfp_i);
-			print_string("CC_EXT:  0x"); print_byte(sfp_read_reg(slot, 0x5F));
-			print_string(" (expected 0x"); print_byte((uint8_t)(sfp_sum & 0xFF)); print_string(")\n");
-		}
-		return;
-	}
-	if (cmd_words_len >= 4 && cmd_compare(2, "bulk")) {
-		uint8_t bulk_idx = cmd_words_b[3];
-		for (uint16_t bulk_i = 0; bulk_i < 256; bulk_i++) {
-			uint8_t bh = cmd_buffer[bulk_idx];
-			uint8_t bl = cmd_buffer[bulk_idx + 1];
-			if (bh >= 'a') bh -= 'a' - 10; else bh -= '0';
-			if (bl >= 'a') bl -= 'a' - 10; else bl -= '0';
-			if (bh > 15 || bl > 15) { print_string("Invalid hex\n"); break; }
-			flash_buf[bulk_i] = (bh << 4) | bl;
-			bulk_idx += 2;
-		}
-		sfp_bulk_write(slot);
-		print_string(" Bulk write OK\n");
-		return;
-	}
-	if (cmd_words_len >= 5 && cmd_compare(2, "write")) {
-		uint8_t hsz = atoi_hex(cmd_words_b[3]);
-		if (hsz == 0) { print_string(" Invalid offset\n"); return; }
-		uint8_t off = hexvalue[0];
-		hsz = atoi_hex(cmd_words_b[4]);
-		if (hsz == 0) { print_string(" Invalid value\n"); return; }
-		uint8_t val = hexvalue[0];
-		if (sfp_pw_ok == 0) { print_string(" Invalid password\n"); return; }
-		if (sfp_pw_ok == 2) { print_string(" Using password "); print_byte(sfp_pw[0]); print_byte(sfp_pw[1]); print_byte(sfp_pw[2]); print_byte(sfp_pw[3]); write_char('\n'); }
-		print_string(" Write 0x"); print_byte(off); print_string(" = 0x"); print_byte(val); print_string("...\n");
-		sfp_pw_pending = sfp_pw_ok == 2;
-		if (sfp_write_reg(slot, off, val)) {
-			print_string(" Write failed!\n");
-		} else {
-			print_string(" OK - verified\n");
-			if (off <= 0x3E)
-				print_string(" WARNING: update checksum with: sfp "); write_char('1' + slot); print_string(" checksum --fix\n");
-		}
-		return;
 	}
 
 	if (cmd_compare(2, "10g")) {

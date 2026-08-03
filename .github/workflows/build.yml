@@ -17,6 +17,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Prepare SFP password dictionary stub
+        run: |
+          # sfp_pw_dict.inc is gitignored (local secret passwords). Create an
+          # empty stub so the firmware builds with only the inline entries.
+          touch sfp_pw_dict.inc
+
       - name: Install dependencies
         run: |
           apt update

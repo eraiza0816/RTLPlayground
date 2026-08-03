@@ -19,7 +19,7 @@ void send_sfp_eeprom(uint8_t slot);
 void send_sfp_diag(void);
 
 /* Implemented in hand-written assembly (rtlplayground_util.asm) */
-void string_to_html(__code char *s);
+void string_to_html(__code const char *s);
 
 /*  Convert only the lower nibble to ascii HEX char.
     For convenience the upper nibble is masked out.

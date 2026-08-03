@@ -88,9 +88,10 @@ void gpio_mux_setup(uint8_t pin) __banked
 			break;
 		case GPIO40_I2C_SCL3_MDC1:
 		case GPIO41_I2C_SDA3_MDIO1:
-			// Bits 29-30 0b00 -> GPIO
+			// Bits 5-6 0b00 -> GPIO; bit 30 = 0 disables the MDC1/MDIO1 driver (see doc/gpio.md)
 			reg_read_m(RTL837X_PIN_MUX_1);
 			sfr_mask_data(0, 0x60, 0x00);
+			sfr_mask_data(3, 0x40, 0x00);
 			reg_write_m(RTL837X_PIN_MUX_1);
 			break;
 		case GPIO47_I2C_SDA0:

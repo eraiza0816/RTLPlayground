@@ -24,7 +24,7 @@ extern __xdata uint8_t cmd_words_b[15];
 extern void reg_read_m(uint16_t reg_addr);
 extern void reg_write_m(uint16_t reg_addr);
 
-static __xdata uint8_t commit_pos;
+static __xdata uint16_t commit_pos;
 
 #define COMMIT_PUTC(c) do { \
 	if (commit_pos < FLASH_BUF_SIZE) \
@@ -111,6 +111,7 @@ void parse_commit(void) __banked
 {
 	commit_pos = 0;
 	flash_region.addr = CONFIG_START;
+	flash_init(0);
 	flash_sector_erase();
 
 	if (hostname[0]) {
@@ -154,6 +155,7 @@ void parse_commit(void) __banked
 	if (web_enabled) COMMIT_PUTS("on\n"); else COMMIT_PUTS("off\n");
 
 	commit_write_flash();
+	flash_init(1);
 	print_string("Config committed\n");
 }
 

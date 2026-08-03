@@ -395,17 +395,34 @@ Commands (default mode):
 
 SFP commands (run via "cmd" / "enc-cmd"):
   sfp                          Show all SFP slots
-  sfp [1|2] [1g|2g5|10g]       Set SFP speed
-  sfp [1|2] dump               Dump SFP EEPROM
-  sfp [1|2] save               Save EEPROM to flash
-  sfp [1|2] restore            Restore EEPROM from flash
-  sfp [1|2] fix                Fix EEPROM checksum
+  sfp [1|2] [1g|2g5|10g]       Set SFP speed (1g, 2g5, 10g, 100m, auto)
+  sfp [1|2] dump               Hex dump of SFP EEPROM (0x00-0xFF)
+  sfp [1|2] describe           Show vendor, model, serial, checksum status
+  sfp [1|2] save               Save EEPROM to flash backup
+  sfp [1|2] restore            Restore EEPROM from flash backup
+  sfp [1|2] checksum [--fix]   Verify CC_BASE/CC_EXT; --fix rewrites them
+  sfp [1|2] fix                Recode EEPROM for copper passthrough
   sfp [1|2] patch [--pw <hex8>]
-  sfp [1|2] describe           Show SFP info
-  sfp [1|2] checksum [--fix] [--pw <hex8>]
+                               Recode an FC (Fibre Channel) module to
+                               Ethernet: byte 0x03=0x20 (10GBase-LR),
+                               0x06=0x02, 0x07=0x00, 0x09=0x00, then fix
+                               the checksum
   sfp [1|2] clone [--pw <hex8>]
+                               Write all 256 bytes from the flash buffer
   sfp [1|2] write <off> <val> [--pw <hex8>]
-  sfp [1|2] bulk <512hexchars>
+                               Write one byte. <off> = EEPROM byte offset
+                               (0x00-0xFF), <val> = byte value; both hex.
+                               Example: "sfp 2 write 33 35" sets byte 0x33
+                               to ASCII '5' (model "...-87" -> "...-85").
+                               On success the affected checksum is updated
+                               automatically (CC_BASE for 0x00-0x3E,
+                               CC_EXT for 0x40-0x5E).
+  sfp [1|2] bulk <512hexchars> Bulk-write all 256 EEPROM bytes (512 hex chars)
+
+  --pw <hex8>: 8-hex-char EEPROM unlock password. If omitted or rejected,
+               the firmware tries a plain write first, then falls back
+               through its built-in password dictionary (39 entries,
+               00000000 first).
 
 Arista mode (--mode arista):
   Use Arista EOS-style commands (show interfaces status, show vlan, etc.)

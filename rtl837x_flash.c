@@ -1,6 +1,9 @@
 /*
  * This is driver implementation for the RTL837x flash controller
  * This code is in the Public Domain
+ * MUST stay in CSEG: flash_init() is the first banked-code gatekeeper at
+ * boot — the flash controller has to be initialized before code from other
+ * banks can be fetched (see rtlplayground.c main(), issue #70).
  */
 
 #include <stdint.h>

@@ -11,6 +11,8 @@
 #endif
 
 
+// All functions are implemented in rtl837x_flash.c, which must stay in CSEG:
+// flash_init() is the first banked-code gatekeeper at boot (issue #70).
 void flash_init(uint8_t enable_dio);
 void flash_read_uid(void);
 void flash_write_enable(void);

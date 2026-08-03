@@ -561,9 +561,16 @@ void handle_enc(__xdata uint8_t *body)
 		slen += AEAD_TAG_LEN * 2;
 		return;
 	}
-	cli_mode = MODE_CONFIG;
-	execute_commands(body + AEAD_NONCE_LEN);
-	cli_mode = MODE_EXEC;
+	if (is_word(body + AEAD_NONCE_LEN, "commit")) {
+		/* commit is a privileged-mode command; PSK auth grants it. */
+		cli_mode = MODE_PRIVILEGED;
+		execute_commands(body + AEAD_NONCE_LEN);
+		cli_mode = MODE_EXEC;
+	} else {
+		cli_mode = MODE_CONFIG;
+		execute_commands(body + AEAD_NONCE_LEN);
+		cli_mode = MODE_EXEC;
+	}
 	if (err_status != ERR_OK) {
 		send_bad_request();
 		return;

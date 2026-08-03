@@ -200,15 +200,48 @@ function setPSK(hex) {
   };
   doCmd('preshared_key ' + h, function(ok1) {
     if (!ok1) { notify('Failed to set PSK', 'error'); return; }
+    /* PSK is now active in RAM: store it and run commit over /enc
+     * (privileged mode) so the key is persisted to flash. */
+    pskStore(h);
+    rtlPSK = RTLAEAD.fromHex(h);
     doCmd('commit', function(ok2) {
       if (!ok2) notify('PSK set, but commit failed', 'warning');
       else notify('PSK set. Encrypted mode active.', 'success');
-      pskStore(h);
-      rtlPSK = RTLAEAD.fromHex(h);
-      var inp = document.getElementById('psk-input');
-      if (inp) inp.value = '';
     });
   });
+}
+
+/* Generate a random 32-byte key (64 hex chars) into the PSK input field. */
+function generatePSK() {
+  var b = new Uint8Array(32);
+  if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(b);
+  else for (var i = 0; i < 32; i++) b[i] = Math.floor(Math.random() * 256);
+  var h = RTLAEAD.toHex(b);
+  var inp = document.getElementById('psk-input');
+  if (inp) inp.value = h;
+  notify('PSK generated. Review and click Set PSK.', 'info');
+}
+
+/* Copy the key in the PSK input field to the clipboard. */
+function copyPSK() {
+  var inp = document.getElementById('psk-input');
+  if (!inp || !inp.value) { notify('Nothing to copy', 'error'); return; }
+  inp.select();
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(inp.value).then(function() {
+        notify('PSK copied to clipboard', 'success');
+      }, function() {
+        notify('Select the key and copy it manually', 'info');
+      });
+    } else if (document.execCommand('copy')) {
+      notify('PSK copied to clipboard', 'success');
+    } else {
+      notify('Select the key and copy it manually', 'info');
+    }
+  } catch (e) {
+    notify('Select the key and copy it manually', 'info');
+  }
 }
 
 /** GLOBALS **/
@@ -1235,6 +1268,13 @@ async function sendConfig(c) {
   }
 }
 
+/* Startup-config line that keeps the current pre-shared key alive:
+ * the /config upload replaces the whole startup config, so without this
+ * the PSK would silently disappear from flash. */
+function pskConfigLine() {
+  return pskHex() ? 'preshared_key ' + pskHex() : 'preshared_key';
+}
+
 async function flashSaveConfig() {
   if (isFlushing) return;
   var btn = document.getElementById('saveBtn');
@@ -1247,6 +1287,7 @@ async function flashSaveConfig() {
     var resLog = await encFetch('/cmd_log');
     if (resLog.ok) parseConf(await resLog.text());
     var body = configuration.join('\n') + '\n';
+    if (body.indexOf('preshared_key') < 0) body += pskConfigLine() + '\n';
     await sendConfig(body);
     setTimeout(function() { encFetch('/cmd_log_clear').catch(function() {}); }, 1000);
     $in('config-window').value = body;
@@ -1255,6 +1296,7 @@ async function flashSaveConfig() {
 
 function saveManualConfig() {
   var text = $in('config-window').value.replace(/[^\x09\x0A\x0D\x20-\x7E]/g, '');
+  if (text.indexOf('preshared_key') < 0) text += '\n' + pskConfigLine() + '\n';
   sendConfig(text).then(function() {
     setTimeout(function() { encFetch('/cmd_log_clear').catch(function() {}); }, 1000);
   });

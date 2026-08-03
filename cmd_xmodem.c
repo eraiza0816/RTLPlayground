@@ -15,6 +15,10 @@ extern __xdata uint8_t flash_buf[FLASH_BUF_SIZE];
 extern __xdata struct flash_region_t flash_region;
 extern __xdata uint8_t l;
 
+// XMODEM-CRC (poly 0x1021, MSB-first, init 0x0000) — different polynomial
+// from the shared CRC-16/ARC in crc16.c (poly 0xA001, LSB-first), so it
+// cannot use crc16_update(). Kept here as the only other CRC implementation
+// in the firmware.
 static uint16_t xmodem_crc16(uint16_t crc, uint8_t data)
 {
     crc ^= (uint16_t)data << 8;

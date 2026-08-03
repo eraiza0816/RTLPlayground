@@ -29,9 +29,9 @@
 extern __code const struct machine machine;
 extern __xdata uint32_t flash_size;
 
-extern __xdata uint16_t crc_value;
+__xdata uint16_t crc_value;
 __xdata struct machine_runtime machine_detected;
-void crc16(__xdata uint8_t *v) __naked;
+void crc16(__xdata uint8_t *v) __banked;
 void flash_default_config(void);
 void early_boot_handle_button(void);
 

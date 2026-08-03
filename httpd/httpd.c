@@ -75,7 +75,7 @@ __xdata uint32_t last_session_use;
 
 extern __xdata uint16_t crc_value;
 __xdata uint16_t crc_final;
-void crc16(__xdata uint8_t *v) __naked;
+void crc16(__xdata uint8_t *v) __banked;
 
 
 inline uint8_t is_separator(uint8_t c)

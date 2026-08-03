@@ -1,9 +1,11 @@
 /*
  * Calculator for the CRC16 as described in AN27 by Dallas Semiconductor
  * http://www.microshadow.com/files/files8051/app27.pdf
- * The implementation in C is based on the code given in
- * https://carta.tech/man-pages/man3/_crc_ibutton_update.3avr.html
  * The polynomial of the CRC is 0xa001: x^16 + x^15 + x^2 + 1
+ *
+ * The CRC algorithm itself is shared with the firmware: crc16.c is the
+ * single implementation used by both this tool and the RTLPlayground
+ * firmware, so they cannot drift apart.
  */
 
 #include <stdio.h>
@@ -15,6 +17,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#include "../crc16.c"
 
 // Use a 4MB buffer, the same as the flash rom size
 #define BUFFER_SIZE 0x400000
@@ -38,15 +41,6 @@ static struct argp_option options[] = {
     { 0 }
 };
 
-
-uint16_t crc16_update(uint16_t crc, uint8_t a)
-{
-    crc ^= a;
-    for (int i = 0; i < 8; ++i)
-	    crc = crc & 1 ? (crc >> 1) ^ 0xA001 : crc >> 1;
-
-    return crc;
-}
 
 
 static error_t parse_opt(int key, char *arg, struct argp_state *state)

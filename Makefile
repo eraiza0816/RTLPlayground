@@ -42,7 +42,7 @@ create_build_dir:
 	mkdir -p $(BUILDDIR)/telnetd
 	mkdir -p $(BUILDDIR)/crypto
 
-SRCS = rtlplayground.c rtl837x_flash.c rtl837x_leds.c rtl837x_phy.c rtl837x_port.c cmd_parser.c html_data.c rtl837x_igmp.c
+SRCS = rtlplayground.c crc16.c rtl837x_flash.c rtl837x_leds.c rtl837x_phy.c rtl837x_port.c cmd_parser.c html_data.c rtl837x_igmp.c
 SRCS += rtl837x_stp.c rtl837x_pins.c dhcp.c machine.c cmd_editor.c rtl837x_bandwidth.c rtl837x_init.c
 SRCS += uip/timer.c uip/uip.c uip/uip_arp.c uip/uiplib.c uip/uip-fw.c uip/uip-neighbor.c uip/uip-split.c udp_apps.c
 SRCS += httpd/httpd.c httpd/page_impl.c
@@ -105,7 +105,7 @@ $(BUILDDIR)/%.rel: %.asm
 	${ASM} ${AFLAGS} -o $@ $<
 #	mv -f $(addprefix $(basename $^), .lst .rel .sym) .
 
-$(BUILDDIR)/rtlplayground.ihx: $(OBJS) $(BUILDDIR)/crtstart.rel $(BUILDDIR)/crc16.rel $(BUILDDIR)/rtlplayground_mem.rel $(BUILDDIR)/rtlplayground_util.rel
+$(BUILDDIR)/rtlplayground.ihx: $(OBJS) $(BUILDDIR)/crtstart.rel $(BUILDDIR)/rtlplayground_mem.rel $(BUILDDIR)/rtlplayground_util.rel
 	$(CC) $(CC_FLAGS) -Wl-bHOME=0x00000 -Wl-bBANK1=0x14000 -Wl-bBANK2=0x24000 -Wl-bBANK3=0x34000 -Wl-r -o $@ $^
 
 $(BUILDDIR)/rtlplayground.img: $(BUILDDIR)/rtlplayground.ihx

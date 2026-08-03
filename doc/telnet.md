@@ -52,8 +52,9 @@ All CLI commands listed in the [README](../README.md) are available via Telnet, 
 The Telnet server runs in BANK3 (0x34000) and uses the uIP TCP/IP stack.
 Key implementation details:
 
-- **Output buffering:** A 512-byte ring buffer (`tx_buf[512]`) collects CLI output.
-  Data is transmitted during uIP poll intervals (every few milliseconds).
+- **Output buffering:** A 2048-byte ring buffer (`tx_buf[2048]`) collects CLI
+  output. Data is transmitted during uIP poll intervals (every few
+  milliseconds). Received data is buffered in a 256-byte `rx_buf[256]`.
 - **IAC negotiation:** The server responds with WONT/DONT to all Telnet options,
   keeping the protocol simple. Local echo is handled by the client.
 - **Authentication state:** Echo is suppressed (`telnet_echo = 0`) during password

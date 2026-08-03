@@ -51,6 +51,8 @@ __code uint8_t * __code HTTP_RESPONCE_JSON = "HTTP/1.1 200 OK\r\nContent-Type: a
 __code uint8_t * __code HTTP_RESPONCE_TXT = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
 
 // Convert uint8_t to ascii HEX char push on html-buffer.
+// Note: not __inline — SDCC's mcs51 backend bloats code at the ~25 call
+// sites (measured +2.5KB in BANK1), so keep the out-of-line calls.
 void charhex_to_html(char c)
 {
 	outbuf[slen++] = itohex(c);

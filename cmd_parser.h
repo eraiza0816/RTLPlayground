@@ -9,6 +9,12 @@ extern __xdata uint8_t cmd_buffer[CMD_BUF_SIZE];
 extern volatile __xdata uint8_t cmd_available;
 extern __xdata uint8_t err_status;
 
+// Shared management password (max 20 chars, NUL-terminated).
+// Owner: cmd_parser.c (modified by the `passwd` CLI command, parse_passwd).
+// Readers: httpd.c (WebUI login), telnetd.c (telnet login).
+// An empty password disables authentication (see parse_telnet in cmd_parser.c).
+extern __xdata char passwd[21];
+
 /* Implemented in hand-written assembly (rtlplayground_util.asm) */
 uint8_t atoi_byte(__xdata uint8_t *out, uint8_t idx);
 uint8_t atoi_short(__xdata uint16_t *vlan, uint8_t idx);

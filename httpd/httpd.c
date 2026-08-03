@@ -57,6 +57,8 @@ __xdata uint8_t verify_crc;
 __xdata uint32_t max_upload;
 __xdata uint16_t short_parsed;
 
+// Shared management password. Declared in cmd_parser.h; modified by the CLI
+// `passwd` command (cmd_parser.c), read by WebUI (here) and telnet (telnetd.c).
 __xdata char passwd[21];
 __xdata char session_id[SESSION_ID_LENGTH + 1];
 __xdata uint8_t authenticated;

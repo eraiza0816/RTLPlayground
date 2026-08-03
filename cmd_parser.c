@@ -38,7 +38,6 @@ extern __code uint8_t * __code hex;
 extern __xdata uint8_t flash_buf[FLASH_BUF_SIZE];
 extern __xdata struct flash_region_t flash_region;
 
-extern __xdata char passwd[21];
 extern __xdata uint8_t preshared_key[32];
 
 extern __xdata struct dhcp_state dhcp_state;

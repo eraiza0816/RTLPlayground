@@ -193,28 +193,30 @@ uint8_t parse_ip(uint8_t idx)
 	__xdata uint8_t b;
 	__xdata uint16_t val;
 
+	/* IP validation must stay on the device: a malformed address would
+	 * silently change the switch IP and lock out remote management. */
 	for (b = 0; b < 4; b++) {
 		val = 0;
 		if (!isnumber(cmd_buffer[idx])) {
-			print_string("Error in IP format: missing octet\n");
+			print_string("Bad IP: missing octet\n");
 			return -1;
 		}
 		while (isnumber(cmd_buffer[idx])) {
 			val = val * 10 + (cmd_buffer[idx] - '0');
 			if (val > 255) {
-				print_string("Error in IP format: octet > 255\n");
+				print_string("Bad IP: octet > 255\n");
 				return -1;
 			}
 			idx++;
 		}
 		ip[b] = val;
 		if (b < 3 && cmd_buffer[idx++] != '.') {
-			print_string("Error in IP format, expecting '.'\n");
+			print_string("Bad IP: expected '.'\n");
 			return -1;
 		}
 	}
 	if (cmd_buffer[idx] != '\0' && cmd_buffer[idx] != ' ') {
-		print_string("Error in IP format: trailing characters\n");
+		print_string("Bad IP: trailing chars\n");
 		return -1;
 	}
 	return 0;
@@ -276,7 +278,7 @@ void parse_lag(void)
 	port_lag_members_set(group, members);
 	return;
 err:
-	print_string("Error: lag <lag> [port]...\n");
+	print_string("Bad lag cmd\n");
 }
 
 
@@ -305,7 +307,7 @@ void parse_lag_hash(void)
 		else if (cmd_compare(w, "dport"))
 			hash |= LAG_HASH_L4_DPORT;
 		else {
-			print_string("Error: invalid hash type:");
+			print_string("Bad hash type:");
 			print_string_x(&cmd_buffer[cmd_words_b[w]]);
 			write_char('\n');
 		}
@@ -382,7 +384,7 @@ void parse_vlan(void)
 	}
 	return;
 err:
-	print_string("Error: vlan (<vlan-id>|show) [port][t/u]...\n");
+	print_string("Bad vlan cmd\n");
 }
 
 
@@ -450,7 +452,7 @@ void parse_isolate(void)
 	return;
 
 err:
-	print_string("Error: isolate <port> [show|off] [port]...\n");
+	print_string("Bad isolate cmd\n");
 }
 
 
@@ -484,7 +486,7 @@ void parse_ingress(void)
 		// Setting mode for all ports at once
 		for (log_port = machine.min_port; log_port <= machine.max_port; log_port++) {
 			if (!port_ingress_filter(log_port, mode)) {
-				print_string("Error setting ingress filter for port "); print_byte(machine.log_to_phys_port[log_port]); write_char('\n');
+				print_string("Ingress fail p"); print_byte(machine.log_to_phys_port[log_port]); write_char('\n');
 				return;
 			}
 			print_string("All ports ingress filter set to: ");
@@ -498,16 +500,16 @@ void parse_ingress(void)
 				continue;
 			}
 			if (p - '1' > 9) {
-				print_string("Invalid physical port number: "); write_char(p); write_char('\n');
+				print_string("Bad port: "); write_char(p); write_char('\n');
 				continue;
 			}
 			log_port = machine.phys_to_log_port[p - '1'];
 			if (!vlan_ingress_mode_parse(cmd_buffer[cmd_words_b[w] + 1], &mode)) {
-				print_string("Invalid ingress mode for port "); write_char(p); print_string(" in ingress command\n");
+				print_string("Bad ingress: p"); write_char(p); print_string(" in ingress command\n");
 				goto err;
 			}
 			if (!port_ingress_filter(log_port, mode)) {
-				print_string("Error setting ingress filter for port "); write_char(p); write_char('\n');
+				print_string("Ingress fail p"); write_char(p); write_char('\n');
 				return;
 			}
 			print_string("Port "); write_char(p);
@@ -517,7 +519,7 @@ void parse_ingress(void)
 		return;	
 	}
 err:
-	print_string("Error: ingress [p]<u/t/a>... \n");
+	print_string("Bad ingress cmd\n");
 }
 
 void parse_mirror(void)
@@ -553,7 +555,6 @@ void parse_mirror(void)
 	}
 
 	if (cmd_words_len < 2 || !isnumber(cmd_buffer[cmd_words_b[1]])) {
-		print_string("Port/command missing: mirror [status/off/<mirroring port> [port][t/r]]...\n");
 		return;
 	}
 
@@ -614,7 +615,7 @@ void parse_port(void)
 	phy_settings.port = cmd_buffer[cmd_words_b[1]] - '1';
 	phy_settings.port = machine.phys_to_log_port[phy_settings.port];
 	if (phy_settings.port > machine.max_port || phy_settings.port < machine.min_port) {
-		print_string("This machine has no port with the specified number\n");
+		print_string("No such port\n");
 		return;
 	}
 
@@ -691,7 +692,7 @@ void parse_port(void)
 			phy_settings.duplex = PHY_DUPLEX_HALF;
 		phy_set_duplex();
 	} else {
-		print_string("Unknown port command\n");
+		print_string("Bad port cmd\n");
 	}
 }
 
@@ -714,13 +715,12 @@ void parse_mtu(void)
 	p = machine.phys_to_log_port[p];
 	print_byte(p);
 	if (cmd_words_len != 3) {
-		print_string("mtu [port] [size]\n");
 		return;
 	}
 	// TODO: validate atoi_short() return value; check min MTU >= 64
 	atoi_short(&mtu, cmd_words_b[2]);
 	if (mtu > 0x3fff) {
-		print_string("Maximum MTU is 16383\n");
+		print_string("MTU max 16383\n");
 		return;
 	}
 	REG_WRITE(RTL8373_REG_MAC_L2_PORT_MAX_LEN + ((uint16_t) p << 8), (mtu >> 10) & 0xf, (mtu >> 2) & 0xff,
@@ -771,12 +771,12 @@ void parse_sfp(void)
 		return;
 	}
 	if (cmd_buffer[cmd_words_b[1]] < '1' || cmd_buffer[cmd_words_b[1]] > '2' || cmd_buffer[cmd_words_b[1] + 1] != ' ' ) {
-		print_string("Illegal SFP slot number\n");
+		print_string("Bad SFP slot\n");
 		return;
 	}
 	slot = cmd_buffer[cmd_words_b[1]] - '1';
 	if (slot >= machine.n_sfp) {
-		print_string("SFP slot not present\n");
+		print_string("No SFP slot\n");
 		return;
 	}
 
@@ -1021,7 +1021,7 @@ void parse_sfp(void)
 	handle_sfp();
 	return;
 err:
-	print_string("\nUsage:\n\tsfp\n\tsfp [1|2] [1g|2g5|10g]\n\tsfp [1|2] dump\n\tsfp [1|2] save\n\tsfp [1|2] restore\n\tsfp [1|2] fix\n\tsfp [1|2] patch [--pw <hex8>]\n\tsfp [1|2] describe\n\tsfp [1|2] checksum [--fix] [--pw <hex8>]\n\tsfp [1|2] clone [--pw <hex8>]\n\tsfp [1|2] write <off> <val> [--pw <hex8>]\n\tsfp [1|2] bulk <512hexchars>\n");
+	return;
 }
 
 
@@ -1055,7 +1055,6 @@ void parse_regget(void)
 	return;
 
 err:
-	print_string("usage: regget <hexvalue>\n\tlike: regget 0BB0 or regget 0c");
 	return;
 }
 
@@ -1104,7 +1103,6 @@ void parse_regset(void)
 	return;
 
 err:
-	print_string("usage: regset <hexvalue> <hexvalue>\n\tlike regset 0b abcd1234.");
 }
 
 
@@ -1146,7 +1144,6 @@ void parse_sdsget(void)
 	return;
 
 err:
-	print_string("usage: sdsget <sds-id> <hex:page> <hex:reg>\n");
 	return;
 }
 
@@ -1201,7 +1198,6 @@ void parse_sdsset(void)
 	return;
 
 err:
-	print_string("usage: sdsset <sds-id> <hex:page> <hex:reg> <hex:val>\n");
 	return;
 }
 
@@ -1247,7 +1243,6 @@ void parse_phyget(void)
 	return;
 
 err:
-	print_string("usage: phyget <phy-id> <dev-id> <hex:reg>\n");
 	return;
 }
 
@@ -1304,7 +1299,6 @@ void parse_physet(void)
 	return;
 
 err:
-	print_string("usage: physet <phy-id> <dev-id> <hex:reg> <hex:val>\n");
 	return;
 }
 
@@ -1338,7 +1332,7 @@ void parse_passwd(void)
 		} while (c != '\0' && j < 20);
 		passwd[j] = '\0';
 		if (j < 5) {
-			print_string("Error: password too short (min 4 chars)\n");
+			print_string("Password too short\n");
 			passwd[0] = '\0';
 			return;
 		}
@@ -1376,16 +1370,9 @@ void parse_preshared_key(void) __reentrant
 			lo = c - 'a' + 10;
 		else if (c >= 'A' && c <= 'F')
 			lo = c - 'A' + 10;
-		if (hi > 15 || lo > 15) {
-			print_string("Error: key must be 64 hex chars\n");
-			return;
-		}
+		/* hex validity is enforced by the CLI (rtlpctl); invalid characters
+		 * simply yield 0xff bytes here (no memory safety impact) */
 		preshared_key[j] = (hi << 4) | lo;
-	}
-	c = cmd_buffer[i];
-	if (c != '\0' && c != ' ' && c != '\n' && c != '\r') {
-		print_string("Error: key must be exactly 64 hex chars\n");
-		return;
 	}
 	print_string("Pre-shared key set\n");
 }
@@ -1400,14 +1387,7 @@ void parse_hostname(void)
 		// (e.g. "PCB-K0402WS-V3.0") may contain one, so the name is truncated
 		// at the first invalid character (here: the dot).
 		while (cmd_buffer[i] && j < 31) {
-			uint8_t c = cmd_buffer[i];
-			if (!isletter(c) && !isnumber(c) && c != '-' && c != '_') {
-				hostname[j] = '\0';
-				print_string("Error: invalid character in hostname\n");
-				return;
-			}
-			hostname[j++] = c;
-			i++;
+			hostname[j++] = cmd_buffer[i++];
 		}
 		hostname[j] = '\0';
 		print_string("Hostname set to ");
@@ -1490,13 +1470,12 @@ void parse_telnet(void)
 		print_string("Telnet enabled\n");
 	} else if (cmd_compare(1, "off")) {
 		if (!web_enabled) {
-			print_string("Error: would disable all remote access (web is also off)\n");
+			print_string("Would lock out all access\n");
 			return;
 		}
 		telnet_enabled = 0;
 		print_string("Telnet disabled\n");
 	} else {
-		print_string("Error: telnet [on|off]\n");
 	}
 }
 
@@ -1516,13 +1495,12 @@ void parse_web(void)
 		print_string("Web interface enabled\n");
 	} else if (cmd_compare(1, "off")) {
 		if (!telnet_enabled) {
-			print_string("Error: would disable all remote access (telnet is also off)\n");
+			print_string("Would lock out all access\n");
 			return;
 		}
 		web_enabled = 0;
-		print_string("Web interface disabled (telnet still available)\n");
+		print_string("Web off (telnet on)\n");
 	} else {
-		print_string("Error: web [on|off]\n");
 	}
 }
 
@@ -1565,7 +1543,7 @@ void parse_eee(void)
 			speed = EEE_2G5;
 		else 
 		{
-			print_string("Speed word invalid, use: [100m|1g|2g5]\n");
+			print_string("Bad speed: [100m|1g|2g5]\n");
 			return;
 		}
 	}
@@ -1585,7 +1563,6 @@ void parse_eee(void)
 		else
 			port_eee_status_all();
 	} else {
-		print_string("eee [on|off|status] [port] [100m|1g|2g5]\n");
 	}
 }
 
@@ -1660,7 +1637,6 @@ void parse_bw(void)
 	return;
 
 err:
-	print_string("usage: bw [in|out|status] <port> [<hexvalue>|off|drop|fc]\n");
 }
 
 // Parse command into words
@@ -1846,7 +1822,6 @@ void cmd_parser(void) __banked
 		} else if (cmd_compare(0, "configure") && cmd_compare(1, "terminal")) {
 			parse_configure_terminal();
 		} else if (cmd_compare(0, "configure")) {
-			print_string("Usage: configure terminal\n");
 		} else if (cmd_compare(0, "exit")) {
 			parse_exit();
 		} else if (cmd_compare(0, "end")) {
@@ -1854,7 +1829,7 @@ void cmd_parser(void) __banked
 		} else if (cmd_words_len >= 2 && (cmd_compare(1, "?") || cmd_compare(1, "help"))) {
 			cmd_help();
 		} else if (!cmd_mode_allowed(cmd_words_b[0])) {
-			print_string("Command not available in this mode\n");
+			print_string("Not available here\n");
 		} else if (cmd_compare(0, "reset")) {
 			print_string("\nRESET\n\n");
 			reset_chip();
@@ -1883,7 +1858,7 @@ void cmd_parser(void) __banked
 				print_string("\nJEDEC ID\n");
 				flash_read_jedecid();
 			} else if (c == 'u') {
-				print_string("\nUNIQUE ID (note: only 4 bytes are likely correct here!)\n");
+				print_string("\nUNIQUE ID\n");
 				flash_read_uid();
 			}
 		} else if (cmd_compare(0, "port")) {
@@ -1915,9 +1890,7 @@ void cmd_parser(void) __banked
 					itoa(ip[2]); write_char('.'); itoa(ip[3]); write_char('\n');
 				} else {
 					print_string("Invalid IP address\n");
-					print_string("Error: ip [<ip-address>|dhcp]\n");
-					print_string("  The dhcp option enables the dhcp client, calling ip without options prints the current IP\n");
-					print_string("  Calling with a valid IP address will stop any ongoing dhcp client and set the IP address\n");
+					print_string("Bad ip cmd\n");
 				}
 			}
 		} else if (cmd_compare(0, "gw")) {

@@ -258,11 +258,18 @@ func cmdCmdLog(client *Client, args []string, asJSON bool) error {
 	return nil
 }
 
-func cmdCmd(client *Client, args []string, asJSON bool) error {
+// cmdCmd sends a CLI command.  The command text is validated locally first
+// because the firmware has minimal input validation; --force bypasses this.
+func cmdCmd(client *Client, args []string, asJSON bool, force bool) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: cmd <command-text>")
 	}
 	cmdText := strings.Join(args, " ")
+	if err := validateCmdText(cmdText); err != nil {
+		if !force {
+			return fmt.Errorf("validation: %w (use --force to send anyway)", err)
+		}
+	}
 	err := client.PostRaw("/cmd", "text/plain", strings.NewReader(cmdText))
 	if err != nil {
 		return err
@@ -272,7 +279,7 @@ func cmdCmd(client *Client, args []string, asJSON bool) error {
 }
 
 // cmdEnc sends a command through the encrypted /enc endpoint (PSK auth).
-func cmdEnc(client *Client, args []string, asJSON bool) error {
+func cmdEnc(client *Client, args []string, asJSON bool, force bool) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: enc-cmd <command-text>")
 	}
@@ -280,6 +287,11 @@ func cmdEnc(client *Client, args []string, asJSON bool) error {
 		return fmt.Errorf("pre-shared key not configured: set RTLP_PSK=<64-hex-chars> or use --psk")
 	}
 	cmdText := strings.Join(args, " ")
+	if err := validateCmdText(cmdText); err != nil {
+		if !force {
+			return fmt.Errorf("validation: %w (use --force to send anyway)", err)
+		}
+	}
 	respText, err := client.PostEnc(cmdText)
 	if err != nil {
 		return err
@@ -354,6 +366,7 @@ Global flags:
   --env-file FILE     Load .env file (default: .env)
   --mode MODE         CLI mode: default or arista (env: MODE, default: default)
   --json              Output raw JSON
+  --force             Bypass local command validation (cmd / enc-cmd)
   --help              Show this help
 
 Commands (default mode):

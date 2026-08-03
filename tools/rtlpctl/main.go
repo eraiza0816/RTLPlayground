@@ -14,6 +14,7 @@ type config struct {
 	psk      string
 	jsonMode bool
 	mode     string
+	force    bool
 }
 
 func main() {
@@ -83,6 +84,8 @@ func filterFlags(args []string, cfg *config) []string {
 			os.Exit(0)
 		case args[i] == "--json" || args[i] == "-j":
 			cfg.jsonMode = true
+		case args[i] == "--force" || args[i] == "-f":
+			cfg.force = true
 		case args[i] == "--host" && i+1 < len(args):
 			i++
 			cfg.host = args[i]
@@ -159,9 +162,9 @@ func runCmd(client *Client, args []string, cfg config) error {
 	case "cmd-log", "cmdlog", "log":
 		return cmdCmdLog(client, cmdArgs, cfg.jsonMode)
 	case "cmd":
-		return cmdCmd(client, cmdArgs, cfg.jsonMode)
+		return cmdCmd(client, cmdArgs, cfg.jsonMode, cfg.force)
 	case "enc-cmd", "enccmd":
-		return cmdEnc(client, cmdArgs, cfg.jsonMode)
+		return cmdEnc(client, cmdArgs, cfg.jsonMode, cfg.force)
 	case "enc-api", "encapi":
 		return cmdEncAPI(client, cmdArgs, cfg.jsonMode)
 	case "upload":

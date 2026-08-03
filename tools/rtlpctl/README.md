@@ -4,6 +4,10 @@
 
 It supports both interactive mode and one-shot command mode, with optional JSON output.
 
+## Compatibility
+
+`rtlpctl` is developed and tested against firmware **v0.2.23** (the `VERSION` variable in the top-level `Makefile`).
+
 ## Build
 
 ```bash
@@ -33,7 +37,7 @@ rtlpctl [--host HOST] [--password PASS] [--json] <command> [args...]
 ### Command Validation
 
 The firmware has deliberately minimal input validation to save code space
-(commit 6a28c58), so `cmd` / `enc-cmd` command text is validated on the host
+, so `cmd` / `enc-cmd` command text is validated on the host
 before it is sent. All known write commands are checked:
 
 - `preshared_key` — key must be exactly 64 hex chars (the firmware no longer

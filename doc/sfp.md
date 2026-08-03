@@ -15,31 +15,49 @@ corresponding bit in RTL837X_REG_GPIO_B or RTL837X_REG_GPIO_C will transition fr
 up and then reads the EEPROM of the module to get the type of module and in particular
 the bit-rate. The EEPROM can be read via the MOD-DEF1 and MOD-DEF2 lines which
 provide a standard I2C interface to the standard 24C-EEPROM. The SoCs contain a simple
-I2C controller for reading such EEPROMs so that interfacing is very simple.
+I2C controller for reading and writing such EEPROMs so that interfacing is very simple.
 
 ## I2C Controller
 
 The I2C controller of the RTL8372/3 is very simple and probably designed specifically
-for reading 24C EEPROMs. Its use is straight-forward: Configure the I2C bus used
-(the code currently uses the default already set regarding what is probably timing)
-in the RTL837X_REG_I2C_CTRL register. Then set the EEPROM-register's addresss to be
-read in RTL837X_REG_I2C_IN (least-significant byte). The I2C transfer is started
-by setting the 0-bit of RTL837X_REG_I2C_CTRL. When this bit is cleared by the
-ASIC-side of the SoC, the resulting value can be read in the LSB of RTL837X_REG_I2C_OUT.
-This is the code:
+for 24C EEPROMs. Its use is straight-forward: Configure the I2C bus and device address
+in the RTL837X_REG_I2C_CTRL register (I2C_MST1_CTRL1, 0x418). Then set the
+EEPROM-register's address to be accessed in RTL837X_REG_I2C_IN (least-significant byte).
+The I2C transfer is started by setting the 0-bit (I2C_TRIG) of RTL837X_REG_I2C_CTRL.
+When this bit is cleared by the ASIC-side of the SoC, the transfer has finished. For a
+read, the resulting value can be read in the LSB of RTL837X_REG_I2C_OUT. Writes are
+supported as well (see [EEPROM Write](#eeprom-write) below).
+
+Relevant bits of RTL837X_REG_I2C_CTRL (0x418):
+
+```
+READ_MODE       bit 22       0 = standard mode
+MEM_ADDR_WIDTH  bits 20-21   EEPROM register address width (0 = 8 bit)
+DATA_WIDTH      bits 16-19   data width - 1 (0 = 1 byte)
+SCL_OUT_SEL     bits 13-15   I2C bus for SCL
+SDA_OUT_SEL     bits 10-12   I2C bus for SDA
+DEV_ADDR        bits 3-9     7-bit device address << 3 (0x50 = A0h EEPROM,
+                              0x51 = A2h)
+RWOP            bit 2        0 = read, 1 = write
+I2C_FAIL        bit 1        error flag (set on bus failure)
+I2C_TRIG        bit 0        start the transfer (auto-cleared when done)
+```
+
+This is the read code (a register offset with bit 7 set targets the A2h device
+0x51 instead of the A0h EEPROM 0x50, e.g. for the diagnostic registers):
 ```
 uint8_t sfp_read_reg(uint8_t slot, uint8_t reg)
 {
-        // Select I2C-bus according to slot
-	if (slot == 0) {
-		reg_read_m(RTL837X_REG_I2C_CTRL);
-		sfr_mask_data(1, 0xff, 0x72);
-		reg_write_m(RTL837X_REG_I2C_CTRL);
+	if (reg & 0x80) {	// Configure SFP readings address (0x51) as I2C device address
+		reg &= 0x7f;
+		REG_WRITE(RTL837X_REG_I2C_CTRL, 0x00, 0x1 << (I2C_MEM_ADDR_WIDTH-16) | 0,  0x51 >> 5, (0x51 << 3) & 0xff);
 	} else {
-		reg_read_m(RTL837X_REG_I2C_CTRL);
-		sfr_mask_data(1, 0xff, 0x6e);
-		reg_write_m(RTL837X_REG_I2C_CTRL);
+		REG_WRITE(RTL837X_REG_I2C_CTRL, 0x00, 0x1 << (I2C_MEM_ADDR_WIDTH-16) | 0,  0x50 >> 5, (0x50 << 3) & 0xff);
 	}
+
+	reg_read_m(RTL837X_REG_I2C_CTRL);
+	sfr_mask_data(1, 0xfc, i2c_bus_from_scl_pin(machine.sfp_port[slot].i2c.scl) << 5 | i2c_bus_from_sda_pin(machine.sfp_port[slot].i2c.sda) << 2);
+	reg_write_m(RTL837X_REG_I2C_CTRL);
 
 	REG_WRITE(RTL837X_REG_I2C_IN, 0, 0, 0, reg);
 
@@ -105,18 +123,58 @@ apart, solder wires to the pins of the on-board PCB which are then routed back t
 the end of the module. By pulling e.g. TX-Fault low while printing out the GPIOs, the
 correct GPIO can be identified.
 
-## EEPROM Write via GPIO Bit-bang
+## EEPROM Write
 
-The hardware I2C controller of the RTL8372/3 only supports reading the SFP EEPROM.
-To write the EEPROM (e.g. to fix a module's configuration or checksum), the I2C pins
-must be temporarily switched to GPIO mode and driven directly by software (bit-bang).
+The I2C master controller supports writes as well: select the bus and set the device
+address to 0x50 (A0h EEPROM) with RWOP = 1 (write), put the register address into
+RTL837X_REG_I2C_IN and the data into RTL837X_REG_I2C_OUT, then trigger exactly as for
+a read. When the transfer finishes, check the I2C_FAIL bit (bit 1): a set bit means
+the transfer failed on the bus. The write is then verified by reading the register
+back:
 
-This is implemented in `sfp_bitbang.c`. When any write operation is triggered, the
-selected I2C pins (SCL/SDA) are reconfigured as GPIOs via `gpio_mux_setup()`, the
-I2C write protocol is executed in software, and the pins are restored to their
-original I2C function.
+```
+uint8_t sfp_write_reg(uint8_t slot, uint8_t reg, uint8_t data) __reentrant
+{
+	// configure: DEV_ADDR = 0x50 (A0h), RWOP = 1 (write), 1-byte data
+	REG_WRITE(RTL837X_REG_I2C_CTRL, 0x00, 0x10, 0x02, 0x80 | 0x04);
+	reg_read_m(RTL837X_REG_I2C_CTRL);
+	sfr_mask_data(1, 0xfc, scl_bus << 5 | sda_bus << 2);   // select bus
+	reg_write_m(RTL837X_REG_I2C_CTRL);
 
-The EEPROM address used is `0xA0` (device address `0x50`).
+	REG_WRITE(RTL837X_REG_I2C_IN,  0, 0, 0, reg);   // EEPROM register address
+	REG_WRITE(RTL837X_REG_I2C_OUT, 0, 0, 0, data);  // data to write
+
+	reg_bit_set(RTL837X_REG_I2C_CTRL, 0);           // trigger
+	do { reg_read_m(RTL837X_REG_I2C_CTRL); } while (sfr_data[3] & 0x1);
+	if (sfr_data[3] & 0x02) return 1;               // I2C_FAIL
+
+	// the EEPROM update lags the controller's write completion on the
+	// bus-3 port (slot 2), so the readback is polled (50 ms x 5)
+	for (ri = 0; ri < 5; ri++) {
+		delay(10);
+		if (sfp_read_reg(slot, reg) == data) return 0;
+	}
+	return 1;
+}
+```
+
+### Write-protection passwords
+
+Many modules require a 4-byte password to unlock the EEPROM for writes. The password
+is written to the A2h device (0x51) at registers 0x7B-0x7E (the module's MCU opens a
+short unlock window afterwards). If a write without a password is rejected, the
+firmware falls back through a built-in dictionary of 39 passwords (from
+`sfp-tool/passwords.json`, `00000000` first) and retries the write after each one.
+
+The dictionary lives in `sfp_pw_dict.inc`, which is gitignored (generated from
+passwords.json). CI builds create an empty stub so the firmware compiles with only
+the inline `00000000` entry.
+
+Note: sending a wrong password can lock some modules (e.g. Finisar/Coherent) until
+they are power-cycled. Most modules are writable without any password.
+
+The GPIO bit-bang implementation that preceded this is gone: writes are done
+exclusively through the I2C master controller.
 
 ## SFP EEPROM configuration on the Serial Console
 
@@ -127,15 +185,15 @@ read/write operations:
 > sfp <slot> dump
   Dumps the full 256-byte EEPROM contents as a hex dump with ASCII side view.
   Example output:
-  0000: 03 04 07 00 00 00 00 00  00 00 00 01 0d 00 00 00  ................
-  0010: 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  ................
+  0x0000: 003 004 007 004 000 000 002 000  000 000 000 006 67 000 000 000 ............g...
+  0x0010: 008 003 000 1e 46 53 20 20  20 20 20 20 20 20 20 20 ....FS
 
 > sfp <slot> save
   Reads the full 256-byte EEPROM and saves it as a backup in flash memory
-  at address 0x54000 + slot * 256.
+  at address 0x6E000 + slot * 256.
 
 > sfp <slot> restore
-  Restores the EEPROM from the flash backup at 0x54000 + slot * 256.
+  Restores the EEPROM from the flash backup at 0x6E000 + slot * 256.
   The checksum is automatically fixed after the restore.
 
 > sfp <slot> fix
@@ -146,10 +204,13 @@ read/write operations:
 
 > sfp <slot> write <hex-offset> <hex-value> [--pw <hex8>]
   Writes a single byte to the EEPROM at the given offset (0x00-0xFF).
-  The write is verified by reading back the value. If the offset is within
-  the base ID field (0x00-0x3E), a warning is printed suggesting to run
-  `sfp <slot> checksum --fix` afterwards to update CC_BASE. If the module
-  requires a write-protection password, provide it with --pw.
+  The write is verified by polling the readback (the bus-3 port returns
+  stale values right after a write completes). The affected checksum is
+  then updated automatically: writes to 0x00-0x3E recompute CC_BASE
+  (byte 0x3F), writes to 0x40-0x5E recompute CC_EXT (byte 0x5F), so the
+  module stays valid for the NIC. If the module requires a write-protection
+  password, provide it with --pw; otherwise a plain write is attempted
+  first and the built-in password dictionary is tried on failure.
 
 > sfp <slot> bulk <512-hex-chars>
   Writes all 256 bytes of the EEPROM at once using a hex string of exactly
@@ -168,17 +229,45 @@ read/write operations:
   - Byte 7 = 0x00 (clear FC link length)
   - Byte 9 = 0x00 (clear FC speed)
   - CC_BASE recalculated after patching
-  If the module requires a write-protection password, provide it with --pw.
 
 > sfp <slot> checksum [--fix] [--pw <hex8>]
   Without --fix: displays current and expected values of CC_BASE (byte 0x3F)
   and CC_EXT (byte 0x5F). With --fix: recalculates and writes both checksums.
-  If the module requires a write-protection password, provide it with --pw.
 
 > sfp <slot> clone [--pw <hex8>]
   Writes the full 256-byte EEPROM from the flash buffer (pre-loaded via
-  `sfp <slot> restore` or other means). Checksum is auto-fixed after cloning.
-  If the module requires a write-protection password, provide it with --pw.
+  `sfp <slot> bulk <hex>` or `sfp <slot> restore`). The checksum is
+  auto-fixed after cloning.
+```
+
+### Password notes
+
+- `--pw <hex8>` is always optional: without it (or when the password is rejected),
+  the firmware tries a plain write first and then falls back through the built-in
+  password dictionary (39 entries from sfp-tool/passwords.json, `00000000` first).
+- A malformed `--pw` argument (e.g. `--pw 12`) is rejected with "Invalid password".
+- Some modules (e.g. Finisar/Coherent) lock up when given a wrong password until
+  they are power-cycled; most modules are writable without any password.
+
+### Example - recode a Fibre Channel module to Ethernet
+
+```
+> sfp 1 describe
+  Identifier: 0x03 (SFP)
+  Connector: 0x03 (LC)
+  Vendor: FINISAR
+  PN: FTLF8536P4BCV
+  Rate: 96 x100MBd
+  Compliance:
+  CC_BASE: 0x35 (BAD)
+  CC_EXT: 0xce (OK)
+
+> sfp 1 patch
+  Patch OK
+
+> sfp 1 describe
+  Compliance: 10GBase-LR 1000Base-LX
+  CC_BASE: 0x31 (OK)
 ```
 
 ## SFP EEPROM Editor (Web Interface)

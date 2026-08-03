@@ -380,6 +380,20 @@ Commands (default mode):
   upload firmware <file>     Upload firmware image
   reset                      Reboot the switch
 
+SFP commands (run via "cmd" / "enc-cmd"):
+  sfp                          Show all SFP slots
+  sfp [1|2] [1g|2g5|10g]       Set SFP speed
+  sfp [1|2] dump               Dump SFP EEPROM
+  sfp [1|2] save               Save EEPROM to flash
+  sfp [1|2] restore            Restore EEPROM from flash
+  sfp [1|2] fix                Fix EEPROM checksum
+  sfp [1|2] patch [--pw <hex8>]
+  sfp [1|2] describe           Show SFP info
+  sfp [1|2] checksum [--fix] [--pw <hex8>]
+  sfp [1|2] clone [--pw <hex8>]
+  sfp [1|2] write <off> <val> [--pw <hex8>]
+  sfp [1|2] bulk <512hexchars>
+
 Arista mode (--mode arista):
   Use Arista EOS-style commands (show interfaces status, show vlan, etc.)
   Combined with --json outputs EAPI-compatible JSON-RPC format.

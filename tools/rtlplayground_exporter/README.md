@@ -4,6 +4,13 @@ A [Prometheus](https://prometheus.io/) exporter for RTLPlayground-managed networ
 
 No firmware modifications are required — the exporter speaks the same JSON API that the Web UI uses.
 
+With a pre-shared key (`--psk`, 64 hex chars) the exporter accesses the switch through the **encrypted `/enc` API** (ChaCha20-Poly1305 AEAD, RFC 8439) introduced in firmware **v0.2.23**. Every request and response is encrypted and no password login is needed. Without `--psk` it falls back to the plaintext password + session cookie authentication.
+
+## Supported versions
+
+- **RTLPlayground firmware: v0.2.23 or later** — the encrypted `/enc` API (`api <path>` mode) is required for `--psk` access.
+- **Go toolchain: 1.26.5** — the version pinned in `go.mod` and used when building via `make` (`tools/Makefile`). With `GOTOOLCHAIN=auto` (default) a newer Go downloads the required toolchain automatically.
+
 ## Usage
 
 ```bash
@@ -11,10 +18,16 @@ No firmware modifications are required — the exporter speaks the same JSON API
 cd tools/rtlplayground_exporter
 go build -o ../output/rtlplayground_exporter .
 
-# Run
+# Run with password login (firmware without PSK, or no PSK configured)
 ./rtlplayground_exporter \
   --target http://192.168.10.247 \
   --password your_password \
+  --listen :9101
+
+# Run with PSK (encrypted /enc API, firmware v0.2.23+)
+./rtlplayground_exporter \
+  --target http://192.168.10.247 \
+  --psk 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f \
   --listen :9101
 ```
 
@@ -23,7 +36,8 @@ go build -o ../output/rtlplayground_exporter .
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--target` | `http://localhost:8080` | Switch URL |
-| `--password` | `1234` | Login password |
+| `--password` | `1234` | Login password (used when `--psk` is not set) |
+| `--psk` | (empty) | Pre-shared key, 64 hex chars (32 bytes); enables encrypted `/enc` API access. Also read from the `RTLP_PSK` environment variable |
 | `--listen` | `:9101` | Exporter listen address |
 
 ### Prometheus scrape config
@@ -78,12 +92,12 @@ scrape_configs:
 
 ```
  +-----------+     HTTP/JSON      +---------------------+     Prometheus      +-----------+
- |  Switch   | <----------------> | rtlplayground_expoer | <-----------------> | Prometheus |
+ |  Switch   | <----------------> | rtlplayground_exporter | <-----------------> | Prometheus |
  |  :80      |   (existing API)   |  :9101/metrics      |    (pull)           |           |
  +-----------+                    +---------------------+                     +-----------+
 ```
 
-The exporter authenticates once at startup, and uses the session cookie for all subsequent API calls. If a 401 is received, it re-authenticates automatically.
+When `--psk` is given, every request goes through the firmware's encrypted `/enc` endpoint (`api <path>`, response also encrypted) — no session or login is used. Without `--psk`, the exporter authenticates once at startup with the password and uses the session cookie for all subsequent API calls, re-authenticating automatically on 401.
 
 ---
 
@@ -93,6 +107,13 @@ RTLPlayground 管理下のネットワークスイッチ向け Prometheus エク
 
 ファームウェアの改造は一切不要です。エクスポーターは Web UI と同じ JSON API を使用します。
 
+プリシェアードキー（`--psk`、64 hex 文字）を指定すると、ファームウェア **v0.2.23** で導入された **暗号化 `/enc` API**（ChaCha20-Poly1305 AEAD、RFC 8439）経由でアクセスします。リクエスト・レスポンスは全て暗号化され、パスワードログインは不要です。`--psk` 未指定時は従来どおり平文のパスワード + セッションクッキー認証を使用します。
+
+## 対応バージョン
+
+- **RTLPlayground ファームウェア: v0.2.23 以降** — `--psk` でのアクセスには暗号化 `/enc` API（`api <path>` モード）が必要です。
+- **Go ツールチェーン: 1.26.5** — `go.mod` で固定され、`make`（`tools/Makefile`）でのビルド時に使用するバージョンです。`GOTOOLCHAIN=auto`（デフォルト）では新しい Go が自動的に必要なツールチェーンを取得します。
+
 ## 使い方
 
 ```bash
@@ -100,10 +121,16 @@ RTLPlayground 管理下のネットワークスイッチ向け Prometheus エク
 cd tools/rtlplayground_exporter
 go build -o ../output/rtlplayground_exporter .
 
-# 実行
+# パスワードログインで実行（PSK 未設定のファームウェア向け）
 ./rtlplayground_exporter \
   --target http://192.168.10.247 \
   --password your_password \
+  --listen :9101
+
+# PSK で実行（暗号化 /enc API、ファームウェア v0.2.23 以降）
+./rtlplayground_exporter \
+  --target http://192.168.10.247 \
+  --psk 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f \
   --listen :9101
 ```
 
@@ -112,7 +139,8 @@ go build -o ../output/rtlplayground_exporter .
 | フラグ | デフォルト | 説明 |
 |--------|-----------|------|
 | `--target` | `http://localhost:8080` | スイッチのURL |
-| `--password` | `1234` | ログインパスワード |
+| `--password` | `1234` | ログインパスワード（`--psk` 未指定時のみ使用） |
+| `--psk` | （なし） | プリシェアードキー（64 hex 文字 = 32 バイト）。指定すると暗号化 `/enc` API でアクセス。`RTLP_PSK` 環境変数からも読み込み |
 | `--listen` | `:9101` | エクスポーターの待受アドレス |
 
 ### Prometheus スクレイプ設定
@@ -170,4 +198,4 @@ scrape_configs:
  +-----------+                    +---------------------+                     +-----------+
 ```
 
-エクスポーターは起動時に一度認証し、セッションクッキーを以降の API 呼び出しに使用します。401 を受け取った場合は自動的に再認証します。
+`--psk` 指定時は、すべてのリクエストがファームウェアの暗号化 `/enc` エンドポイント（`api <path>`、応答も暗号化）経由で送信されます。セッション・ログインは不要です。`--psk` 未指定時は、エクスポーターは起動時に一度パスワードで認証し、セッションクッキーを以降の API 呼び出しに使用します。401 を受け取った場合は自動的に再認証します。

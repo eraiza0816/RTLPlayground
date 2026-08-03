@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -9,6 +12,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,10 +26,15 @@ var (
 	listen     = flag.String("listen", ":9101", "Exporter listen address")
 	target     = flag.String("target", "http://localhost:8080", "Switch URL")
 	password   = flag.String("password", "1234", "Switch login password")
+	psk        = flag.String("psk", "", "Pre-shared key (64 hex chars) for encrypted /enc API access")
 )
 
 func main() {
 	flag.Parse()
+
+	if *psk == "" {
+		*psk = os.Getenv("RTLP_PSK")
+	}
 
 	exp := &Exporter{
 		target:   strings.TrimRight(*target, "/"),
@@ -33,10 +42,19 @@ func main() {
 		password: *password,
 	}
 
-	if err := exp.login(); err != nil {
-		log.Fatalf("Login failed: %v", err)
+	if *psk != "" {
+		key, err := hex.DecodeString(*psk)
+		if err != nil || len(key) != aeadKeyLen {
+			log.Fatalf("Invalid PSK: must be 64 hex characters (32 bytes)")
+		}
+		exp.psk = key
+		log.Printf("Using encrypted /enc API access with PSK for %s", exp.target)
+	} else {
+		if err := exp.login(); err != nil {
+			log.Fatalf("Login failed: %v", err)
+		}
+		log.Printf("Logged in to %s", exp.target)
 	}
-	log.Printf("Logged in to %s", exp.target)
 
 	prometheus.MustRegister(exp)
 
@@ -142,6 +160,7 @@ type Exporter struct {
 	target   string
 	client   *http.Client
 	password string
+	psk      []byte
 	cookie   string
 }
 
@@ -677,6 +696,67 @@ func (e *Exporter) login() error {
 }
 
 func fetchJSON[T any](e *Exporter, path string) (*T, error) {
+	var body []byte
+	var err error
+	if e.psk != nil {
+		body, err = e.encAPI(path)
+	} else {
+		body, err = e.sessionGET(path)
+	}
+	if err != nil {
+		return nil, err
+	}
+	var v T
+	if err := json.Unmarshal(body, &v); err != nil {
+		return nil, fmt.Errorf("json %s: %w", path, err)
+	}
+	return &v, nil
+}
+
+// encAPI fetches a JSON API response through the encrypted /enc endpoint
+// (POST "api <path>", body nonce[12] || ciphertext || tag[16]).  Requires
+// a pre-shared key; no session login is needed.
+func (e *Exporter) encAPI(path string) ([]byte, error) {
+	nonce := make([]byte, aeadNonceLen)
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, err
+	}
+	pkt, err := aeadEncrypt(e.psk, nonce, []byte("api "+path))
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest("POST", e.target+"/enc", bytes.NewReader(pkt))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/octet-stream")
+	resp, err := e.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("POST /enc %s: %w", path, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("enc request failed (status %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read /enc %s: %w", path, err)
+	}
+	if len(body) < aeadNonceLen+aeadTagLen {
+		return nil, fmt.Errorf("short encrypted response (%d bytes)", len(body))
+	}
+	pt, err := aeadDecrypt(e.psk, body[:aeadNonceLen],
+		body[aeadNonceLen:len(body)-aeadTagLen], body[len(body)-aeadTagLen:])
+	if err != nil {
+		return nil, fmt.Errorf("response decrypt failed: %w", err)
+	}
+	return pt, nil
+}
+
+// sessionGET fetches a JSON API response with the session cookie obtained
+// from the /login endpoint (plaintext; used when no PSK is configured).
+func (e *Exporter) sessionGET(path string) ([]byte, error) {
 	req, err := http.NewRequest("GET", e.target+path, nil)
 	if err != nil {
 		return nil, err
@@ -699,15 +779,7 @@ func fetchJSON[T any](e *Exporter, path string) (*T, error) {
 		}
 		defer resp.Body.Close()
 	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", path, err)
-	}
-	var v T
-	if err := json.Unmarshal(body, &v); err != nil {
-		return nil, fmt.Errorf("json %s: %w", path, err)
-	}
-	return &v, nil
+	return io.ReadAll(resp.Body)
 }
 
 func linkSpeedToBPS(code int) uint64 {

@@ -381,8 +381,15 @@ func vStp(words []string) error {
 }
 
 func vIgmp(words []string) error {
+	if len(words) == 3 && words[1] == "querier" {
+		switch words[2] {
+		case "on", "off", "show":
+			return nil
+		}
+		return fmt.Errorf("usage: igmp querier on|off|show")
+	}
 	if len(words) > 2 {
-		return fmt.Errorf("usage: igmp [on|off|show]")
+		return fmt.Errorf("usage: igmp [on|off|show|querier on|off|show]")
 	}
 	if len(words) == 2 && words[1] != "on" && words[1] != "off" && words[1] != "show" {
 		return fmt.Errorf("usage: igmp [on|off|show]")

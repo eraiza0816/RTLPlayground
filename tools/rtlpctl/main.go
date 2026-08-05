@@ -167,6 +167,8 @@ func runCmd(client *Client, args []string, cfg config) error {
 		return cmdPing(client, cmdArgs, cfg.jsonMode)
 	case "lldp":
 		return cmdLldp(client, cmdArgs, cfg.jsonMode)
+	case "show":
+		return cmdShow(client, cmdArgs, cfg.jsonMode)
 	case "enc-cmd", "enccmd":
 		return cmdEnc(client, cmdArgs, cfg.jsonMode, cfg.force)
 	case "enc-api", "encapi":

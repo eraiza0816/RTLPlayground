@@ -71,6 +71,13 @@ var igmpDeviceCmds = []deviceCmd{
 	{"on", "Enable IGMP snooping"},
 	{"off", "Disable IGMP snooping"},
 	{"show", "Show IGMP snooping status"},
+	{"querier", "ASIC IGMP/MLD querier control (on|off|show)"},
+}
+
+var showDeviceCmds = []deviceCmd{
+	{"running-config", "Show the config 'commit' would save (console)"},
+	{"startup-config", "Show the saved config from flash (console)"},
+	{"arp", "Show the ARP cache (console)"},
 }
 
 var stpDeviceCmds = []deviceCmd{
@@ -179,7 +186,7 @@ var deviceTopCmds = []deviceCmdGroup{
 	{"telnet", "Telnet server control", telnetDeviceCmds},
 	{"web", "Web interface control", webDeviceCmds},
 	{"commit", "Save running configuration to flash", nil},
-	{"show", "Show system information", nil},
+	{"show", "Show system information / running-config / startup-config / arp", showDeviceCmds},
 	{"version", "Print software version and build info", nil},
 	{"time", "Show internal tick and hardware counters", nil},
 	{"history", "Show command history", nil},

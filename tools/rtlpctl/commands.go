@@ -278,6 +278,30 @@ func cmdCmd(client *Client, args []string, asJSON bool, force bool) error {
 	return nil
 }
 
+// sendConsoleCmd posts a CLI command whose output appears on the switch's
+// serial console (the /cmd endpoint only acknowledges execution, so there
+// is nothing to render here).
+func sendConsoleCmd(client *Client, cmdText string) error {
+	if err := client.PostRaw("/cmd", "text/plain", strings.NewReader(cmdText)); err != nil {
+		return err
+	}
+	fmt.Println("OK (output appears on the switch console)")
+	return nil
+}
+
+// cmdShow sends a read-only "show" subcommand (Tier 1: running/startup
+// config, ARP cache) through the CLI; the output appears on the console.
+func cmdShow(client *Client, args []string, asJSON bool) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: show running-config|startup-config|arp")
+	}
+	switch args[0] {
+	case "running-config", "startup-config", "arp":
+		return sendConsoleCmd(client, "show "+args[0])
+	}
+	return fmt.Errorf("unknown show target: %q (use running-config, startup-config, arp)", args[0])
+}
+
 // cmdPing runs the switch's ICMP echo sender.  The command text is
 // validated locally first; the ping output appears on the switch's
 // serial console (the /cmd endpoint only acknowledges execution).
@@ -288,11 +312,7 @@ func cmdPing(client *Client, args []string, asJSON bool) error {
 	if err := validateIPAddr(args[0]); err != nil {
 		return err
 	}
-	if err := client.PostRaw("/cmd", "text/plain", strings.NewReader("ping "+args[0])); err != nil {
-		return err
-	}
-	fmt.Println("OK (ping output appears on the switch console)")
-	return nil
+	return sendConsoleCmd(client, "ping "+args[0])
 }
 
 // cmdLldp controls LLDP (IEEE 802.1AB neighbor discovery).
@@ -310,15 +330,7 @@ func cmdLldp(client *Client, args []string, asJSON bool) error {
 	if len(args) > 1 {
 		return fmt.Errorf("usage: lldp [on|off|show]")
 	}
-	if err := client.PostRaw("/cmd", "text/plain", strings.NewReader(cmdText)); err != nil {
-		return err
-	}
-	if len(args) > 0 && args[0] == "show" {
-		fmt.Println("OK (neighbor table appears on the switch console)")
-	} else {
-		fmt.Println("OK")
-	}
-	return nil
+	return sendConsoleCmd(client, cmdText)
 }
 
 // cmdEnc sends a command through the encrypted /enc endpoint (PSK auth).

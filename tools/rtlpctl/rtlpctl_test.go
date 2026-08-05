@@ -908,6 +908,32 @@ func TestBinaryEndToEnd(t *testing.T) {
 		}
 	})
 
+	t.Run("default_show_arp", func(t *testing.T) {
+		mockCmdBodies = nil
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		out, err := exec.Command(bin, "--host", h, "--password", "test123",
+			"show", "arp").CombinedOutput()
+		if err != nil {
+			t.Fatalf("show arp failed: %v\noutput: %s", err, out)
+		}
+		if !strings.Contains(strings.Join(mockCmdBodies, ","), "show arp") {
+			t.Errorf("expected 'show arp' via /cmd, got bodies: %v", mockCmdBodies)
+		}
+	})
+
+	t.Run("default_show_bad_target", func(t *testing.T) {
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		out, err := exec.Command(bin, "--host", h, "--password", "test123",
+			"show", "frobnicate").CombinedOutput()
+		if err == nil || !strings.Contains(string(out), "unknown show target") {
+			t.Errorf("expected 'unknown show target' error, got err=%v out=%s", err, out)
+		}
+	})
+
 	t.Run("arista_show_running_config", func(t *testing.T) {
 		ts2 := newMockServer(t)
 		defer ts2.Close()

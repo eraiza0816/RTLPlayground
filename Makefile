@@ -1,4 +1,4 @@
-VERSION=0.2.23
+VERSION=0.2.24
 
 # WebUI option: WEB=1 (default) to enable, WEB=0 to disable
 WEB ?= 1
@@ -28,8 +28,17 @@ endif
 BUILDDIR = output/$(MACHINE)
 VERSION_HEADER := version.h
 
-GIT_VERSION := $(shell git rev-parse --short HEAD)
-ifeq ($(shell git status --porcelain --untracked-files=no),)
+GIT_VERSION := $(shell git rev-parse --short HEAD 2>/dev/null)
+ifeq ($(GIT_VERSION),)
+	# GitHub Actions: git rev-parse can fail in the runner environment;
+	# fall back to the checked-out commit SHA, then to a placeholder so
+	# the version string never has an empty component.
+	GIT_VERSION := $(shell printf '%s' $${GITHUB_SHA} | cut -c1-7)
+endif
+ifeq ($(GIT_VERSION),)
+	GIT_VERSION := unknown
+endif
+ifeq ($(shell git status --porcelain --untracked-files=no 2>/dev/null),)
 else
 	GIT_VERSION := $(GIT_VERSION)-dirty
 endif
@@ -81,6 +90,7 @@ html_data.c html_data.h: $(HTML) tools/output/fileadder
 endif
 
 $(VERSION_HEADER):
+	@echo "GIT_VERSION=$(GIT_VERSION)"
 	@echo "#ifndef VERSION_H" > $(VERSION_HEADER)
 	@echo "#define VERSION_H" >> $(VERSION_HEADER)
 	@echo "#define VERSION_SW \"$(VERSION_EXTENSION)\"" >> $(VERSION_HEADER)

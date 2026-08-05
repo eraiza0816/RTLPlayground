@@ -41,7 +41,7 @@ jobs:
         run: |
           cd output/${{ matrix.machine }}
           for f in rtlplayground-v*-lite-*.bin; do
-            mv "$f" "rtlplayground-WEB-${f#rtlplayground-}"
+            mv "$f" "$(printf '%s' "$f" | sed 's/^rtlplayground-v\(.*\)-lite-\(.*\)$/rtlplayground-WEB-lite-v\1-\2/')"
           done
 
       - name: Build firmware (CLI, no web, Lite CLI)
@@ -50,7 +50,7 @@ jobs:
           make WEB=0 MACHINE="${{ matrix.machine }}"
           cd output/${{ matrix.machine }}
           for f in rtlplayground-v*-lite-*.bin; do
-            mv "$f" "rtlplayground-CLI-${f#rtlplayground-}"
+            mv "$f" "$(printf '%s' "$f" | sed 's/^rtlplayground-v\(.*\)-lite-\(.*\)$/rtlplayground-CLI-lite-v\1-\2/')"
           done
 
       - name: Build firmware (WEB, Full CLI)
@@ -59,7 +59,7 @@ jobs:
           make FULL=1 MACHINE="${{ matrix.machine }}"
           cd output/${{ matrix.machine }}
           for f in rtlplayground-v*-full-*.bin; do
-            mv "$f" "rtlplayground-WEB-FULL-${f#rtlplayground-}"
+            mv "$f" "$(printf '%s' "$f" | sed 's/^rtlplayground-v\(.*\)-full-\(.*\)$/rtlplayground-WEB-full-v\1-\2/')"
           done
 
       - name: Build firmware (CLI, no web, Full CLI)
@@ -68,7 +68,7 @@ jobs:
           make WEB=0 FULL=1 MACHINE="${{ matrix.machine }}"
           cd output/${{ matrix.machine }}
           for f in rtlplayground-v*-full-*.bin; do
-            mv "$f" "rtlplayground-CLI-FULL-${f#rtlplayground-}"
+            mv "$f" "$(printf '%s' "$f" | sed 's/^rtlplayground-v\(.*\)-full-\(.*\)$/rtlplayground-CLI-full-v\1-\2/')"
           done
 
       - name: Upload firmware artifact

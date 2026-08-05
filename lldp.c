@@ -271,8 +271,7 @@ uint8_t lldp_rx(void) __banked
 	    uip_buf[3] != 0x00 || uip_buf[4] != 0x00 || uip_buf[5] != LLDP_DST_MAC_5)
 		return 0;
 	if (uip_buf[24] != 0x88 || uip_buf[25] != 0xcc)
-		return 0;
-	/* Ignore our own frames (the flooded LLDPDU echoes back to the CPU). */
+		return 0;	/* Ignore our own frames (the flooded LLDPDU echoes back to the CPU). */
 	if (uip_buf[6] == uip_ethaddr.addr[0] && uip_buf[7] == uip_ethaddr.addr[1] &&
 	    uip_buf[8] == uip_ethaddr.addr[2] && uip_buf[9] == uip_ethaddr.addr[3] &&
 	    uip_buf[10] == uip_ethaddr.addr[4] && uip_buf[11] == uip_ethaddr.addr[5])

@@ -2063,7 +2063,16 @@ void cmd_parser(void) __banked
 				igmp_enable();
 			else if (cmd_compare(1, "show"))
 				igmp_show();
-			else
+			else if (cmd_compare(1, "querier")) {
+				if (cmd_compare(2, "on"))
+					igmp_querier_on();
+				else if (cmd_compare(2, "off"))
+					igmp_querier_off();
+				else if (cmd_compare(2, "show"))
+					igmp_querier_show();
+				else
+					print_string("Usage: igmp querier on|off|show\n");
+			} else
 				igmp_setup();  // Reverts to default with IP-MC being flooded
 		} else if (cmd_compare(0, "stp")) {
 			if (cmd_compare(1, "on")) {

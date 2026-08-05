@@ -144,9 +144,83 @@ void igmp_enable(void) __banked
 
 	// Configure per-port IGMP configuration, bits 0-10 enable MC protocol snooping,
 	// bits 16-24 configure max MC group used by that port. Trap to CPU (10)
+	// bit 14 (ALLOW_QUERY) lets the ASIC send/receive IGMP queries on the port.
 	for (uint8_t i = machine.min_port; i <= machine.max_port; i++) {
-		REG_SET(RTL837X_IGMP_PORT_CFG + (i << 2), IGMP_MAX_GROUP | IGMP_PROTOCOL_ENABLE | IGMP_TRAP);
+		REG_SET(RTL837X_IGMP_PORT_CFG + (i << 2), IGMP_MAX_GROUP | IGMP_PROTOCOL_ENABLE | IGMP_TRAP | (1 << 14));
 	}
+}
+
+
+/*
+ * HW IGMP/MLD querier (RTL8373): the ASIC sends General Queries at the
+ * configured interval.  Registers per the SDK (dal_rtl8373_igmp.c):
+ *   - IGMP_CTRL (0x5290): bit 0 IGMP_MLD_EN, bits 5-7 LEAVE_TIMER,
+ *     bits 10-12 ROBUSTNESS_VAR
+ *   - IGMP_QUERY_INTVL (0x5294): 16-bit query interval in seconds
+ *   - IGMP_PORT_CFG (0x52A0+port*4): bit 14 ALLOW_QUERY
+ * All scratch is XDATA (the internal RAM overlay is full).
+ */
+static __xdata uint8_t igmp_qport;
+static __xdata uint8_t igmp_qbyte;
+
+void igmp_querier_on(void) __banked
+{
+	// Query interval: 60 seconds (default 125)
+	REG_WRITE(0x5294, 0, 0, 0, 60);
+
+	// IGMP_CTRL: enable the engine, LEAVE_TIMER = 2, ROBUSTNESS = 2
+	reg_read_m(0x5290);
+	sfr_mask_data(0, 0x01, 0x01);      // bit 0: IGMP_MLD_EN
+	sfr_mask_data(0, 0xe0, 2 << 5);    // bits 5-7: LEAVE_TIMER
+	sfr_mask_data(1, 0x1c, 2 << 2);    // bits 10-12: ROBUSTNESS_VAR
+	reg_write_m(0x5290);
+
+	// Per-port ALLOW_QUERY (bit 14)
+	for (igmp_qport = machine.min_port; igmp_qport <= machine.max_port; igmp_qport++) {
+		reg_read_m(RTL837X_IGMP_PORT_CFG + (igmp_qport << 2));
+		sfr_mask_data(1, 0x40, 0x40);
+		reg_write_m(RTL837X_IGMP_PORT_CFG + (igmp_qport << 2));
+	}
+	print_string("IGMP querier enabled (60s interval)\n");
+}
+
+void igmp_querier_off(void) __banked
+{
+	REG_WRITE(0x5294, 0, 0, 0, 0);     // stop the queries
+	reg_read_m(0x5290);
+	sfr_mask_data(0, 0x01, 0x00);      // clear IGMP_MLD_EN
+	reg_write_m(0x5290);
+	print_string("IGMP querier disabled\n");
+}
+
+void igmp_querier_show(void) __banked
+{
+	print_string("Query interval: ");
+	reg_read_m(0x5294);
+	itoa(sfr_data[3]);
+	if (sfr_data[2]) {
+		print_string(" (hi: ");
+		itoa(sfr_data[2]);
+		write_char(')');
+	}
+	write_char('\n');
+	print_string("IGMP_CTRL: ");
+	reg_read_m(0x5290);
+	print_sfr_data();
+	write_char('\n');
+	print_string("Port ALLOW_QUERY:");
+	for (igmp_qport = machine.min_port; igmp_qport <= machine.max_port; igmp_qport++) {
+		reg_read_m(RTL837X_IGMP_PORT_CFG + (igmp_qport << 2));
+		igmp_qbyte = sfr_data[2] & 0x40;
+		write_char(' ');
+		itoa(machine.log_to_phys_port[igmp_qport]);
+		write_char(':');
+		if (igmp_qbyte)
+			print_string("yes");
+		else
+			print_string("no");
+	}
+	write_char('\n');
 }
 
 

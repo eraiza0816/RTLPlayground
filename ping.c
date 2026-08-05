@@ -179,7 +179,7 @@ static void ping_stats_print(void)
 }
 
 
-void ping_start(void)
+void ping_start(void) __banked
 {
 	if (ping_state) {
 		print_string("Ping already in progress\n");
@@ -201,7 +201,7 @@ void ping_start(void)
 }
 
 
-void ping_pump(void)
+void ping_pump(void) __banked
 {
 	if (ping_state == 0)
 		return;
@@ -227,7 +227,7 @@ void ping_pump(void)
 }
 
 
-uint8_t ping_rx(void)
+uint8_t ping_rx(void) __banked
 {
 	if (ping_state == 0)
 		return 0;
@@ -280,7 +280,7 @@ uint8_t ping_rx(void)
 }
 
 
-void ping_abort(void)
+void ping_abort(void) __banked
 {
 	if (ping_state) {
 		ping_stats_print();

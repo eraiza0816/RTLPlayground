@@ -25,6 +25,13 @@ send "exit\r"
 '
 ```
 
+> **Testing without hardware:** the bundled telnet CLI simulator
+> (`tools/output/cli_sim`, built by `make -C tools`) speaks the same protocol
+> with the same command set (Lite variant) and keeps state (ports, VLANs,
+> hostname) for the lifetime of the process. Point the scripts at
+> `127.0.0.1 2323` instead of the switch to test them offline:
+> `cli_sim [port]` (default port 2323, password `1234`).
+
 ## Firmware Upload
 
 You can automate upload of the firmware via WEB with curl:

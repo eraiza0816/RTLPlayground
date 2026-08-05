@@ -4,6 +4,18 @@ This document describes all commands available on the serial console.
 Commands that have a dedicated document are listed with a brief syntax
 summary and a reference to the detailed description.
 
+> **Note:** This document describes the console commands of the **Lite** CLI
+> variant (default build; `make FULL=1` selects the Full variant).
+> The Lite console is a **flat CLI** — all commands are executed directly
+> from the `[hostname]> ` prompt. There are no modes
+> (`enable` / `configure terminal` / `exit` do not exist on the device)
+> and no `?` / `help` / Tab completion in the firmware. Interactive help
+> and Tab completion are provided by `rtlpctl` (type `?` or press Tab in
+> its shell). EOS-style operation is also provided by `rtlpctl --mode
+> arista`. In the **Full** variant the EOS-like mode hierarchy
+> (`enable` → `configure terminal`) and `?`/help/Tab completion are
+> available on the device (see [cli-design.md](cli-design.md)).
+
 ## Diagnostic and Info Commands
 
 ```

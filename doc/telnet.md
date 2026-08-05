@@ -34,7 +34,14 @@ The default password is `1234`. The password can be changed at runtime via the C
 (`passwd <newpassword>`). Authentication does not lock the session on failure —
 you are simply re-prompted.
 
-Once authenticated, the CLI prompt `> ` appears and you can enter any CLI command.
+Once authenticated, the CLI prompt `[hostname]> ` appears and you can enter any CLI command.
+The console is a flat CLI in the default **Lite** build: there is no
+`enable` / `configure terminal` mode system and no `?` / `help` / Tab
+completion on the device. For command help, Tab completion, or an Arista
+EOS-style interface, use `rtlpctl` interactively (`rtlpctl --host <ip>
+--password <pw>`; `?` shows device commands, Tab completes). The **Full**
+build (`make FULL=1`) provides the EOS-like mode hierarchy and
+`?`/help/Tab completion on the device itself.
 
 ## Available Commands
 

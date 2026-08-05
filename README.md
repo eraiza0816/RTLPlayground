@@ -75,6 +75,19 @@ make
 ```
 Note, that the image generated ends in .bin, not .img, in order to make IMSProg happy.
 
+The build has two CLI variants, selected with the `FULL` variable (same
+mechanism as the `WEB` WebUI switch):
+
+| Variant | Build command | Console |
+|---------|---------------|---------|
+| **Lite** (default) | `make` | Flat CLI: every command directly from the `[hostname]> ` prompt, no modes, no `?`/help/Tab completion on the device (provided by `rtlpctl` instead) |
+| **Full** | `make FULL=1` | Legacy EOS-style CLI: `enable` / `configure terminal` mode hierarchy, `?`/help and Tab completion |
+
+The variant is reflected in the image name and in `version`
+(`...-lite-...` / `...-full-...`). Both variants keep the same HTTP API
+(`/cmd` password-authenticated in CONFIG mode, `/enc` PSK-authenticated
+`commit`) and the same rtlpctl support.
+
 image location is stored in `RTLPlayground/output/rtlplayground_version_machine.bin`
 for example
 ```
@@ -299,6 +312,14 @@ port z 1g               = Set 1g speed for port z
 igmp on/off             = Turn IGMP on or off
 ```
 All CLI commands are available via the serial console (UART, 115200 8N1) or Telnet (port 23).
+
+> **Note:** The device CLI is a **flat command set** — every command can be
+> issued directly from the `[hostname]> ` prompt. There is no
+> `enable` / `configure terminal` mode system, and no `?` / `help` /
+> Tab completion on the device. If you want an Arista EOS-style CLI
+> (modes, `show interfaces`, EAPI JSON output), or in-shell command help
+> and Tab completion, use `rtlpctl` interactively
+> (see [tools/rtlpctl](tools/rtlpctl)).
 
 ### System commands
 ```

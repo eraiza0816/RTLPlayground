@@ -131,26 +131,42 @@ rtlpctl --help
 
 Start without arguments to enter interactive mode.
 
+The prompt shows the device hostname when it can be fetched
+(`rtlpctl@<hostname>> ` / `rtlpctl@<hostname># ` in arista mode); without
+login credentials or when the device is unreachable it falls back to
+`rtlp> `.
+
 ```bash
 $ rtlpctl --host 192.168.1.1
 rtlpctl: RTLPlayground CLI (connected to http://192.168.1.1)
-Type 'help' for commands, 'exit' to quit.
-rtlp> login 1234
+Type 'help' for commands, 'exit' to quit. Tab completes, '?' shows device help.
+rtlpctl@sw1> login 1234
 OK
-rtlp> status
+rtlpctl@sw1> status
 Port  Name     Link   Enabled  TX Good  TX Bad  RX Good  RX Bad
 1     Port 1   1G     yes      123456   0       654321   0
 2     Port 2   down   no       0        0       0        0
 ...
-rtlp> vlan 100
+rtlpctl@sw1> vlan 100
 VLAN 100:
 Members:  0x00060011
 Name:     Default
 PVID:     0x00000001
-rtlp> cmd "ip 192.168.1.100"
+rtlpctl@sw1> cmd "ip 192.168.1.100"
 OK
-rtlp> exit
+rtlpctl@sw1> exit
 ```
+
+The firmware console has no `?`/`help`/Tab completion; in interactive mode
+**rtlpctl provides them instead** (a TTY is required):
+
+- `?` alone lists all device commands; `sfp ?` lists the sub-commands of a
+  command (`?` after a space shows context help)
+- **Tab** completes the current word: device commands, sub-commands
+  (`port 1<tab>` → `port 10m`...), and in arista mode the EOS vocabulary
+  (`show int<tab>` → `show interfaces`)
+- **Arrow keys**: up/down recall the command history and re-run an entry
+  (the line being edited is preserved), left/right move the cursor
 
 The following internal commands are available in interactive mode:
 
@@ -188,8 +204,15 @@ Use `--mode arista` or the environment variable `MODE=arista` for Arista EOS-com
 | `configure [terminal]` | Enter config mode |
 | `copy running-config startup-config` | Save configuration |
 | `write memory` | Save configuration |
+| `clear mac address-table dynamic` | Flush learned MACs (`l2 forget`) |
 | `clear logging` | Clear command log |
 | `enable` | Privileged mode |
+
+> **Note:** `copy running-config startup-config` / `write memory` save the
+> configuration via the encrypted `/enc` endpoint and therefore require a
+> pre-shared key (`--psk <64-hex>`, matching the PSK configured on the
+> switch). Without a PSK the command prints a hint instead of silently
+> doing nothing.
 
 ### EAPI JSON-RPC Output
 

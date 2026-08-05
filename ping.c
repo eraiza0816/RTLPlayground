@@ -198,7 +198,10 @@ void ping_start(void) __banked
 	ping_sum_rtt = 0;
 	ping_rtt_set = 0;
 	ping_next_ticks = ticks;
-	ping_tmo_ticks = 0;
+	/* The first attempt's timeout starts immediately: while the ARP
+	 * entry is unresolved the echo cannot be sent, but the attempt
+	 * must still time out (see ping_pump). */
+	ping_tmo_ticks = ticks + PING_TIMEOUT;
 	ping_state = 1;
 }
 

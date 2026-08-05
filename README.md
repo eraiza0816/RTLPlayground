@@ -87,6 +87,7 @@ The variant is reflected in the image name and in `version`
 (`...-lite-...` / `...-full-...`). Both variants keep the same HTTP API
 (`/cmd` password-authenticated in CONFIG mode, `/enc` PSK-authenticated
 `commit`) and the same rtlpctl support.
+See [doc/cli-variants.md](doc/cli-variants.md) for the full comparison.
 
 image location is stored in `RTLPlayground/output/rtlplayground_version_machine.bin`
 for example

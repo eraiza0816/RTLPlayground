@@ -20,6 +20,7 @@
 #include "cmd_parser.h"
 #include "cmd_editor.h"
 #include "ping.h"
+#include "lldp.h"
 #include "uip/uipopt.h"
 #include "uip/uip.h"
 #include "uip/uip_arp.h"
@@ -1127,9 +1128,11 @@ void handle_rx(void)
 				}
 			}
 		} else {
+			if (!lldp_rx()) {
 #ifdef RXTXDBG
-			print_string("Unknown RX on port "); print_byte(rx_headers[3] & 0xf); write_char('\n');
+				print_string("Unknown RX on port "); print_byte(rx_headers[3] & 0xf); write_char('\n');
 #endif
+			}
 		}
 	}
 }
@@ -1443,6 +1446,8 @@ void idle(void)
 	handle_tx();
 	// Send pending ICMP echo requests / process ping timeouts
 	ping_pump();
+	// LLDP: 1s neighbor aging + 30s LLDPDU transmission
+	lldp_timers();
 	// If STP protocol enabled, decrease STP timers to trigger actions
 	if (stpEnabled) {
 		if (!stp_clock) {
@@ -2108,6 +2113,7 @@ void main(void)
 	uip_arp_init();
 	httpd_init();
 	telnetd_init();
+	lldp_setup();
 	telnet_active = 1;
 
 	management_vlan = 1; // Default management VLAN is 1

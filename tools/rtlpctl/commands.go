@@ -278,6 +278,49 @@ func cmdCmd(client *Client, args []string, asJSON bool, force bool) error {
 	return nil
 }
 
+// cmdPing runs the switch's ICMP echo sender.  The command text is
+// validated locally first; the ping output appears on the switch's
+// serial console (the /cmd endpoint only acknowledges execution).
+func cmdPing(client *Client, args []string, asJSON bool) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: ping <ip-address>")
+	}
+	if err := validateIPAddr(args[0]); err != nil {
+		return err
+	}
+	if err := client.PostRaw("/cmd", "text/plain", strings.NewReader("ping "+args[0])); err != nil {
+		return err
+	}
+	fmt.Println("OK (ping output appears on the switch console)")
+	return nil
+}
+
+// cmdLldp controls LLDP (IEEE 802.1AB neighbor discovery).
+// "lldp show" prints the neighbor table on the switch console.
+func cmdLldp(client *Client, args []string, asJSON bool) error {
+	cmdText := "lldp"
+	if len(args) > 0 {
+		switch args[0] {
+		case "on", "off", "show":
+			cmdText = "lldp " + args[0]
+		default:
+			return fmt.Errorf("usage: lldp [on|off|show]")
+		}
+	}
+	if len(args) > 1 {
+		return fmt.Errorf("usage: lldp [on|off|show]")
+	}
+	if err := client.PostRaw("/cmd", "text/plain", strings.NewReader(cmdText)); err != nil {
+		return err
+	}
+	if len(args) > 0 && args[0] == "show" {
+		fmt.Println("OK (neighbor table appears on the switch console)")
+	} else {
+		fmt.Println("OK")
+	}
+	return nil
+}
+
 // cmdEnc sends a command through the encrypted /enc endpoint (PSK auth).
 func cmdEnc(client *Client, args []string, asJSON bool, force bool) error {
 	if len(args) == 0 {
@@ -392,6 +435,11 @@ Commands (default mode):
   cmd-log clear              Clear command history
   upload firmware <file>     Upload firmware image
   reset                      Reboot the switch
+  ping <ip>                  Send 4 ICMP echoes from the switch (v0.2.24+)
+  lldp [on|off|show]         LLDP neighbor discovery (v0.2.24+)
+  show running-config        Show the config 'commit' would save (console)
+  show startup-config        Show the saved config from flash (console)
+  show arp                   Show the switch ARP cache (console)
 
 SFP commands (run via "cmd" / "enc-cmd"):
   sfp                          Show all SFP slots

@@ -392,7 +392,7 @@ var internalCmdNames = []string{
 }
 
 var aristaShowSubs = []string{
-	"interfaces", "running-config", "vlan", "inventory", "mac",
+	"interfaces", "running-config", "startup-config", "arp", "vlan", "inventory", "mac",
 	"logging", "port-channel", "monitoring", "queue", "system",
 	"mtu", "eee", "config", "cmd-log",
 }

@@ -78,6 +78,12 @@ var stpDeviceCmds = []deviceCmd{
 	{"off", "Disable Spanning Tree Protocol"},
 }
 
+var lldpDeviceCmds = []deviceCmd{
+	{"on", "Enable LLDP neighbor discovery"},
+	{"off", "Disable LLDP neighbor discovery"},
+	{"show", "Show the LLDP neighbor table"},
+}
+
 var isolateDeviceCmds = []deviceCmd{
 	{"show", "Show isolation configuration"},
 	{"off", "Disable port isolation"},
@@ -147,6 +153,8 @@ var deviceTopCmds = []deviceCmdGroup{
 	{"l2", "L2 MAC address table show, forget, delete", l2DeviceCmds},
 	{"igmp", "IGMP snooping control", igmpDeviceCmds},
 	{"stp", "Spanning Tree Protocol control", stpDeviceCmds},
+	{"lldp", "LLDP neighbor discovery (IEEE 802.1AB)", lldpDeviceCmds},
+	{"ping", "Send 4 ICMP echoes to an IP address", nil},
 	{"pvid", "Set port VLAN ID (PVID)", nil},
 	{"vlan", "VLAN create, delete, show, and management", vlanDeviceCmds},
 	{"isolate", "Port isolation configuration", isolateDeviceCmds},

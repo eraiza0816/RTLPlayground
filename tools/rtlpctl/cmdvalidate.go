@@ -30,6 +30,8 @@ var cmdValidators = map[string]func([]string) error{
 	"bw":            vBW,
 	"stp":           vStp,
 	"igmp":          vIgmp,
+	"lldp":          vLLDP,
+	"ping":          vPing,
 	"telnet":        vOnOff("telnet"),
 	"web":           vOnOff("web"),
 	"l2":            vL2,
@@ -386,6 +388,25 @@ func vIgmp(words []string) error {
 		return fmt.Errorf("usage: igmp [on|off|show]")
 	}
 	return nil
+}
+
+// vLLDP validates the lldp command (LLDP neighbor discovery, Tier 2).
+func vLLDP(words []string) error {
+	if len(words) > 2 {
+		return fmt.Errorf("usage: lldp [on|off|show]")
+	}
+	if len(words) == 2 && words[1] != "on" && words[1] != "off" && words[1] != "show" {
+		return fmt.Errorf("usage: lldp [on|off|show]")
+	}
+	return nil
+}
+
+// vPing validates the ping command: exactly one dotted-quad IP address.
+func vPing(words []string) error {
+	if len(words) != 2 {
+		return fmt.Errorf("usage: ping <ip-address>")
+	}
+	return validateIPAddr(words[1])
 }
 
 func vL2(words []string) error {

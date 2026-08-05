@@ -18,6 +18,7 @@
 #include "dhcp.h"
 #include "uip/uip.h"
 #include "ping.h"
+#include "lldp.h"
 #include "version.h"
 
 #include "machine.h"
@@ -1534,6 +1535,25 @@ void parse_show(void)
 extern void parse_l2_delete(void) __banked;
 
 
+void parse_lldp(void)
+{
+	if (cmd_words_len >= 2 && cmd_compare(1, "on")) {
+		lldp_enabled = 1;
+		print_string("LLDP enabled\n");
+	} else if (cmd_words_len >= 2 && cmd_compare(1, "off")) {
+		lldp_enabled = 0;
+		print_string("LLDP disabled\n");
+	} else if (cmd_words_len >= 2 && cmd_compare(1, "show")) {
+		lldp_show();
+	} else {
+		if (lldp_enabled)
+			print_string("LLDP: enabled\n");
+		else
+			print_string("LLDP: disabled\n");
+	}
+}
+
+
 void parse_ping(void)
 {
 	if (cmd_words_len < 2) {
@@ -1863,6 +1883,7 @@ __code struct mode_entry mode_allow[] = {
 	{"web",         (1<<MODE_CONFIG)},
 	{"show",        (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
 	{"ping",        (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"lldp",        (1<<MODE_CONFIG)},
 	{"commit",      (1<<MODE_PRIVILEGED)},
 	{"xmodem",      (1<<MODE_PRIVILEGED)},
 	{0, 0}
@@ -2110,6 +2131,8 @@ void cmd_parser(void) __banked
 			parse_show();
 		} else if (cmd_compare(0, "ping")) {
 			parse_ping();
+		} else if (cmd_compare(0, "lldp")) {
+			parse_lldp();
 		} else if (cmd_compare(0, "hostname")) {
 			parse_hostname();
 		} else if (cmd_compare(0, "version")) {

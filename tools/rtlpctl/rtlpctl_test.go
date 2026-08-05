@@ -917,8 +917,39 @@ func TestBinaryEndToEnd(t *testing.T) {
 		if err != nil {
 			t.Fatalf("arista show running-config failed: %v\noutput: %s", err, out)
 		}
+		if !strings.Contains(string(out), "OK") {
+			t.Errorf("expected /cmd acknowledgement, got: %s", out)
+		}
+		if !strings.Contains(strings.Join(mockCmdBodies, ","), "show running-config") {
+			t.Errorf("expected 'show running-config' to be sent via /cmd, got bodies: %v", mockCmdBodies)
+		}
+	})
+
+	t.Run("arista_show_startup_config", func(t *testing.T) {
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		out, err := exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+			"show", "startup-config").CombinedOutput()
+		if err != nil {
+			t.Fatalf("arista show startup-config failed: %v\noutput: %s", err, out)
+		}
 		if !strings.Contains(string(out), "ip 192.168") {
 			t.Errorf("expected config output, got: %s", out)
+		}
+	})
+
+	t.Run("arista_show_arp", func(t *testing.T) {
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		out, err := exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+			"show", "arp").CombinedOutput()
+		if err != nil {
+			t.Fatalf("arista show arp failed: %v\noutput: %s", err, out)
+		}
+		if !strings.Contains(strings.Join(mockCmdBodies, ","), "show arp") {
+			t.Errorf("expected 'show arp' to be sent via /cmd, got bodies: %v", mockCmdBodies)
 		}
 	})
 

@@ -681,6 +681,20 @@ static void cmd_show_arp(struct conn *c)
 	conn_send(c, "192.168.10.1     18:ec:e7:95:a9:87   0s\n");
 }
 
+static void cmd_lldp(struct conn *c, char **w, int nw)
+{
+	if (nw >= 2 && !strcmp(w[1], "on")) {
+		conn_send(c, "LLDP enabled\n");
+	} else if (nw >= 2 && !strcmp(w[1], "off")) {
+		conn_send(c, "LLDP disabled\n");
+	} else if (nw >= 2 && !strcmp(w[1], "show")) {
+		conn_send(c, "Port  Chassis ID         Port ID      System Name      TTL\n");
+		conn_send(c, "1     18:ec:e7:95:a9:87  port 1      neighbor-switch    118\n");
+	} else {
+		conn_send(c, "LLDP: disabled\n");
+	}
+}
+
 static void cmd_stp(struct conn *c, char **w, int nw)
 {
 	if (nw >= 2 && !strcmp(w[1], "on")) {
@@ -911,6 +925,8 @@ static void execute_line(struct conn *c, char *line)
 		cmd_netmask(c, words, nw);
 	else if (!strcmp(cmd, "stp"))
 		cmd_stp(c, words, nw);
+	else if (!strcmp(cmd, "lldp"))
+		cmd_lldp(c, words, nw);
 	else if (!strcmp(cmd, "igmp"))
 		cmd_igmp(c, words, nw);
 	else if (!strcmp(cmd, "telnet"))

@@ -117,6 +117,12 @@ func aristaShow(client *Client, args []string, jsonMode bool) error {
 	case matchCmd(sub, "interfaces") || matchCmd(sub, "int"):
 		return aristaShowInterfaces(client, args[1:], jsonMode)
 	case matchCmd(sub, "running-config") || matchCmd(sub, "run"):
+		/* Since v0.2.24 the firmware distinguishes running-config (in
+		 * memory) from startup-config (flash).  The /config endpoint
+		 * returns the flash copy, and the running config is only
+		 * available through the CLI (output on the switch console). */
+		return aristaConsoleCmd(client, "show running-config", jsonMode)
+	case matchCmd(sub, "startup-config"):
 		data, err := client.GetText("/config")
 		if err != nil {
 			return err
@@ -130,6 +136,8 @@ func aristaShow(client *Client, args []string, jsonMode bool) error {
 			}
 		}
 		return nil
+	case matchCmd(sub, "arp"):
+		return aristaConsoleCmd(client, "show arp", jsonMode)
 	case matchCmd(sub, "vlan"):
 		return aristaShowVlan(client, args[1:], jsonMode)
 	case matchCmd(sub, "inventory") || matchCmd(sub, "inv"):
@@ -398,6 +406,21 @@ func aristaUnknown(cmd string, jsonMode bool) {
 	} else {
 		fmt.Fprintf(os.Stderr, "%% Unknown command: %s\n", cmd)
 	}
+}
+
+// aristaConsoleCmd sends a CLI command whose output appears on the
+// switch's serial console (the /cmd endpoint only acknowledges
+// execution, so there is nothing to render here).
+func aristaConsoleCmd(client *Client, cmdText string, jsonMode bool) error {
+	if err := client.PostRaw("/cmd", "text/plain", strings.NewReader(cmdText)); err != nil {
+		return err
+	}
+	if jsonMode {
+		eapiResult("OK (output appears on the switch console)", "text")
+	} else {
+		fmt.Println("OK (output appears on the switch console)")
+	}
+	return nil
 }
 
 func parseEthernetPort(s string) int {

@@ -66,6 +66,11 @@ __xdata uint8_t preshared_key[AEAD_KEY_LEN];
 __xdata uint32_t now;
 __xdata uint8_t *timeptr;
 __xdata uint32_t last_session_use;
+/* Content-Length of the current POST request (0 = header absent). Used to
+ * detect bodies that arrive split across TCP segments: uIP delivers one
+ * segment per appcall, so a split body would otherwise silently execute
+ * only the first part. */
+__xdata uint16_t content_length;
 
 #define TSTATE_NONE		0
 #define TSTATE_TX		1
@@ -251,6 +256,7 @@ __xdata uint8_t *scan_header(__xdata uint8_t *p)
 	content_type = 0;
 	session = 0;
 	authenticated = 0;
+	content_length = 0;
 
 	while (*p != '\r' || *(p + 1) != '\n' || *(p + 2) != '\r' || *(p + 3) != '\n') {
 		dbg_char(*p);
@@ -260,6 +266,15 @@ __xdata uint8_t *scan_header(__xdata uint8_t *p)
 			content_type = p + 15;
 		else if (is_word(p, "\nCookie:"))
 			session = p + 17;
+		else if (is_word(p, "\nContent-Length:")) {
+			/* Header format: "\nContent-Length: <digits>" — skip the
+			 * separator space (may be absent, e.g. "Content-Length:12"). */
+			__xdata uint8_t *cl = p + 16;
+			if (*cl == ' ')
+				cl++;
+			while (*cl >= '0' && *cl <= '9')
+				content_length = content_length * 10 + (*cl++ - '0');
+		}
 	}
 	if (content_type && is_word(content_type, "multipart/form-data; boundary")) {
 		dbg_string("\nFound multipart\n");
@@ -649,6 +664,16 @@ void handle_post(void)
 			send_unauthorized();
 			return;
 		}
+		/* scan_header() returns a pointer at the "\r\n\r\n" separator, so
+		 * the body starts 4 bytes later. Reject requests whose body did
+		 * not fully arrive in this segment (uIP delivers one segment per
+		 * appcall; a split body would silently execute only its first
+		 * part, which is dangerous for configuration commands). */
+		if (content_length && content_length > (uip_len - (uint16_t)(p - uip_appdata) - 4)) {
+			dbg_string("Incomplete POST body\n");
+			send_bad_request();
+			return;
+		}
 		cli_mode = MODE_CONFIG;
 		execute_commands(p);
 		cli_mode = MODE_EXEC;
@@ -657,6 +682,11 @@ void handle_post(void)
 			return;
 		}
 	} else if (is_word(request_path, "/enc")) {
+		if (content_length && content_length > (uip_len - (uint16_t)(p - uip_appdata) - 4)) {
+			dbg_string("Incomplete POST body\n");
+			send_bad_request();
+			return;
+		}
 		handle_enc(p + 4);
 		return;
 	} else if (is_word(request_path, "/login")) {

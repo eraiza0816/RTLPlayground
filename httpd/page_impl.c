@@ -332,7 +332,9 @@ void send_counters(char port)
 	slen = strtox(outbuf, HTTP_RESPONCE_JSON);
 	dbg_string("sending counters\n");
 	dbg_byte(port);
-	uint8_t i = machine.phys_to_log_port[port];
+	/* phys_to_log_port is 0-based (physical port N = index N-1, see
+	 * send_status); the query gives a 1-based physical port number. */
+	uint8_t i = machine.phys_to_log_port[port - 1];
 	slen += strtox(outbuf + slen, "[");
 	for (uint8_t counter = 0; counter < 0x37; counter++) {
 		STAT_GET(counter, i);
@@ -371,7 +373,8 @@ void send_l2(uint16_t idx)
 	 * the previous one, we know that we have wrapped around the entire table.
 	 */
 	__xdata uint16_t entry = idx & 0xfff;
-	__xdata uint16_t first_entry = 0xffff; // An illegal entry index
+	__xdata uint16_t prev_valid = 0xffff; // An illegal entry index
+	uint8_t first_done = 0;
 	char_to_html('[');
 	while (1) {
 		entries_left--;
@@ -386,6 +389,24 @@ void send_l2(uint16_t idx)
 
 		reg_read_m(RTL837x_L2_DATA_OUT_B);
 		if ((sfr_data[0] & 0x20)) {	// Check entry is valid
+			// Read the entry index first. The table walk visits entries in
+			// ascending index order; when it wraps around the end of the
+			// table the chip returns the first valid entry again. Detect
+			// that (index not increasing) and close the array instead of
+			// emitting the first entry a second time.
+			reg_read_m(RTL837x_TBL_DATA_0);
+			uint16_t cur = (((uint16_t)sfr_data[2] & 0x0f) << 8) | sfr_data[3];
+			if (prev_valid != 0xffff && cur <= prev_valid) {
+				char_to_html(']');
+				break;
+			}
+			prev_valid = cur;
+			if (first_done)
+				char_to_html(',');
+			first_done = 1;
+			// The L2 output registers are latched; re-read them for the
+			// fields (the index read above overwrote sfr_data).
+			reg_read_m(RTL837x_L2_DATA_OUT_B);
 			// MAC
 			slen += strtox(outbuf + slen, "{\"mac\":\"");
 			byte_to_html(sfr_data[2]); char_to_html(':');
@@ -414,28 +435,19 @@ void send_l2(uint16_t idx)
 			itoa_html(port);
 
 			// Index
-			reg_read_m(RTL837x_TBL_DATA_0);
-			entry = (((uint16_t)sfr_data[2] & 0x0f) << 8) | sfr_data[3];
 			slen += strtox(outbuf + slen, ",\"idx\":\"");
-			byte_to_html(entry >> 8);
-			byte_to_html(entry);
+			byte_to_html(cur >> 8);
+			byte_to_html(cur);
 			char_to_html('"');
 			char_to_html('}');
-			entry += 1; // We want the next entry following after the current entry
+			entry = cur + 1; // We want the next entry following after the current entry
 		} else {
 			reg_read_m(RTL837x_TBL_DATA_0);
 			entry = (((uint16_t)sfr_data[2] & 0x0f) << 8) | sfr_data[3] + 1;
 		}
-		if (first_entry == 0xffff) {
-			char_to_html(',');
-			first_entry = entry;
-		} else {
-			if (first_entry == entry || !entries_left) {
-				char_to_html(']');
-				break;
-			} else {
-				char_to_html(',');
-			}
+		if (!entries_left) {
+			char_to_html(']');
+			break;
 		}
 	}
 }

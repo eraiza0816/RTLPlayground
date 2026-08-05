@@ -56,6 +56,7 @@ scrape_configs:
 ### Port status
 - `rtl_port_up{port, name, logical_port}` — link state (1=up)
 - `rtl_port_speed_bps{port, name, logical_port}` — negotiated speed
+  (firmware link codes: 1=10M, 2=100M, 3=1G, 5=10G, 6=2.5G, 7=5G; 0=down)
 - `rtl_port_enabled{port, name, logical_port}` — admin state
 - `rtl_port_tx_good_packets_total{port, name, logical_port}`
 - `rtl_port_tx_bad_packets_total{port, name, logical_port}`
@@ -159,6 +160,7 @@ scrape_configs:
 ### ポートステータス
 - `rtl_port_up{port, name, logical_port}` — リンク状態（1=up）
 - `rtl_port_speed_bps{port, name, logical_port}` — ネゴシエーション速度
+  （ファームの link コード: 1=10M, 2=100M, 3=1G, 5=10G, 6=2.5G, 7=5G; 0=down）
 - `rtl_port_enabled{port, name, logical_port}` — 管理状態
 - `rtl_port_tx_good_packets_total` / `rtl_port_tx_bad_packets_total`
 - `rtl_port_rx_good_packets_total` / `rtl_port_rx_bad_packets_total`

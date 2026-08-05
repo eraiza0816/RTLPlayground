@@ -108,3 +108,25 @@ func TestEncAPIRoundTrip(t *testing.T) {
 		t.Errorf("unexpected counters: %v", m)
 	}
 }
+
+func TestLinkSpeedToBPS(t *testing.T) {
+	tests := []struct {
+		code int
+		want uint64
+	}{
+		{0, 0},   // down
+		{1, 10e6},  // 10M
+		{2, 100e6}, // 100M
+		{3, 1e9},   // 1G
+		{4, 0},     // undefined in the firmware
+		{5, 10e9},  // 10G
+		{6, 2.5e9}, // 2.5G
+		{7, 5e9},   // 5G
+		{99, 0},
+	}
+	for _, tt := range tests {
+		if got := linkSpeedToBPS(tt.code); got != tt.want {
+			t.Errorf("linkSpeedToBPS(%d) = %d, want %d", tt.code, got, tt.want)
+		}
+	}
+}

@@ -494,13 +494,15 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		log.Printf("Error fetching sfp_diag: %v", err)
 	}
 
-	// MIB counters (parallel per port)
+	// MIB counters (parallel per port). The device expects the physical
+	// port number (it maps to the logical port internally), i.e. the
+	// "portNum" field of /status.json — NOT "logPort".
 	var mibMu sync.Mutex
 	for _, p := range *ports {
 		wg.Add(1)
 		go func(portNum, logPort int) {
 			defer wg.Done()
-			counters, err := fetchJSON[[]string](e, fmt.Sprintf("/counters.json?port=%d", logPort))
+			counters, err := fetchJSON[[]string](e, fmt.Sprintf("/counters.json?port=%d", portNum))
 			if err != nil {
 				log.Printf("Error fetching counters for port %d: %v", portNum, err)
 				return
@@ -782,18 +784,18 @@ func (e *Exporter) sessionGET(path string) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
+// linkSpeedToBPS maps the firmware's link code from /status.json to bps.
+// The firmware derives it as (RTL837X_REG_LINKS speed field + 1):
+//   1=10M, 2=100M, 3=1G, 5=10G, 6=2.5G, 7=5G; 0=down, 4=undefined.
+// (see rtl837x_port.c port_stats_print).
 func linkSpeedToBPS(code int) uint64 {
 	switch code {
-	case 0:
-		return 0
 	case 1:
 		return 10000000
 	case 2:
 		return 100000000
 	case 3:
 		return 1000000000
-	case 4:
-		return 500000000
 	case 5:
 		return 10000000000
 	case 6:

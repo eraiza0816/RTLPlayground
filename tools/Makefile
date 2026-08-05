@@ -3,7 +3,7 @@ CCFLAGS = -Wall -o
 BUILDDIR = output
 
 all: create_build_dir $(BUILDDIR)/injector $(BUILDDIR)/fileadder $(BUILDDIR)/httpd_sim\
-	$(BUILDDIR)/crc_calculator $(BUILDDIR)/imagebuilder
+	$(BUILDDIR)/crc_calculator $(BUILDDIR)/imagebuilder $(BUILDDIR)/cli_sim
 
 create_build_dir:
 	mkdir -p $(BUILDDIR)
@@ -22,6 +22,9 @@ $(BUILDDIR)/crc_calculator: crc_calculator.c
 
 $(BUILDDIR)/httpd_sim: httpd_sim.c httpd_sim.h ../crypto/aead.c ../crypto/chacha20.c ../crypto/poly1305.c rtl837x_common.h
 	gcc -O2 -Wall -Wno-unknown-pragmas -I. -include rtl837x_common.h $< ../crypto/aead.c ../crypto/chacha20.c ../crypto/poly1305.c $(CCFLAGS) $@ -I/usr/include/json-c -ljson-c
+
+$(BUILDDIR)/cli_sim: cli_sim.c httpd_sim.h
+	gcc -O2 -Wall -I. $< $(CCFLAGS) $@
 
 $(BUILDDIR)/imagebuilder: imagebuilder.c
 	gcc $^ $(CCFLAGS) $@

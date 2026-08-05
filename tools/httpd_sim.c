@@ -41,7 +41,9 @@ void memcpyc(void *dst, const void *src, unsigned int len)
 #define PORTS 6
 #define NSFP 1
 
-#define N_COUNTERS 52
+/* The firmware sends 55 MIB counters (0x00-0x36, see send_counters in
+   page_impl.c); the simulator must match for rtlpctl/exporter testing. */
+#define N_COUNTERS 55
 
 #if PORTS == 9
 const uint8_t physToLogPort[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8};
@@ -212,7 +214,9 @@ void send_status(int s)
 		json_object_object_add(v, "name", json_object_new_string(port_name));
 		json_object_object_add(v, "isSFP", json_object_new_int(i <= PORTS - NSFP ? 0 : 1));
 		json_object_object_add(v, "enabled", json_object_new_int((i % 4) ? 1 : 0));
-		json_object_object_add(v, "link", json_object_new_int(i % 2 ? ((i == 1)? 5 : 2) : 0));
+		/* link codes match the firmware (RTL837X_REG_LINKS + 1):
+   6 = 2.5G (port 1), 3 = 1G (ports 3/5), 0 = down. */
+		json_object_object_add(v, "link", json_object_new_int(i % 2 ? ((i == 1) ? 6 : 3) : 0));
 		if (i % 2) {
 			uint64_t rate = (i == 1) ? 2400000000 : 950000000;
 			txG[i-1] += rate * (now - last_called);
@@ -235,11 +239,11 @@ void send_status(int s)
 			json_object_object_add(v, "sfp_los", json_object_new_int(0));
 		} else {
 			if (i == 1)
-				json_object_object_add(v, "adv", json_object_new_string("100000"));
+				json_object_object_add(v, "adv", json_object_new_string("100000")); /* 2.5G-FD */
 			else if (i==2)
-				json_object_object_add(v, "adv", json_object_new_string("000011"));
+				json_object_object_add(v, "adv", json_object_new_string("000011")); /* 10M-FD/HD */
 			else
-				json_object_object_add(v, "adv", json_object_new_string("000100"));
+				json_object_object_add(v, "adv", json_object_new_string("010000")); /* 1G-FD */
 			
 		}
 		json_object_array_add(ports, v);

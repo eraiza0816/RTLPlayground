@@ -156,11 +156,15 @@ static void ping_stats_print(void)
 	ping_v16 = ping_rcvd;
 	ping_print_dec16();
 	print_string(" received, ");
-	/* Loss percentage = 100 * (sent - rcvd) / sent */
+	/* Loss percentage = 100 * (sent - rcvd) / sent.  With sent == 0
+	 * (e.g. ARP never resolved) there is nothing to lose: show 0. */
 	if (ping_sent) {
 		ping_v16 = (uint16_t)(ping_sent - ping_rcvd) * 100;
 		ping_v8 = ping_sent;
 		ping_div16();
+		ping_print_dec16();
+	} else {
+		ping_v16 = 0;
 		ping_print_dec16();
 	}
 	print_string("% packet loss\n");

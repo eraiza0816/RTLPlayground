@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,14 @@ import (
 	"strings"
 	"testing"
 )
+
+// testPSKHex is the shared PSK used by the mock /enc endpoint and the
+// --psk flag in tests that exercise the encrypted API.
+const testPSKHex = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+
+// mockCmdBodies records POST /cmd bodies so tests can assert what the
+// arista emulation layer actually sends to the switch.
+var mockCmdBodies []string
 
 func TestSplitArgs(t *testing.T) {
 	tests := []struct {
@@ -80,10 +89,13 @@ func TestFmtLink(t *testing.T) {
 		want string
 	}{
 		{float64(0), "down"},
-		{float64(5), "2.5G"},
-		{float64(4), "1G"},
-		{float64(3), "100M"},
-		{float64(2), "10M"},
+		{float64(1), "10M"},
+		{float64(2), "100M"},
+		{float64(3), "1G"},
+		{float64(5), "10G"},
+		{float64(6), "2.5G"},
+		{float64(7), "5G"},
+		{float64(4), "link(4)"},
 		{float64(99), "link(99)"},
 	}
 	for _, tt := range tests {
@@ -365,7 +377,7 @@ func TestClientEndpoints(t *testing.T) {
 			fmt.Fprint(w, `[{"portNum":1,"name":"Port 1","link":4,"enabled":1,"txG":"1a2b","txB":"0","rxG":"3c4d","rxB":"0"}]`)
 		case "/information.json":
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"ip_address":"10.0.0.1","sw_ver":"v1.0","hw_ver":"TEST"}`)
+			fmt.Fprint(w, `{"ip_address":"10.0.0.1","hostname":"mock-host","sw_ver":"v1.0","hw_ver":"TEST"}`)
 		case "/vlan.json":
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, `{"members":"0x0001","name":"default","pvid":"0x0001"}`)
@@ -710,7 +722,7 @@ func TestBinaryEndToEnd(t *testing.T) {
 			fmt.Fprint(w, `[{"portNum":1,"name":"Port 1","link":4,"enabled":1,"txG":"1a2b","txB":"0","rxG":"3c4d","rxB":"0"}]`)
 		case "/information.json":
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"ip_address":"10.0.0.1","sw_ver":"v1.0","hw_ver":"TEST"}`)
+			fmt.Fprint(w, `{"ip_address":"10.0.0.1","hostname":"mock-host","sw_ver":"v1.0","hw_ver":"TEST"}`)
 		case "/vlanlist":
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, `[{"id":1,"name":"default"},{"id":100,"name":"test"}]`)
@@ -1073,7 +1085,9 @@ func TestBinaryEndToEnd(t *testing.T) {
 		ts2 := newMockServer(t)
 		defer ts2.Close()
 		h := strings.TrimPrefix(ts2.URL, "http://")
-		out, err := exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+		mockCmdBodies = nil
+		out, err := exec.Command(bin, "--host", h, "--password", "test123",
+			"--psk", testPSKHex, "--mode", "arista",
 			"wr", "mem").CombinedOutput()
 		if err != nil {
 			t.Fatalf("arista abbrev wr mem failed: %v\noutput: %s", err, out)
@@ -1081,13 +1095,18 @@ func TestBinaryEndToEnd(t *testing.T) {
 		if !strings.Contains(string(out), "OK") {
 			t.Errorf("expected OK, got: %s", out)
 		}
+		if len(mockCmdBodies) != 0 {
+			t.Errorf("write memory must not use /cmd, got bodies: %v", mockCmdBodies)
+		}
 	})
 
 	t.Run("arista_abbrev_copy_run_start", func(t *testing.T) {
 		ts2 := newMockServer(t)
 		defer ts2.Close()
 		h := strings.TrimPrefix(ts2.URL, "http://")
-		out, err := exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+		mockCmdBodies = nil
+		out, err := exec.Command(bin, "--host", h, "--password", "test123",
+			"--psk", testPSKHex, "--mode", "arista",
 			"copy", "run", "start").CombinedOutput()
 		if err != nil {
 			t.Fatalf("arista abbrev copy run start failed: %v\noutput: %s", err, out)
@@ -1095,10 +1114,43 @@ func TestBinaryEndToEnd(t *testing.T) {
 		if !strings.Contains(string(out), "OK") {
 			t.Errorf("expected OK, got: %s", out)
 		}
+		if len(mockCmdBodies) != 0 {
+			t.Errorf("copy running-config startup-config must not use /cmd, got bodies: %v", mockCmdBodies)
+		}
+	})
+
+	t.Run("arista_write_mem_without_psk", func(t *testing.T) {
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		out, err := exec.Command(bin, "--host", h, "--password", "test123",
+			"--mode", "arista", "write", "memory").CombinedOutput()
+		if err != nil {
+			t.Fatalf("arista write memory failed: %v\noutput: %s", err, out)
+		}
+		if !strings.Contains(string(out), "pre-shared key") {
+			t.Errorf("expected PSK hint, got: %s", out)
+		}
+	})
+
+	t.Run("interactive_hostname_prompt", func(t *testing.T) {
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		cmd := exec.Command(bin, "--host", h, "--password", "test123")
+		cmd.Stdin = strings.NewReader("\n")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("interactive failed: %v\noutput: %s", err, out)
+		}
+		if !strings.Contains(string(out), "rtlpctl@mock-host> ") {
+			t.Errorf("expected hostname prompt, got: %s", out)
+		}
 	})
 }
 
 func newMockServer(t *testing.T) *httptest.Server {
+	psk, _ := hex.DecodeString(testPSKHex)
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/login" {
 			pwd := r.FormValue("pwd")
@@ -1116,12 +1168,43 @@ func newMockServer(t *testing.T) *httptest.Server {
 			return
 		}
 		switch r.URL.Path {
+		case "/enc":
+			body, _ := io.ReadAll(r.Body)
+			if len(body) < aeadNonceLen+aeadTagLen {
+				http.Error(w, "short enc request", http.StatusBadRequest)
+				return
+			}
+			pt, err := aeadDecrypt(psk, body[:aeadNonceLen],
+				body[aeadNonceLen:len(body)-aeadTagLen], body[len(body)-aeadTagLen:])
+			if err != nil {
+				http.Error(w, "decrypt failed", http.StatusBadRequest)
+				return
+			}
+			// Mirrors the firmware: /enc with a non-commit word executes
+			// commands; here we just echo the command back to the caller.
+			if string(pt) != "commit" {
+				fmt.Fprint(w, "mock")
+				return
+			}
+			nonce := make([]byte, aeadNonceLen)
+			resp, err := aeadEncrypt(psk, nonce, []byte(`{"result":"ok"}`))
+			if err != nil {
+				http.Error(w, "encrypt failed", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/octet-stream")
+			w.Write(resp)
+		case "/cmd":
+			body, _ := io.ReadAll(r.Body)
+			mockCmdBodies = append(mockCmdBodies, string(body))
+			w.Header().Set("Content-Type", "text/plain")
+			fmt.Fprint(w, "OK")
 		case "/status.json":
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, `[{"portNum":1,"name":"Port 1","link":4,"enabled":1,"txG":"1a2b","txB":"0","rxG":"3c4d","rxB":"0"}]`)
 		case "/information.json":
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"ip_address":"10.0.0.1","sw_ver":"v1.0","hw_ver":"TEST"}`)
+			fmt.Fprint(w, `{"ip_address":"10.0.0.1","hostname":"mock-host","sw_ver":"v1.0","hw_ver":"TEST"}`)
 		case "/vlan.json":
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, `{"members":"0x0001","name":"default","pvid":"0x0001"}`)
@@ -1148,4 +1231,25 @@ func newMockServer(t *testing.T) *httptest.Server {
 			fmt.Fprint(w, "mock")
 		}
 	}))
+}
+
+func TestEosSpeed(t *testing.T) {
+	tests := []struct {
+		link interface{}
+		want string
+	}{
+		{float64(0), "down"},
+		{float64(1), "10M"},
+		{float64(2), "100M"},
+		{float64(3), "1G"},
+		{float64(5), "10G"},
+		{float64(6), "2.5G"},
+		{float64(7), "5G"},
+		{float64(4), "down"},
+	}
+	for _, tt := range tests {
+		if got := eosSpeed(tt.link); got != tt.want {
+			t.Errorf("eosSpeed(%v) = %q, want %q", tt.link, got, tt.want)
+		}
+	}
 }

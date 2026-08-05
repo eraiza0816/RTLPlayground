@@ -198,7 +198,13 @@ func vPvid(words []string) error {
 
 func vVlan(words []string) error {
 	if len(words) < 2 {
-		return fmt.Errorf("usage: vlan <vlan-id> [d|mgmt|<name>|<port>[t|u]...] (vlan-id 1-4094)")
+		return fmt.Errorf("usage: vlan [show|<vlan-id> [d|mgmt|<name>|<port>[t|u]...]] (vlan-id 1-4094)")
+	}
+	if words[1] == "show" {
+		if len(words) > 2 {
+			return fmt.Errorf("too many arguments after show")
+		}
+		return nil
 	}
 	if err := validateVLANID(words[1]); err != nil {
 		return err

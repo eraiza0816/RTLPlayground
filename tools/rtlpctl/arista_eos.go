@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
@@ -322,18 +323,33 @@ func aristaShowLogging(client *Client, args []string, jsonMode bool) error {
 	return nil
 }
 
-func aristaCopy(client *Client, args []string, jsonMode bool) error {
-	if len(args) >= 2 && matchCmd(args[0], "running-config") && matchCmd(args[1], "startup-config") {
-		err := client.PostRaw("/cmd", "text/plain", strings.NewReader("save"))
-		if err != nil {
-			return err
-		}
+// aristaSaveConfig persists the running configuration to flash (EOS
+// "write memory" / "copy running-config startup-config"). The firmware only
+// allows `commit` through the PSK-authenticated /enc path (privileged mode);
+// the password-only /cmd path runs in MODE_CONFIG and cannot commit.
+func aristaSaveConfig(client *Client, jsonMode bool) error {
+	_, err := client.PostEnc("commit")
+	if err != nil {
+		msg := "config save requires a pre-shared key: use --psk <64-hex> " +
+			"(must match the PSK configured on the switch)"
 		if jsonMode {
-			eapiResult("OK", "text")
+			eapiError(msg)
 		} else {
-			fmt.Println("OK")
+			fmt.Fprintln(os.Stderr, msg)
 		}
 		return nil
+	}
+	if jsonMode {
+		eapiResult("OK", "text")
+	} else {
+		fmt.Println("OK")
+	}
+	return nil
+}
+
+func aristaCopy(client *Client, args []string, jsonMode bool) error {
+	if len(args) >= 2 && matchCmd(args[0], "running-config") && matchCmd(args[1], "startup-config") {
+		return aristaSaveConfig(client, jsonMode)
 	}
 	aristaUnknown("copy "+strings.Join(args, " "), jsonMode)
 	return nil
@@ -341,28 +357,15 @@ func aristaCopy(client *Client, args []string, jsonMode bool) error {
 
 func aristaWrite(client *Client, args []string, jsonMode bool) error {
 	if len(args) == 0 || (len(args) >= 1 && matchCmd(args[0], "memory")) {
-		err := client.PostRaw("/cmd", "text/plain", strings.NewReader("save"))
-		if err != nil {
-			return err
-		}
-		if jsonMode {
-			eapiResult("OK", "text")
-		} else {
-			fmt.Println("OK")
-		}
-		return nil
+		return aristaSaveConfig(client, jsonMode)
 	}
 	aristaUnknown("write "+strings.Join(args, " "), jsonMode)
 	return nil
 }
 
 func aristaClear(client *Client, args []string, jsonMode bool) error {
-	if len(args) >= 4 && matchCmd(args[0], "mac") && matchCmd(args[1], "address-table") && matchCmd(args[2], "dynamic") {
-		_, err := client.GetText("/cmd_log_clear")
-		if err != nil {
-			return err
-		}
-		err = client.PostRaw("/cmd", "text/plain", strings.NewReader("l2 clear"))
+	if len(args) >= 3 && matchCmd(args[0], "mac") && matchCmd(args[1], "address-table") && matchCmd(args[2], "dynamic") {
+		err := client.PostRaw("/cmd", "text/plain", strings.NewReader("l2 forget"))
 		if err != nil {
 			return err
 		}
@@ -373,7 +376,7 @@ func aristaClear(client *Client, args []string, jsonMode bool) error {
 		}
 		return nil
 	}
-	if len(args) >= 2 && matchCmd(args[0], "logging") {
+	if len(args) >= 1 && matchCmd(args[0], "logging") {
 		_, err := client.GetText("/cmd_log_clear")
 		if err != nil {
 			return err
@@ -453,18 +456,40 @@ func eosFormatStatus(ports []interface{}, jsonMode bool, filterPort int) error {
 	return nil
 }
 
+// eosSpeed maps the /status.json link code to an EOS-style speed string
+// (same codes as fmtLink: 1=10M, 2=100M, 3=1G, 5=10G, 6=2.5G, 7=5G).
 func eosSpeed(link interface{}) string {
 	switch v := link.(type) {
 	case float64:
 		switch int(v) {
-		case 5:
-			return "2.5G"
-		case 4:
-			return "1G"
-		case 3:
-			return "100M"
-		case 2:
+		case 1:
 			return "10M"
+		case 2:
+			return "100M"
+		case 3:
+			return "1G"
+		case 5:
+			return "10G"
+		case 6:
+			return "2.5G"
+		case 7:
+			return "5G"
+		}
+	case json.Number:
+		n, _ := v.Int64()
+		switch n {
+		case 1:
+			return "10M"
+		case 2:
+			return "100M"
+		case 3:
+			return "1G"
+		case 5:
+			return "10G"
+		case 6:
+			return "2.5G"
+		case 7:
+			return "5G"
 		}
 	}
 	return "down"
@@ -708,6 +733,9 @@ func fmtIntTo64(v interface{}) int64 {
 	switch val := v.(type) {
 	case float64:
 		return int64(val)
+	case json.Number:
+		n, _ := val.Int64()
+		return n
 	}
 	return 0
 }

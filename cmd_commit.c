@@ -25,6 +25,8 @@ extern void reg_read_m(uint16_t reg_addr);
 extern void reg_write_m(uint16_t reg_addr);
 
 static __xdata uint16_t commit_pos;
+static __xdata uint8_t cfg_psk_set;
+static __xdata uint8_t cfg_psk_i;
 
 #define COMMIT_PUTC(c) do { \
 	if (commit_pos < FLASH_BUF_SIZE) \
@@ -107,12 +109,14 @@ static void commit_write_flash(void)
 	flash_write_bytes(flash_buf);
 }
 
-void parse_commit(void) __banked
+/*
+ * Serialize the current in-memory configuration into flash_buf as a
+ * NUL-terminated text blob.  Used both by parse_commit() (flash write)
+ * and show_running_config() (console output).
+ */
+static uint16_t config_serialize(void)
 {
 	commit_pos = 0;
-	flash_region.addr = CONFIG_START;
-	flash_init(0);
-	flash_sector_erase();
 
 	if (hostname[0]) {
 		COMMIT_PUTS("hostname "); COMMIT_PUTSX(hostname); COMMIT_PUTC('\n');
@@ -127,13 +131,13 @@ void parse_commit(void) __banked
 	}
 
 	{
-		uint8_t i, psk_set = 0;
-		for (i = 0; i < 32; i++)
-			psk_set |= preshared_key[i];
-		if (psk_set) {
+		cfg_psk_set = 0;
+		for (cfg_psk_i = 0; cfg_psk_i < 32; cfg_psk_i++)
+			cfg_psk_set |= preshared_key[cfg_psk_i];
+		if (cfg_psk_set) {
 			COMMIT_PUTS("preshared_key ");
-			for (i = 0; i < 32; i++)
-				COMMIT_HEX8(preshared_key[i]);
+			for (cfg_psk_i = 0; cfg_psk_i < 32; cfg_psk_i++)
+				COMMIT_HEX8(preshared_key[cfg_psk_i]);
 			COMMIT_PUTC('\n');
 		}
 	}
@@ -154,9 +158,62 @@ void parse_commit(void) __banked
 	COMMIT_PUTS("web ");
 	if (web_enabled) COMMIT_PUTS("on\n"); else COMMIT_PUTS("off\n");
 
+	flash_buf[commit_pos] = 0;
+	return commit_pos;
+}
+
+void parse_commit(void) __banked
+{
+	config_serialize();
+	flash_region.addr = CONFIG_START;
+	flash_init(0);
+	flash_sector_erase();
 	commit_write_flash();
 	flash_init(1);
 	print_string("Config committed\n");
+}
+
+/*
+ * Show the configuration that would be saved by `commit`, without
+ * touching the flash.
+ */
+static __xdata uint16_t cfg_len;
+static __xdata uint16_t cfg_i;
+
+void show_running_config(void) __banked
+{
+	cfg_len = config_serialize();
+	for (cfg_i = 0; cfg_i < cfg_len; cfg_i++)
+		write_char(flash_buf[cfg_i]);
+}
+
+/*
+ * Show the configuration stored in flash (startup-config).
+ * Reads CONFIG_START in 256 byte chunks until the NUL terminator
+ * (same scan pattern as send_config() in httpd/page_impl.c).
+ */
+static __xdata uint32_t cfg_pos;
+static __xdata uint16_t cfg_left;
+static __xdata uint16_t cfg_chunk;
+
+void show_startup_config(void) __banked
+{
+	cfg_pos = CONFIG_START;
+	cfg_left = CONFIG_LEN;
+
+	do {
+		cfg_chunk = (cfg_left > 256) ? 256 : cfg_left;
+		flash_region.addr = cfg_pos;
+		flash_region.len = cfg_chunk;
+		flash_read_bulk(flash_buf);
+		for (cfg_i = 0; cfg_i < cfg_chunk; cfg_i++) {
+			if (!flash_buf[cfg_i])
+				return;
+			write_char(flash_buf[cfg_i]);
+		}
+		cfg_left -= cfg_chunk;
+		cfg_pos += cfg_chunk;
+	} while (cfg_left > 0);
 }
 
 void parse_l2_delete(void) __banked

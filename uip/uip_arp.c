@@ -428,6 +428,64 @@ uip_arp_out(void) __banked
   uip_len += sizeof(struct uip_eth_hdr);
 }
 /*-----------------------------------------------------------------------------------*/
+/* Decimal 16-bit output without library division.  Value is passed via
+   the XDATA scratch so no internal-RAM overlay space is used. */
+static __xdata uint16_t arp_dec_v;
+static __xdata uint8_t arp_dec_d;
+static __xdata uint8_t arp_dec_z;
+
+static void uip_arp_dec16(void)
+{
+  uint16_t v = arp_dec_v;
+  uint8_t d, z = 0;
+  d = 0; while (v >= 10000) { v -= 10000; d++; }
+  if (d || z) { write_char('0' + d); z = 1; }
+  d = 0; while (v >= 1000) { v -= 1000; d++; }
+  if (d || z) { write_char('0' + d); z = 1; }
+  d = 0; while (v >= 100) { v -= 100; d++; }
+  if (d || z) { write_char('0' + d); z = 1; }
+  d = 0; while (v >= 10) { v -= 10; d++; }
+  if (d || z) { write_char('0' + d); }
+  write_char('0' + v);
+}
+
+void
+uip_arp_dump(void) __banked
+{
+  /* No locals: the 8051 internal RAM overlay is full, everything must
+     live in XDATA.  (A static pointer here would end up in DSEG, so
+     the table is accessed by index directly.) */
+  static __xdata uint8_t dump_i;
+  static __xdata uint8_t dump_entries;
+  static __xdata uint8_t dump_j;
+
+  print_string("IP               MAC                 Age\n");
+  dump_entries = 0;
+  for(dump_i = 0; dump_i < UIP_ARPTAB_SIZE; ++dump_i) {
+    if((arp_table[dump_i].ipaddr[0] | arp_table[dump_i].ipaddr[1]) == 0)
+      continue;
+    dump_entries++;
+    itoa(arp_table[dump_i].ipaddr[0] & 0xff); write_char('.');
+    itoa(arp_table[dump_i].ipaddr[0] >> 8); write_char('.');
+    itoa(arp_table[dump_i].ipaddr[1] & 0xff); write_char('.');
+    itoa(arp_table[dump_i].ipaddr[1] >> 8);
+    write_char(' ');
+    write_char(' ');
+    for(dump_j = 0; dump_j < 6; dump_j++) {
+      print_byte(arp_table[dump_i].ethaddr.addr[dump_j]);
+      if (dump_j < 5) write_char(':');
+    }
+    write_char(' ');
+    write_char(' ');
+    arp_dec_v = (uint16_t)(arptime - arp_table[dump_i].time) * 10;
+    uip_arp_dec16();
+    write_char('s');
+    write_char('\n');
+  }
+  if (!dump_entries)
+    print_string("(no ARP entries)\n");
+}
+/*-----------------------------------------------------------------------------------*/
 
 /** @} */
 /** @} */

@@ -130,9 +130,10 @@ EOS にあって本デバイスにないコマンド。重要度順。
 
 | コマンド | EOS 構文 | 備考 |
 |----------|---------|------|
-| ping | `ping <host>` | 基本診断 |
-| show running-config | `show running-config` | 動作中コンフィグ表示 |
-| show startup-config | `show startup-config` | 保存コンフィグ表示 |
+| ping | `ping <host>` | ✅ 実装済み (v0.2.24+)。`ping <ip>`、EXEC/PRIVILEGED/CONFIG 可 |
+| show running-config | `show running-config` | ✅ 実装済み (v0.2.24+)。commit 相当のシリアライザ出力 |
+| show startup-config | `show startup-config` | ✅ 実装済み (v0.2.24+)。flash の保存内容表示 |
+| show arp | `show arp` | ✅ 実装済み (v0.2.24+)。uIP ARP キャッシュ表示 |
 | show interfaces | `show interfaces [status\|counters]` | ポート状態/カウンタ |
 
 #### High (実装優先度高)
@@ -205,11 +206,9 @@ EOS にあって本デバイスにないコマンド。重要度順。
 
 ### 今後実装可能なもの（優先度順）
 
-1. **`ping`**: ICMP echo は MCU でも実装可能（uIP スタック利用）
-2. **`show running-config`**: 全コンフィグをダンプする関数の追加
-3. **`no` 否定接頭辞**: パーサーの拡張（ただし parser state が複雑化）
-4. **LLDP**: パケット生成/解析の追加実装
-5. **`show vlan` を EXEC/PRIVILEGED からも実行可能に**: モード権限制御の変更
+1. **`no` 否定接頭辞**: パーサーの拡張（ただし parser state が複雑化）
+2. **LLDP**: パケット生成/解析の追加実装
+3. **`show vlan` を EXEC/PRIVILEGED からも実行可能に**: モード権限制御の変更
 
 ### 設計指針
 

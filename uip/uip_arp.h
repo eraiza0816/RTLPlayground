@@ -105,6 +105,9 @@ void uip_arp_out(void) __banked;
    is responsible for flushing old entries in the ARP table. */
 void uip_arp_timer(void) __banked;
 
+/* Print the contents of the ARP cache (IP, MAC and age in seconds). */
+void uip_arp_dump(void) __banked;
+
 /** @} */
 
 /**

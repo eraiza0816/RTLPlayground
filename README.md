@@ -328,6 +328,10 @@ hostname [name]         = Show or set hostname
 passwd <password>       = Set password (min 4 chars)
 commit                  = Save current settings to flash
 show                    = Display all current settings
+show running-config     = Display the config that `commit` would save
+show startup-config     = Display the saved config from flash
+show arp                = Display the ARP cache
+ping <ip>               = Send 4 ICMP echo requests and report RTT
 telnet on|off           = Enable or disable Telnet access
 syslog on|off|ip [addr] = Configure syslog
 ```

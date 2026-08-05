@@ -1482,9 +1482,18 @@ extern void parse_end(void) __banked;
 #endif
 extern void parse_xmodem(void) __banked;
 
+extern void show_running_config(void) __banked;
+extern void show_startup_config(void) __banked;
+extern void uip_arp_dump(void) __banked;
+
 
 void parse_show(void)
 {
+	if (cmd_words_len >= 2) {
+		if (cmd_compare(1, "running-config")) { show_running_config(); return; }
+		if (cmd_compare(1, "startup-config")) { show_startup_config(); return; }
+		if (cmd_compare(1, "arp")) { uip_arp_dump(); return; }
+	}
 	print_string("Hostname:   ");
 	if (hostname[0])
 		print_string_x(hostname);

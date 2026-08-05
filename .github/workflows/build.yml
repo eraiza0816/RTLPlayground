@@ -31,23 +31,41 @@ jobs:
       - name: Check if machine.c can be compiled for all machines
         run: make machine_check
 
-      - name: Build firmware (WEB)
+      - name: Build firmware (WEB, Lite CLI)
         run: make MACHINE="${{ matrix.machine }}"
 
-      - name: Rename WEB firmware
+      - name: Rename WEB Lite firmware
         run: |
           cd output/${{ matrix.machine }}
-          for f in rtlplayground-v*.bin; do
+          for f in rtlplayground-v*-lite-*.bin; do
             mv "$f" "rtlplayground-WEB-${f#rtlplayground-}"
           done
 
-      - name: Build firmware (CLI, no web)
+      - name: Build firmware (CLI, no web, Lite CLI)
         run: |
           make MACHINE="${{ matrix.machine }}" clean
           make WEB=0 MACHINE="${{ matrix.machine }}"
           cd output/${{ matrix.machine }}
-          for f in rtlplayground-v*.bin; do
+          for f in rtlplayground-v*-lite-*.bin; do
             mv "$f" "rtlplayground-CLI-${f#rtlplayground-}"
+          done
+
+      - name: Build firmware (WEB, Full CLI)
+        run: |
+          make MACHINE="${{ matrix.machine }}" clean
+          make FULL=1 MACHINE="${{ matrix.machine }}"
+          cd output/${{ matrix.machine }}
+          for f in rtlplayground-v*-full-*.bin; do
+            mv "$f" "rtlplayground-WEB-FULL-${f#rtlplayground-}"
+          done
+
+      - name: Build firmware (CLI, no web, Full CLI)
+        run: |
+          make MACHINE="${{ matrix.machine }}" clean
+          make WEB=0 FULL=1 MACHINE="${{ matrix.machine }}"
+          cd output/${{ matrix.machine }}
+          for f in rtlplayground-v*-full-*.bin; do
+            mv "$f" "rtlplayground-CLI-FULL-${f#rtlplayground-}"
           done
 
       - name: Upload firmware artifact

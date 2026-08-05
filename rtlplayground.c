@@ -322,6 +322,9 @@ void print_long(uint32_t a)
 }
 
 extern __xdata uint8_t cli_mode;
+#ifndef FULL_CLI
+extern __xdata uint8_t cmd_console;
+#endif
 
 void print_cmd_prompt(void)
 {
@@ -331,6 +334,7 @@ void print_cmd_prompt(void)
 		while (*p) write_char_no_syslog(*p++);
 		write_char_no_syslog(']');
 	}
+#ifdef FULL_CLI
 	switch (cli_mode) {
 	case 0:  print_string_no_syslog("> ");  break;
 	case 1:  print_string_no_syslog("# ");  break;
@@ -339,6 +343,9 @@ void print_cmd_prompt(void)
 	case 4:  print_string_no_syslog("(config-vlan)# "); break;
 	default: print_string_no_syslog("> ");  break;
 	}
+#else
+	print_string_no_syslog("> ");
+#endif
 }
 
 /*
@@ -1443,6 +1450,9 @@ void idle(void)
 	// Check whether a command is waiting in the cmd_buffer and execute
 	if (cmd_available) {
 		cmd_available = 0;
+#ifndef FULL_CLI
+		cmd_console = 1; /* console input: flat CLI, no mode gating */
+#endif
 		cmd_tokenize();
 		if (err_status == ERR_OK)
 			cmd_parser();

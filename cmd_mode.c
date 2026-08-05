@@ -1,5 +1,6 @@
 /*
  * CLI mode system — Arista EOS-like hierarchical command modes
+ * Compiled only in FULL builds (Makefile FULL=1, -DFULL_CLI).
  */
 #include "cmd_parser.h"
 #include "rtl837x_common.h"
@@ -8,14 +9,9 @@
 #pragma codeseg BANK3
 #pragma constseg BANK3
 
-/* Mode definitions are in cmd_parser.h */
-
-/* Current mode (initialized to EXEC by BSS init) */
-__xdata uint8_t cli_mode;
-
-/* Context for sub-modes */
-__xdata uint8_t cli_context_port;
-__xdata uint16_t cli_context_vlan;
+/* Mode definitions are in cmd_parser.h; cli_mode lives in cmd_parser.c
+ * (shared with the Lite build where it is used for API privilege
+ * separation only). */
 
 /* ── Mode transition commands ── */
 

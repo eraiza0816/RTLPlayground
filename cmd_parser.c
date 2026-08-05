@@ -66,6 +66,20 @@ volatile __xdata uint8_t cmd_available;
 
 __xdata	char save_cmd;
 
+// CLI mode (MODE_* in cmd_parser.h). Used by the HTTP API (/cmd, /enc) for
+// privilege separation: /cmd runs in MODE_CONFIG, /enc "commit" in MODE_PRIVILEGED.
+// In the FULL build the interactive console also uses it for the EOS-like
+// mode hierarchy (mode transitions in cmd_mode.c).
+__xdata uint8_t cli_mode;
+
+#ifndef FULL_CLI
+// Lite build only: input source flag, 1 = interactive console (serial/telnet),
+// 0 = HTTP API or boot config replay. When set, mode gating is bypassed so
+// every command can be issued directly from the console prompt (legacy flat
+// CLI behavior).
+__xdata uint8_t cmd_console;
+#endif
+
 __xdata uint8_t ip[4];
 
 // These variables combined create a Fixed-capacity vector/bounded buffer.
@@ -1458,11 +1472,13 @@ void parse_hostname(void)
 
 
 extern void parse_commit(void) __banked;
+#ifdef FULL_CLI
 extern void parse_enable(void) __banked;
 extern void parse_disable(void) __banked;
 extern void parse_configure_terminal(void) __banked;
 extern void parse_exit(void) __banked;
 extern void parse_end(void) __banked;
+#endif
 extern void parse_xmodem(void) __banked;
 
 
@@ -1831,6 +1847,14 @@ __code struct mode_entry mode_allow[] = {
 
 static uint8_t cmd_mode_allowed(uint8_t start)
 {
+#ifndef FULL_CLI
+	/* Lite build: the interactive console (serial/telnet) is flat: every
+	 * command is available directly from the prompt. Mode gating applies
+	 * only to commands entered via the HTTP API (/cmd, /enc) and boot
+	 * config. */
+	if (cmd_console)
+		return 1;
+#endif
 	struct mode_entry __code *e = mode_allow;
 	for (; e->name; e++) {
 		uint8_t i = 0;
@@ -1865,6 +1889,7 @@ void cmd_parser(void) __banked
 	print_byte(cmd_words_b[6]); write_char('\n');
 #endif
 	if (cmd_words_len >= 1) {
+#ifdef FULL_CLI
 		/* Help — works in any mode for both serial and telnet */
 		if (cmd_compare(0, "?") || cmd_compare(0, "help")) {
 			cmd_help();
@@ -1885,6 +1910,11 @@ void cmd_parser(void) __banked
 		} else if (!cmd_mode_allowed(cmd_words_b[0])) {
 			print_string("Not available here\n");
 		} else if (cmd_compare(0, "reset")) {
+#else
+		if (!cmd_mode_allowed(cmd_words_b[0])) {
+			print_string("Not available here\n");
+		} else if (cmd_compare(0, "reset")) {
+#endif
 			print_string("\nRESET\n\n");
 			reset_chip();
 		} else if (cmd_compare(0, "sfp")) {
@@ -2185,6 +2215,9 @@ config_done:
 // Returns the status via `err_status`-variable.
 void execute_commands(__xdata uint8_t *p) __banked {
 	err_status = ERR_OK;
+#ifndef FULL_CLI
+	cmd_console = 0; /* API input: mode gating applies */
+#endif
 	uint8_t cmd_idx = 0;
 	while (1) {
 		if (*p == 0 || *p == '\n' || *p == '\r') {

@@ -2,6 +2,10 @@ VERSION=0.2.23
 
 # WebUI option: WEB=1 (default) to enable, WEB=0 to disable
 WEB ?= 1
+
+# CLI variant: FULL=1 enables the legacy EOS-mode CLI (mode system,
+# '?'/help, Tab completion). Default (FULL=0) is the Lite flat CLI.
+FULL ?= 0
 IMAGESIZE = 524288
 DEFAULT_CONFIG_LOCATION = 454656
 CONFIG_LOCATION = 458752
@@ -31,6 +35,11 @@ else
 endif
 
 VERSION_EXTENSION = v$(VERSION)-$(GIT_VERSION)
+ifeq ($(FULL),1)
+	VERSION_EXTENSION := $(VERSION_EXTENSION)-full
+else
+	VERSION_EXTENSION := $(VERSION_EXTENSION)-lite
+endif
 FILENAME_EXTENSION = $(VERSION_EXTENSION)-$(MACHINE)
 
 all: create_build_dir $(VERSION_HEADER) $(SUBDIRS) $(BUILDDIR)/rtlplayground-$(FILENAME_EXTENSION).bin
@@ -49,14 +58,17 @@ SRCS += httpd/httpd.c httpd/page_impl.c
 SRCS += sfp_bitbang.c
 SRCS += telnetd/telnetd.c
 SRCS += cmd_commit.c
-SRCS += cmd_help.c
-SRCS += cmd_mode.c
 SRCS += cmd_xmodem.c
 SRCS += crypto/chacha20.c crypto/poly1305.c crypto/aead.c
 
 ifeq ($(WEB),0)
 	CC_FLAGS += -DNO_WEBUI
 	SRCS := $(filter-out html_data.c, $(SRCS))
+endif
+
+ifeq ($(FULL),1)
+	CC_FLAGS += -DFULL_CLI
+	SRCS += cmd_mode.c cmd_help.c
 endif
 
 OBJS = ${SRCS:%.c=$(BUILDDIR)/%.rel}
@@ -125,13 +137,15 @@ endif
 .PHONY: clean all $(SUBDIRS) $(VERSION_HEADER)
 
 .PHONY:
+# Compile machine.c for every machine. Written for /bin/sh (dash), which
+# does not support `set -o pipefail` (the CI runs on debian-slim where
+# /bin/sh is dash), so errors are handled with an explicit exit.
 machine_check:
 	@mkdir -p $(BUILDDIR)/tmp
-	@set -eo pipefail; \
-	for MACHINE in `grep -e ' MACHINE_' machine.c | sed -e 's%^.* MACHINE_%%' -e 's%[ ]*//.*$$%%' | sort -u`; \
+	@for MACHINE in `grep -e ' MACHINE_' machine.c | sed -e 's%^.* MACHINE_%%' -e 's%[ ]*//.*$$%%' | sort -u`; \
 	do \
 	echo "Checking $${MACHINE}"; \
-	$(CC) $(CC_FLAGS) -DMACHINE_$${MACHINE} -MMD -o $(BUILDDIR)/tmp/machine_check -c machine.c; \
+	$(CC) $(CC_FLAGS) -DMACHINE_$${MACHINE} -MMD -o $(BUILDDIR)/tmp/machine_check -c machine.c || exit 1; \
 	done
 	@rm -rf $(BUILDDIR)/tmp
 

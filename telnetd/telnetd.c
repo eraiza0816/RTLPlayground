@@ -5,7 +5,9 @@
 #include "telnetd.h"
 #include "uip.h"
 #include "cmd_parser.h"
+#ifdef FULL_CLI
 extern __xdata uint8_t cli_mode;
+#endif
 extern __xdata uint8_t cmd_line_len;
 extern __xdata uint8_t cursor;
 
@@ -125,8 +127,9 @@ static void process_input(__xdata uint8_t *data, uint16_t len)
             continue;
         }
 
+#ifdef FULL_CLI
         if (c == '\t') {
-            /* Tab completion */
+            /* Tab completion (FULL build) */
             if (auth_state == AUTH_OK) {
                 uint8_t j;
                 for (j = 0; j < rx_pos && j < 127; j++)
@@ -141,6 +144,7 @@ static void process_input(__xdata uint8_t *data, uint16_t len)
             }
             continue;
         }
+#endif
 
         if (c == '\r' || c == '\n') {
             if (rx_pos == 0) {
@@ -171,7 +175,9 @@ static void process_input(__xdata uint8_t *data, uint16_t len)
                     telnet_tx_enqueue('\n');
                     auth_state = AUTH_OK;
                     telnet_echo = 1;
+#ifdef FULL_CLI
                     cli_mode = MODE_EXEC;
+#endif
                     print_cmd_prompt();
                 } else {
                     telnet_tx_enqueue('\r');

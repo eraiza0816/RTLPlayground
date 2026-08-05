@@ -44,13 +44,18 @@ void cmd_edit(void) __banked
 		if (xmodem_active)
 			break;
 		if (sbuf[l] >= ' ' && sbuf[l] < 127) { // A printable character, copy to command line
+#ifdef FULL_CLI
 			if (sbuf[l] == '?' && (cursor == 0 || cmd_buffer[cursor-1] == ' ')) {
 				cmd_help();
 				print_cmd_prompt();
-				/* '?' consumed, not inserted; fall through to l++ at end of loop */
-			} else {
-				if (cmd_line_len >= CMD_BUF_SIZE)
-					continue;
+				/* '?' consumed, not inserted */
+				l++;
+				l &= SBUF_MASK;
+				continue;
+			}
+#endif
+			if (cmd_line_len >= CMD_BUF_SIZE)
+				continue;
 			write_char(sbuf[l]);
 			// Shift buffer to right
 			for (uint8_t i = cmd_line_len; i > cursor; i--)
@@ -64,9 +69,10 @@ void cmd_edit(void) __banked
 			// Move backwards
 			for (uint8_t i = cursor; i < cmd_line_len; i++)
 				write_char('\010'); // BS works like cursor-left
-			}
+#ifdef FULL_CLI
 		} else if (sbuf[l] == '\t') {
 			cmd_complete();
+#endif
 		} else if (sbuf[l] == '\033') { // ESC-Sequence
 			// Wait until we have at least 3 characters including the ESC character in the serial buffer
 			if (((sbuf_ptr + SBUF_SIZE - l) & SBUF_MASK) < 3)

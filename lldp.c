@@ -24,7 +24,12 @@
 
 #include <stdint.h>
 #include "rtl837x_common.h"
+#include "rtl837x_regs.h"
+#include "rtl837x_sfr.h"
+#include "uip/uip.h"
 #include "machine.h"
+
+extern __xdata uint8_t sfr_data[4];
 
 extern __code struct machine machine;
 extern __xdata struct uip_eth_addr uip_ethaddr;
@@ -33,6 +38,7 @@ extern __xdata uint16_t uip_len;
 extern volatile __xdata uint32_t ticks;
 extern __xdata char hostname[32];
 extern __xdata char port_names[9][PORT_NAME_SIZE];
+extern __xdata uint16_t management_vlan;
 
 __xdata uint8_t lldp_enabled;
 
@@ -43,7 +49,8 @@ __xdata uint8_t lldp_enabled;
 #define LLDP_MAX_NEIGHBORS 8
 
 #define LLDP_ETH_OFFSET RTL_FRAME_DESC_SIZE     /* TX: eth header here */
-#define LLDP_PDU_OFFSET (LLDP_ETH_OFFSET + 14)  /* TX: LLDPDU here (normal eth header) */
+#define LLDP_TAG_OFFSET (LLDP_ETH_OFFSET + 12)  /* TX: RTL tag here (type position) */
+#define LLDP_PDU_OFFSET (LLDP_TAG_OFFSET + 8)   /* TX: LLDPDU here */
 #define LLDP_RX_PDU_OFFSET 26                   /* RX: LLDPDU here */
 
 struct lldp_neighbor {
@@ -59,6 +66,13 @@ static __xdata struct lldp_neighbor lldp_table[LLDP_MAX_NEIGHBORS];
 static __xdata uint32_t lldp_tx_next;   /* next LLDPDU send time */
 static __xdata uint32_t lldp_sec_next;  /* next 1s aging tick */
 
+/* Dedicated TX frame: uip_buf is shared with RX and the HTTP/telnet
+ * appcalls, and the NIC TX DMA can read the source buffer asynchronously,
+ * so a frame built there gets clobbered before the DMA completes.  This
+ * buffer is written by nothing else.  Layout follows the non-VLAN TX path:
+ * [0..3] padding, [4..11] TX descriptor, [12..] the frame. */
+static __xdata uint8_t lldp_tx_frame[RTL_FRAME_DESC_SIZE + 96];
+
 /* Scratch (no params/locals allowed in internal RAM) */
 static __xdata uint8_t lldp_i;
 static __xdata uint8_t lldp_j;
@@ -69,6 +83,10 @@ static __xdata uint8_t lldp_tlv_type;   /* TLV being built */
 static __xdata uint16_t lldp_len;       /* TLV length */
 static __xdata uint8_t lldp_pos;        /* LLDPDU build position */
 static __xdata uint8_t lldp_slot;       /* neighbor slot */
+static __xdata uint8_t lldp_val_start;  /* TLV value start (build position) */
+static __xdata uint16_t lldp_l2mc_vid;
+static __xdata uint16_t lldp_l2mc_guard;
+static __xdata uint16_t lldp_saved_vlan;
 static __xdata uint32_t lldp_oldest;    /* oldest last_seen */
 static __xdata uint8_t lldp_same;       /* chassis match flag */
 static __xdata uint8_t lldp_n;          /* string length */
@@ -88,10 +106,10 @@ static __xdata uint8_t lldp_rx_ttl;
 
 static void lldp_tlv_start(void)
 {
-	lldp_pos = 0;
-	uip_buf[LLDP_PDU_OFFSET + 0] = (uint8_t)((lldp_tlv_type << 1) | (lldp_len >> 8));
-	uip_buf[LLDP_PDU_OFFSET + 1] = (uint8_t)(lldp_len & 0xff);
-	lldp_pos = 2;
+	uip_buf[LLDP_PDU_OFFSET + lldp_pos] = (uint8_t)((lldp_tlv_type << 1) | (lldp_len >> 8));
+	uip_buf[LLDP_PDU_OFFSET + lldp_pos + 1] = (uint8_t)(lldp_len & 0xff);
+	lldp_pos += 2;
+	lldp_val_start = lldp_pos;
 }
 
 static void lldp_tlv_byte(void)
@@ -101,18 +119,14 @@ static void lldp_tlv_byte(void)
 
 static void lldp_tlv_done(void)
 {
-	lldp_pos += lldp_len - (lldp_pos - 2);
+	lldp_pos = lldp_val_start + lldp_len;
 }
 
 /* ---- TX ---- */
 
 static void lldp_send_port(void)
 {
-	/* Ethernet header: dst 01:80:c2:00:00:0e, src = our MAC, type 0x88cc.
-	 * A normal header (like the uIP TX path) is used: the RMA multicast
-	 * is flooded to all user ports by the ASIC, and an embedded RTL tag
-	 * would make the ASIC insert an 802.3 length field instead of the
-	 * LLDP ethertype. */
+	/* Ethernet header: dst 01:80:c2:00:00:0e, src = our MAC */
 	uip_buf[LLDP_ETH_OFFSET + 0] = 0x01;
 	uip_buf[LLDP_ETH_OFFSET + 1] = 0x80;
 	uip_buf[LLDP_ETH_OFFSET + 2] = 0xc2;
@@ -121,8 +135,23 @@ static void lldp_send_port(void)
 	uip_buf[LLDP_ETH_OFFSET + 5] = LLDP_DST_MAC_5;
 	for (lldp_i = 0; lldp_i < 6; lldp_i++)
 		uip_buf[LLDP_ETH_OFFSET + 6 + lldp_i] = uip_ethaddr.addr[lldp_i];
-	uip_buf[LLDP_ETH_OFFSET + 12] = 0x88;
-	uip_buf[LLDP_ETH_OFFSET + 13] = 0xcc;
+
+	/* RTL tag: directed egress to all user ports (pmask, ALLOW clear).
+	 * The flags word MUST go through HTONS (a raw constant lands as
+	 * EFID, the ASIC then fails to parse the tag and leaks the 0x8899
+	 * header onto the wire).  KEEP preserves the ethertype format on
+	 * ethertype frames (same as LACP); LEARN_DIS stops the CPU's SA
+	 * from being learned on the egress ports. */
+	uip_buf[LLDP_TAG_OFFSET + 0] = (uint8_t)(RTL_FRAME_TAG_ID >> 8);
+	uip_buf[LLDP_TAG_OFFSET + 1] = (uint8_t)RTL_FRAME_TAG_ID;
+	uip_buf[LLDP_TAG_OFFSET + 2] = RTL_FRAME_TAG_VERSION;
+	uip_buf[LLDP_TAG_OFFSET + 3] = 0x00;
+	uip_buf[LLDP_TAG_OFFSET + 4] = 0x00;
+	/* HTONS'd word stored little-endian: flags [0x00, 0xA0].  The high
+	 * byte of the swapped value goes into the second byte. */
+	uip_buf[LLDP_TAG_OFFSET + 5] = (uint8_t)(HTONS(RTL_TAG_LEARN_DIS | RTL_TAG_KEEP) >> 8);
+	uip_buf[LLDP_TAG_OFFSET + 6] = 0x00;
+	uip_buf[LLDP_TAG_OFFSET + 7] = 0xff;   /* pmask: all user ports */
 
 	/* Chassis ID TLV: sub-type 4 (MAC address) */
 	lldp_tlv_type = 1;
@@ -200,13 +229,22 @@ static void lldp_send_port(void)
 	lldp_len = 0;
 	lldp_tlv_start();
 
-	uip_len = LLDP_PDU_OFFSET + lldp_pos;
+	/* Send via the normal TX path with the management-VLAN insert
+	 * suppressed (link-local frames must egress untagged; the splice
+	 * would shift the in-frame RTL tag out of the parsed position and
+	 * the CPU tag would leak onto the wire as 0x8899). */
+	lldp_len = LLDP_PDU_OFFSET + lldp_pos;
+	uip_len = lldp_len;
+	lldp_saved_vlan = management_vlan;
+	management_vlan = 0;
 	tcpip_output();
+	management_vlan = lldp_saved_vlan;
 }
 
 static void lldp_send(void)
 {
-	/* One frame per tick: the RMA multicast floods to all user ports. */
+	/* One frame per tick: the pmask covers all user ports. */
+	lldp_phys = 1;
 	lldp_send_port();
 }
 
@@ -370,18 +408,51 @@ void lldp_timers(void) __banked
 
 /* ---- Setup / show ---- */
 
+/* Static L2 multicast entry: 01:80:c2:00:00:0e in VLAN vid, member mask
+ * = CPU port only (bit 9).  The write command hashes MAC+VID itself; the
+ * ASIC's TBL_EXECUTE self-clears.  All values are xdata statics: the
+ * internal-RAM overlay is full. */
+static void lldp_l2mc_set(uint16_t vid)
+{
+	lldp_l2mc_vid = vid;
+	lldp_l2mc_guard = 0;
+	do {
+		reg_read_m(RTL837X_TBL_CTRL);
+	} while ((sfr_data[3] & TBL_EXECUTE) && ++lldp_l2mc_guard);
+
+	REG_WRITE(RTL837x_TBL_DATA_IN_A, 0xc2, 0x00, 0x00, 0x0e);
+	REG_WRITE(RTL837x_TBL_DATA_IN_B, 0x20 | (lldp_l2mc_vid >> 8) | (((uint16_t)PMASK_CPU & 0x3) << 6),
+		  (uint8_t)lldp_l2mc_vid, 0x01, 0x80);
+	REG_WRITE(RTL837x_TBL_DATA_IN_C, 0, 0, 0, PMASK_CPU >> 2);
+	REG_WRITE(RTL837X_TBL_CTRL, 0, 0, TBL_L2_UNICAST, TBL_WRITE | TBL_EXECUTE);
+
+	lldp_l2mc_guard = 0;
+	do {
+		reg_read_m(RTL837X_TBL_CTRL);
+	} while ((sfr_data[3] & TBL_EXECUTE) && ++lldp_l2mc_guard);
+}
+
 void lldp_setup(void) __banked
 {
-	/* Trap LLDP frames (01:80:c2:00:00:0e) to the CPU:
-	 * RMA_OP_CTRL_LLDP (0x4F18) bits 4-5 = 01 (TRAP2CPU),
-	 * RMA_CFG (0x4F1C) bit 3 = LLDP_EN.  Read-modify-write to keep
-	 * the OEM default for the other bits. */
+	/* LLDP RMA action: FORWARD.  The RMA "trap" action cannot deliver
+	 * to the internal NIC on this hardware (it targets an external CPU
+	 * on a physical port), so RX delivery is done with a static L2
+	 * multicast entry for 01:80:c2:00:00:0e whose member mask is the
+	 * CPU port only: the forward lookup then hits the entry's mask
+	 * instead of the VLAN flood mask (same approach as BPDU
+	 * containment).  The CPU's own TX uses a directed pmask in the
+	 * RTL tag, so the entry does not interfere with egress. */
 	reg_read_m(0x4f18);
-	sfr_mask_data(0, 0x30, 0x10);
+	sfr_mask_data(0, 0x30, 0x00);
 	reg_write_m(0x4f18);
 	reg_read_m(0x4f1c);
 	sfr_mask_data(0, 0x08, 0x08);
 	reg_write_m(0x4f1c);
+
+	/* Steer LLDP frames to the CPU: entry per VLAN in use (IVL table). */
+	lldp_l2mc_set(1);            /* PVID 1 (untagged) */
+	if (management_vlan >= 2)
+		lldp_l2mc_set(management_vlan);
 
 	lldp_enabled = 0;      /* default off: LLDP discloses the topology */
 	lldp_tx_next = ticks + LLDP_FIRST_TX;

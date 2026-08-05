@@ -128,6 +128,7 @@ __xdata uint8_t uip_buf[UIP_CONF_BUFFER_SIZE+2];
 __xdata uint16_t rx_packet_vlan;
 __xdata uint16_t management_vlan;
 __xdata uint8_t tx_seq;
+                                //     for this frame (link-local protocol frames)
 
 __xdata char hostname[32];
 

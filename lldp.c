@@ -43,8 +43,7 @@ __xdata uint8_t lldp_enabled;
 #define LLDP_MAX_NEIGHBORS 8
 
 #define LLDP_ETH_OFFSET RTL_FRAME_DESC_SIZE     /* TX: eth header here */
-#define LLDP_TAG_OFFSET (LLDP_ETH_OFFSET + 12)  /* TX: RTL tag here */
-#define LLDP_PDU_OFFSET (LLDP_TAG_OFFSET + 8)   /* TX: LLDPDU here */
+#define LLDP_PDU_OFFSET (LLDP_ETH_OFFSET + 14)  /* TX: LLDPDU here (normal eth header) */
 #define LLDP_RX_PDU_OFFSET 26                   /* RX: LLDPDU here */
 
 struct lldp_neighbor {
@@ -109,7 +108,11 @@ static void lldp_tlv_done(void)
 
 static void lldp_send_port(void)
 {
-	/* Ethernet header: dst 01:80:c2:00:00:0e, src = our MAC */
+	/* Ethernet header: dst 01:80:c2:00:00:0e, src = our MAC, type 0x88cc.
+	 * A normal header (like the uIP TX path) is used: the RMA multicast
+	 * is flooded to all user ports by the ASIC, and an embedded RTL tag
+	 * would make the ASIC insert an 802.3 length field instead of the
+	 * LLDP ethertype. */
 	uip_buf[LLDP_ETH_OFFSET + 0] = 0x01;
 	uip_buf[LLDP_ETH_OFFSET + 1] = 0x80;
 	uip_buf[LLDP_ETH_OFFSET + 2] = 0xc2;
@@ -118,16 +121,8 @@ static void lldp_send_port(void)
 	uip_buf[LLDP_ETH_OFFSET + 5] = LLDP_DST_MAC_5;
 	for (lldp_i = 0; lldp_i < 6; lldp_i++)
 		uip_buf[LLDP_ETH_OFFSET + 6 + lldp_i] = uip_ethaddr.addr[lldp_i];
-
-	/* RTL tag: disable L2 learning, pmask = this port */
-	uip_buf[LLDP_TAG_OFFSET + 0] = (uint8_t)(RTL_FRAME_TAG_ID >> 8);
-	uip_buf[LLDP_TAG_OFFSET + 1] = (uint8_t)RTL_FRAME_TAG_ID;
-	uip_buf[LLDP_TAG_OFFSET + 2] = RTL_FRAME_TAG_VERSION;
-	uip_buf[LLDP_TAG_OFFSET + 3] = 0x00;
-	uip_buf[LLDP_TAG_OFFSET + 4] = 0x00;
-	uip_buf[LLDP_TAG_OFFSET + 5] = 0x20;   /* flags: disable L2 learning */
-	uip_buf[LLDP_TAG_OFFSET + 6] = 0x00;
-	uip_buf[LLDP_TAG_OFFSET + 7] = (uint8_t)(1 << lldp_port);
+	uip_buf[LLDP_ETH_OFFSET + 12] = 0x88;
+	uip_buf[LLDP_ETH_OFFSET + 13] = 0xcc;
 
 	/* Chassis ID TLV: sub-type 4 (MAC address) */
 	lldp_tlv_type = 1;
@@ -211,10 +206,8 @@ static void lldp_send_port(void)
 
 static void lldp_send(void)
 {
-	for (lldp_port = machine.min_port; lldp_port <= machine.max_port; lldp_port++) {
-		lldp_phys = machine.log_to_phys_port[lldp_port];
-		lldp_send_port();
-	}
+	/* One frame per tick: the RMA multicast floods to all user ports. */
+	lldp_send_port();
 }
 
 /* ---- RX ---- */
@@ -279,6 +272,11 @@ uint8_t lldp_rx(void) __banked
 		return 0;
 	if (uip_buf[24] != 0x88 || uip_buf[25] != 0xcc)
 		return 0;
+	/* Ignore our own frames (the flooded LLDPDU echoes back to the CPU). */
+	if (uip_buf[6] == uip_ethaddr.addr[0] && uip_buf[7] == uip_ethaddr.addr[1] &&
+	    uip_buf[8] == uip_ethaddr.addr[2] && uip_buf[9] == uip_ethaddr.addr[3] &&
+	    uip_buf[10] == uip_ethaddr.addr[4] && uip_buf[11] == uip_ethaddr.addr[5])
+		return 1;
 
 	lldp_rx_portid_n = 0;
 	lldp_rx_sysname_n = 0;

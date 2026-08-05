@@ -130,7 +130,9 @@ static void ping_send(void)
 	 * MAC is unknown, replaces the whole packet with an ARP request. */
 	uip_arp_out();
 	if (uip_buf[24] == 0x08 && uip_buf[25] == 0x06) {
-		/* ARP request: transmit it and retry the echo next tick. */
+		/* ARP request: transmit it and retry the echo next tick.  The
+		 * per-echo timeout was started when this attempt began (in
+		 * ping_pump), so an unresolvable ARP eventually times out. */
 		tcpip_output();
 		ping_next_ticks = ticks + 1;
 		return;
@@ -217,6 +219,9 @@ void ping_pump(void) __banked
 			ping_state = 0;
 			return;
 		}
+		/* Start the next attempt's timeout now so that an unresolvable
+		 * ARP also times out. */
+		ping_tmo_ticks = ticks + PING_TIMEOUT;
 		ping_next_ticks = ticks + 1;
 	}
 
@@ -275,6 +280,8 @@ uint8_t ping_rx(void) __banked
 		ping_state = 0;
 	} else {
 		ping_next_ticks = ticks + PING_INTERVAL;
+		/* Cover the ARP-resolution phase of the next echo too. */
+		ping_tmo_ticks = ticks + PING_INTERVAL + PING_TIMEOUT;
 	}
 	return 1;
 }

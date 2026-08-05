@@ -34,6 +34,9 @@ jobs:
       - name: Build firmware (WEB, Lite CLI)
         run: make MACHINE="${{ matrix.machine }}"
 
+      - name: Run AEAD RFC 8439 vector test (firmware crypto, host build)
+        run: ./tools/output/aead_test
+
       - name: Rename WEB Lite firmware
         run: |
           cd output/${{ matrix.machine }}

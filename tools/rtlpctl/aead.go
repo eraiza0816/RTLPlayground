@@ -3,6 +3,16 @@ package main
 // ChaCha20-Poly1305 AEAD (RFC 8439) implemented with the Go standard library
 // only, matching the firmware's /enc endpoint:
 //   body: nonce[12] || ciphertext || tag[16]
+//
+// NOTE: this file is intentionally duplicated verbatim in
+// tools/rtlplayground_exporter/aead.go. Keep both copies in sync; they
+// implement the same AEAD as the firmware's crypto/*.c, which is validated
+// against the RFC 8439 vectors by tools/aead_test.c (host build) and by
+// the Go vectors in aead_test.go.
+
+// ChaCha20-Poly1305 AEAD (RFC 8439) implemented with the Go standard library
+// only, matching the firmware's /enc endpoint:
+//   body: nonce[12] || ciphertext || tag[16]
 
 import (
 	"encoding/binary"

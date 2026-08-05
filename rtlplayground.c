@@ -19,6 +19,7 @@
 #include "dhcp.h"
 #include "cmd_parser.h"
 #include "cmd_editor.h"
+#include "ping.h"
 #include "uip/uipopt.h"
 #include "uip/uip.h"
 #include "uip/uip_arp.h"
@@ -1115,12 +1116,14 @@ void handle_rx(void)
 			}
 		} else if (ETH_IN->ether_type == HTONS(0x0800)) { // IPv4
 			if (!management_vlan || management_vlan == rx_packet_vlan) {
-				uip_arp_ipin();	// Learn MAC addresses in TCP packets
-				uip_input();
-				if (uip_len) {
-					// Add ethernet frame
-					uip_arp_out();
-					tcpip_output();
+				if (!ping_rx()) {          // ICMP echo replies consumed here
+					uip_arp_ipin();	// Learn MAC addresses in TCP packets
+					uip_input();
+					if (uip_len) {
+						// Add ethernet frame
+						uip_arp_out();
+						tcpip_output();
+					}
 				}
 			}
 		} else {
@@ -1438,6 +1441,8 @@ void idle(void)
 	handle_rx();
 	// Check UIP for packets to transmit
 	handle_tx();
+	// Send pending ICMP echo requests / process ping timeouts
+	ping_pump();
 	// If STP protocol enabled, decrease STP timers to trigger actions
 	if (stpEnabled) {
 		if (!stp_clock) {

@@ -68,6 +68,7 @@ SRCS += sfp_bitbang.c
 SRCS += telnetd/telnetd.c
 SRCS += cmd_commit.c
 SRCS += cmd_xmodem.c
+SRCS += ping.c
 SRCS += crypto/chacha20.c crypto/poly1305.c crypto/aead.c
 
 ifeq ($(WEB),0)

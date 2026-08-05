@@ -17,6 +17,7 @@
 #include "rtl837x_bandwidth.h"
 #include "dhcp.h"
 #include "uip/uip.h"
+#include "ping.h"
 #include "version.h"
 
 #include "machine.h"
@@ -1524,6 +1525,18 @@ void parse_show(void)
 extern void parse_l2_delete(void) __banked;
 
 
+void parse_ping(void)
+{
+	if (cmd_words_len < 2) {
+		print_string("Usage: ping <ip>\n");
+		return;
+	}
+	if (parse_ip(cmd_words_b[1]))
+		return;
+	ping_start();
+}
+
+
 void parse_telnet(void)
 {
 	if (cmd_words_len < 2) {
@@ -1840,6 +1853,7 @@ __code struct mode_entry mode_allow[] = {
 	{"telnet",      (1<<MODE_CONFIG)},
 	{"web",         (1<<MODE_CONFIG)},
 	{"show",        (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"ping",        (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
 	{"commit",      (1<<MODE_PRIVILEGED)},
 	{"xmodem",      (1<<MODE_PRIVILEGED)},
 	{0, 0}
@@ -2085,6 +2099,8 @@ void cmd_parser(void) __banked
 			parse_xmodem();
 		} else if (cmd_compare(0, "show")) {
 			parse_show();
+		} else if (cmd_compare(0, "ping")) {
+			parse_ping();
 		} else if (cmd_compare(0, "hostname")) {
 			parse_hostname();
 		} else if (cmd_compare(0, "version")) {

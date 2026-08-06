@@ -99,6 +99,9 @@ static __xdata union {
 	uint8_t b[4];
 } acl_u;
 
+/* Rule view for the HTTP /acl.json endpoint (page_impl.c) */
+__xdata struct acl_json_rule acl_json_data;
+
 /* Wait until the table controller is idle (any outstanding op done) */
 static void acl_tbl_busy(void) __banked
 {
@@ -325,6 +328,39 @@ void acl_rule_del(__xdata uint8_t idx) __banked
 }
 
 /* Show all valid rules (read back from the ASIC) */
+/*
+ * Copy rule idx's content into acl_json_data for the HTTP /acl.json
+ * endpoint (page_impl.c).  Returns 1 if the rule is valid.
+ */
+uint8_t acl_rule_json_get(__xdata uint8_t idx) __banked
+{
+	if (idx >= RTL837X_ACLRULENO) {
+		acl_json_data.valid = 0;
+		return 0;
+	}
+	acl_tbl_busy();
+	acl_rule_info_get(idx);
+	if (!((acl_ri_b[2] >> 5) & 1)) {
+		acl_json_data.valid = 0;
+		return 0;
+	}
+	acl_json_data.valid = 1;
+	acl_json_data.template = acl_ri_b[0] & 0x7;
+	acl_json_data.pmask = (uint16_t)((acl_ri_b[2] & 0x1f) << 5) |
+			      (uint16_t)(acl_ri_b[1] >> 3);
+	reg_read_m(RTL837X_ACL_ACT_CTRL(idx));
+	acl_json_data.action = (sfr_data[3] >> 5) & 1;
+	reg_read_m(RTL837X_ITA_READ_DATA0(0));
+	acl_u.b[0] = sfr_data[3]; acl_u.b[1] = sfr_data[2];
+	acl_u.b[2] = sfr_data[1]; acl_u.b[3] = sfr_data[0];
+	acl_json_data.data0 = acl_u.u32;
+	reg_read_m(RTL837X_ITA_READ_DATA0(1));
+	acl_u.b[0] = sfr_data[3]; acl_u.b[1] = sfr_data[2];
+	acl_u.b[2] = sfr_data[1]; acl_u.b[3] = sfr_data[0];
+	acl_json_data.data1 = acl_u.u32;
+	return 1;
+}
+
 void acl_show(void) __banked
 {
 	print_string("Idx Tpl Pmsk Act  Match\n");

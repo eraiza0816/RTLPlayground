@@ -41,6 +41,7 @@
 #include "rtl837x_sfr.h"
 #include "uip/uip.h"
 #include "machine.h"
+#include "lldp.h"
 
 extern __xdata uint8_t sfr_data[4];
 
@@ -59,7 +60,6 @@ __xdata uint8_t lldp_enabled;
 #define LLDP_TX_INTERVAL (30 * SYS_TICK_HZ)
 #define LLDP_FIRST_TX    (2 * SYS_TICK_HZ)
 #define LLDP_DEFAULT_TTL 120
-#define LLDP_MAX_NEIGHBORS 8
 
 #define LLDP_ETH_OFFSET RTL_FRAME_DESC_SIZE     /* TX: eth header here */
 #define LLDP_TAG_OFFSET (LLDP_ETH_OFFSET + 12)  /* TX: RTL tag here (type position) */
@@ -107,6 +107,9 @@ static __xdata struct lldp_neighbor * __xdata lldp_slot_p;  /* pointer INTO XDAT
                                                      * after '*' places the pointer itself in
                                                      * XDATA; a plain 'static __xdata struct * p'
                                                      * would land in DSEG/internal RAM) */
+
+/* Neighbor slot copy for the HTTP /lldp.json endpoint */
+__xdata struct lldp_json_view lldp_json;
 
 /* RX parse scratch */
 static __xdata uint8_t lldp_rx_portid[16];
@@ -489,6 +492,26 @@ static void lldp_print_dec8(void)
 	while (lldp_dec_v >= 10) { lldp_dec_v -= 10; lldp_dec_d++; }
 	if (lldp_dec_d || lldp_dec_z) { write_char('0' + lldp_dec_d); }
 	write_char('0' + lldp_dec_v);
+}
+
+/*
+ * Copy neighbor slot n into the JSON scratch (port, chassis MAC, port
+ * ID, system name, remaining TTL).  Returns 1 if the slot is in use.
+ * Used by the HTTP /lldp.json endpoint (page_impl.c, BANK1).
+ */
+uint8_t lldp_neighbor_get(__xdata uint8_t n) __banked
+{
+	if (n >= LLDP_MAX_NEIGHBORS)
+		return 0;
+	lldp_slot_p = &lldp_table[n];
+	if (!lldp_slot_p->chassis[0])
+		return 0;
+	lldp_json.port = lldp_slot_p->port;
+	memcpy(lldp_json.chassis, lldp_slot_p->chassis, 6);
+	strcpy(lldp_json.port_id, lldp_slot_p->port_id);
+	strcpy(lldp_json.sysname, lldp_slot_p->sysname);
+	lldp_json.ttl = lldp_slot_p->ttl;
+	return 1;
 }
 
 void lldp_show(void) __banked

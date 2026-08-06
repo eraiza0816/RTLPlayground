@@ -72,6 +72,7 @@ struct uip_eth_hdr {
 /* The uip_arp_init() function must be called before any of the other
    ARP functions. */
 void uip_arp_init(void) __banked;
+uint8_t uip_arp_entry_next(__xdata uint8_t * __xdata ip, __xdata uint8_t * __xdata mac, __xdata uint8_t * __xdata age) __banked;
 
 /* The uip_arp_ipin() function should be called whenever an IP packet
    arrives from the Ethernet. This function refreshes the ARP table or

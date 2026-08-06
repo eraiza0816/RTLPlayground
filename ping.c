@@ -29,19 +29,20 @@ extern __xdata uint8_t ip[4];           // filled by parse_ip() in cmd_parser.c
 
 /* All state lives in XDATA: the 8051 internal RAM (DSEG/OSEG overlay)
  * is essentially full in this firmware, so no new function parameters
- * or locals may be allocated there.  Scratch values are shared statics. */
-static __xdata uint8_t ping_state;      // 0 = idle, 1 = running
-static __xdata uint8_t ping_dst[4];     // destination in a.b.c.d order
+ * or locals may be allocated there.  Scratch values are shared statics.
+ * The state below is also read by the HTTP /ping.json endpoint. */
+__xdata uint8_t ping_state;      // 0 = idle, 1 = running
+__xdata uint8_t ping_dst[4];     // destination in a.b.c.d order
 static __xdata uint16_t ping_id;        // ICMP identifier
 static __xdata uint8_t ping_seq;        // current sequence number
-static __xdata uint8_t ping_sent;       // number of echoes actually transmitted
-static __xdata uint8_t ping_rcvd;       // number of replies received
+__xdata uint8_t ping_sent;       // number of echoes actually transmitted
+__xdata uint8_t ping_rcvd;       // number of replies received
 static __xdata uint32_t ping_next_ticks;
 static __xdata uint32_t ping_tmo_ticks;
 static __xdata uint32_t ping_tx_ticks;
-static __xdata uint16_t ping_min_rtt;   // RTT in ms
-static __xdata uint16_t ping_max_rtt;
-static __xdata uint16_t ping_sum_rtt;
+__xdata uint16_t ping_min_rtt;   // RTT in ms
+__xdata uint16_t ping_max_rtt;
+__xdata uint16_t ping_sum_rtt;
 static __xdata uint8_t ping_rtt_set;
 
 static __xdata uint16_t ping_v16;       // shared scratch

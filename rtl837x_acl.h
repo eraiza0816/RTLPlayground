@@ -22,5 +22,17 @@ void acl_enable(__xdata uint8_t enable) __banked;
 uint8_t acl_rule_add(__xdata uint8_t port, __xdata uint8_t action, __xdata uint8_t template) __banked;
 void acl_rule_del(__xdata uint8_t idx) __banked;
 void acl_show(void) __banked;
+uint8_t acl_rule_json_get(__xdata uint8_t idx) __banked;
+
+/* Rule view for the HTTP /acl.json endpoint */
+struct acl_json_rule {
+	uint8_t valid;
+	uint8_t template;
+	uint16_t pmask;
+	uint8_t action;      /* 0 = permit, 1 = deny */
+	uint32_t data0;      /* rule word 0 (DMAC/IP low / CTAG fields) */
+	uint32_t data1;      /* rule word 1 (IP high / VID fields) */
+};
+extern __xdata struct acl_json_rule acl_json_data;
 
 #endif

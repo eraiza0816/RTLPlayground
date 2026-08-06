@@ -181,6 +181,7 @@ void igmp_querier_on(void) __banked
 		sfr_mask_data(1, 0x40, 0x40);
 		reg_write_m(RTL837X_IGMP_PORT_CFG + (igmp_qport << 2));
 	}
+	igmp_json_querier = 1;
 	print_string("IGMP querier enabled (60s interval)\n");
 }
 
@@ -275,6 +276,49 @@ static __xdata uint8_t igmp_gvalid;
 /* Raw register bytes, copied right after reg_read_m: the print/itoa
  * helpers clobber sfr_data, so any decode must happen on a scratch copy */
 static __xdata uint8_t igmp_raw[4];
+
+/* IGMP/MLD status for the HTTP /igmp.json endpoint (page_impl.c) */
+__xdata uint8_t igmp_json_mld_en;
+__xdata uint8_t igmp_json_ops[9];     /* per logical port: MLDv1 op | MLDv2 op<<2 */
+__xdata uint16_t igmp_json_gmask;
+__xdata uint8_t igmp_json_querier;    /* HW querier on/off (software state) */
+
+void igmp_json_state(void) __banked
+{
+	reg_read_m(RTL837X_IGMP_CTRL);
+	igmp_json_mld_en = (sfr_data[3] >> 0) & 1;
+	for (igmp_qport = machine.min_port; igmp_qport <= machine.max_port; igmp_qport++) {
+		reg_read_m(RTL837X_IGMP_PORT_CFG + (igmp_qport << 2));
+		igmp_json_ops[igmp_qport] = (uint8_t)(((sfr_data[3] >> 6) & 0x3) |
+						      ((sfr_data[2] & 0x3) << 2));
+	}
+}
+
+/*
+ * Return the next valid ASIC IGMP/MLD group index >= idx (0xffff when
+ * none); the group's port mask (ports with a nonzero timer) is left in
+ * igmp_json_gmask.
+ */
+uint16_t igmp_json_group_next(__xdata uint16_t idx) __banked
+{
+	for (; idx <= 0xff; idx++) {
+		reg_read_m(RTL837X_IGMP_TBL_USAGE(idx));
+		igmp_qbyte = (uint8_t)(idx & 0x1f);
+		if (!((sfr_data[3 - (igmp_qbyte >> 3)] >> (igmp_qbyte & 7)) & 1))
+			continue;
+		reg_read_m(RTL837X_TBL_CTRL);
+		REG_WRITE(RTL837X_TBL_CTRL, 0, (uint8_t)idx, TB_TARGET_IGMP_GROUP,
+			  TB_EXECUTE | (TB_OP_READ << 1));
+		do {
+			reg_read_m(RTL837X_TBL_CTRL);
+		} while (sfr_data[3] & TB_EXECUTE);
+		reg_read_m(RTL837X_ITA_READ_DATA0(0));
+		igmp_json_gmask = (uint16_t)sfr_data[3] |
+				  ((uint16_t)(sfr_data[2] & 0x07) << 8);
+		return idx;
+	}
+	return 0xffff;
+}
 
 void igmp_mld_show(void) __banked
 {

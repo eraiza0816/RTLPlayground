@@ -191,6 +191,7 @@ void igmp_querier_off(void) __banked
 	reg_read_m(0x5290);
 	sfr_mask_data(0, 0x01, 0x00);      // clear IGMP_MLD_EN
 	reg_write_m(0x5290);
+	igmp_json_querier = 0;
 	print_string("IGMP querier disabled\n");
 }
 

@@ -214,7 +214,8 @@ Use `--mode arista` or the environment variable `MODE=arista` for Arista EOS-com
 | `show interfaces status` | GET /status.json |
 | `show interfaces Ethernet<X> status` | GET /status.json (port filtered) |
 | `show interfaces counters [Ethernet<X>]` | GET /counters.json |
-| `show running-config` | GET /config |
+| `show running-config` | GET /running-config |
+| `show startup-config` | GET /config |
 | `show vlan` | GET /vlanlist |
 | `show vlan id <vid>` | GET /vlan.json |
 | `show inventory` | GET /information.json |
@@ -226,12 +227,46 @@ Use `--mode arista` or the environment variable `MODE=arista` for Arista EOS-com
 | `show system` | GET /information.json |
 | `show mtu` | GET /mtu.json |
 | `show config` | GET /config |
+| `show lldp neighbors` | console `lldp show` |
+| `show ip igmp snooping` | console `igmp show` |
+| `show ip igmp snooping querier` | console `igmp querier show` |
+| `show ip igmp snooping groups` | console `igmp mld show` |
+| `show qos` | console `qos status` |
+| `show storm-control` | console `storm-control status` |
+| `show ip access-lists` | console `acl show` |
+| `ping <ip>` | console `ping <ip>` |
+| `lldp enable` / `lldp disable` | console `lldp on` / `lldp off` |
+| `ip igmp snooping enable` / `disable` | console `igmp on` / `igmp off` |
+| `storm-control <type> level <rate>` | console `storm-control on <type> <rate>` |
+| `hostname <name>` | console `hostname <name>` |
+| `ip address <a.b.c.d>[/prefix]` | console `ip <a.b.c.d>` + `netmask` |
+| `ip address dhcp` | console `ip dhcp` |
+| `ip default-gateway <ip>` / `ip route 0.0.0.0/0 <ip>` | console `gw <ip>` |
+| `username <name> [secret\|password] <pw>` | console `passwd <pw>` |
+| `spanning-tree mode <mode>` | console `stp on` |
+| `vlan <id>` / `vlan <id> name <name>` | console `vlan <id>` / `vlan <id> <name>` |
+| `interface Ethernet<X> speed <speed>` | console `port <X> <speed>` |
+| `interface Ethernet<X> duplex <half\|full>` | console `port <X> duplex ...` |
+| `interface Ethernet<X> switchport access vlan <id>` | console `pvid <X> <id>` |
+| `interface Ethernet<X> mtu <size>` | console `mtu <X> <size>` |
+| `interface Ethernet<X> description <name>` | console `port <X> name <name>` |
+| `interface Ethernet<X> shutdown` | console `port <X> off` |
+| `no spanning-tree mode` | console `stp off` |
+| `no vlan <id>` | console `vlan <id> d` |
+| `no storm-control <type> level` | console `storm-control off <type>` |
+| `no lldp` / `no ip igmp snooping` | console `lldp off` / `igmp off` |
+| `no interface Ethernet<X> shutdown` | console `port <X> on` |
 | `configure [terminal]` | Enter config mode |
 | `copy running-config startup-config` | Save configuration |
 | `write memory` | Save configuration |
 | `clear mac address-table dynamic` | Flush learned MACs (`l2 forget`) |
 | `clear logging` | Clear command log |
 | `enable` | Privileged mode |
+
+Storm-control types map to the device: `broadcast`, `multicast`,
+`unknown-unicast` (device `dlf`), `unknown-multicast` (device
+`unknown-mcast`).  "Console" commands are sent through `/cmd`; their
+output appears on the switch's serial console.
 
 > **Note:** `copy running-config startup-config` / `write memory` save the
 > configuration via the encrypted `/enc` endpoint and therefore require a

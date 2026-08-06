@@ -77,13 +77,10 @@ __xdata	char save_cmd;
 // mode hierarchy (mode transitions in cmd_mode.c).
 __xdata uint8_t cli_mode;
 
-#ifndef FULL_CLI
-// Lite build only: input source flag, 1 = interactive console (serial/telnet),
-// 0 = HTTP API or boot config replay. When set, mode gating is bypassed so
-// every command can be issued directly from the console prompt (legacy flat
-// CLI behavior).
+// Input source flag: 1 = interactive console (serial/telnet), 0 = HTTP API
+// or boot config replay. When set, mode gating is bypassed so every command
+// can be issued directly from the console prompt (legacy flat CLI behavior).
 __xdata uint8_t cmd_console;
-#endif
 
 __xdata uint8_t ip[4];
 

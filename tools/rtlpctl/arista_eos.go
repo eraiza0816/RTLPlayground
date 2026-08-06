@@ -121,6 +121,42 @@ func runAristaCmd(client *Client, args []string, jsonMode bool) error {
 		return aristaVlanConfig(client, args[1:], jsonMode)
 	case matchCmd(cmd, "interface"):
 		return aristaInterface(client, args[1:], jsonMode)
+	case matchCmd(cmd, "telnet"):
+		return aristaTelnet(client, args[1:], jsonMode)
+	case matchCmd(cmd, "web"):
+		return aristaWeb(client, args[1:], jsonMode)
+	case matchCmd(cmd, "commit"):
+		return aristaConsole(client, "commit", jsonMode)
+	case matchCmd(cmd, "pvid"):
+		return aristaPvid(client, args[1:], jsonMode)
+	case matchCmd(cmd, "isolate"):
+		return aristaConsole(client, "isolate "+strings.Join(args[1:], " "), jsonMode)
+	case matchCmd(cmd, "ingress"):
+		return aristaConsole(client, "ingress "+strings.Join(args[1:], " "), jsonMode)
+	case matchCmd(cmd, "laghash"):
+		return aristaLaghash(client, args[1:], jsonMode)
+	case matchCmd(cmd, "sfp"):
+		return aristaConsole(client, "sfp "+strings.Join(args[1:], " "), jsonMode)
+	case matchCmd(cmd, "regget"):
+		return aristaConsole(client, "regget "+strings.Join(args[1:], " "), jsonMode)
+	case matchCmd(cmd, "regset"):
+		return aristaConsole(client, "regset "+strings.Join(args[1:], " "), jsonMode)
+	case matchCmd(cmd, "sdsget"):
+		return aristaConsole(client, "sdsget "+strings.Join(args[1:], " "), jsonMode)
+	case matchCmd(cmd, "sdsset"):
+		return aristaConsole(client, "sdsset "+strings.Join(args[1:], " "), jsonMode)
+	case matchCmd(cmd, "phyget"):
+		return aristaConsole(client, "phyget "+strings.Join(args[1:], " "), jsonMode)
+	case matchCmd(cmd, "physet"):
+		return aristaConsole(client, "physet "+strings.Join(args[1:], " "), jsonMode)
+	case matchCmd(cmd, "preshared-key") || matchCmd(cmd, "psk"):
+		if len(args) != 2 {
+			return fmt.Errorf("usage: preshared-key <64-hex-chars>")
+		}
+		if err := validatePSK(args[1]); err != nil {
+			return err
+		}
+		return aristaConsole(client, "preshared_key "+args[1], jsonMode)
 	default:
 		if jsonMode {
 			eapiError(fmt.Sprintf("%% Unknown command: %s", strings.Join(args, " ")))
@@ -648,6 +684,65 @@ func aristaInterface(client *Client, args []string, jsonMode bool) error {
 	return nil
 }
 
+// aristaTelnet maps EOS "telnet server enable|disable" and the plain
+// "telnet on|off" to the device telnet command.
+func aristaTelnet(client *Client, args []string, jsonMode bool) error {
+	if len(args) == 2 && matchCmd(args[0], "server") && (matchCmd(args[1], "enable") || matchCmd(args[1], "disable")) {
+		on := "off"
+		if matchCmd(args[1], "enable") {
+			on = "on"
+		}
+		return aristaConsole(client, "telnet "+on, jsonMode)
+	}
+	if len(args) == 1 && (matchCmd(args[0], "on") || matchCmd(args[0], "off")) {
+		return aristaConsole(client, "telnet "+args[0], jsonMode)
+	}
+	return fmt.Errorf("usage: telnet [server enable|disable] | telnet on|off")
+}
+
+// aristaWeb maps EOS "web server enable|disable" and the plain "web on|off"
+// to the device web command.
+func aristaWeb(client *Client, args []string, jsonMode bool) error {
+	if len(args) == 2 && matchCmd(args[0], "server") && (matchCmd(args[1], "enable") || matchCmd(args[1], "disable")) {
+		on := "off"
+		if matchCmd(args[1], "enable") {
+			on = "on"
+		}
+		return aristaConsole(client, "web "+on, jsonMode)
+	}
+	if len(args) == 1 && (matchCmd(args[0], "on") || matchCmd(args[0], "off")) {
+		return aristaConsole(client, "web "+args[0], jsonMode)
+	}
+	return fmt.Errorf("usage: web [server enable|disable] | web on|off")
+}
+
+// aristaPvid maps EOS "pvid <port> <vid>" to the device pvid command.
+func aristaPvid(client *Client, args []string, jsonMode bool) error {
+	if len(args) != 2 {
+		return fmt.Errorf("usage: pvid <port> <vid>")
+	}
+	if err := validatePortNum(args[0], 9); err != nil {
+		return err
+	}
+	if err := validateVLANID(args[1]); err != nil {
+		return err
+	}
+	return aristaConsole(client, "pvid "+args[0]+" "+args[1], jsonMode)
+}
+
+// aristaLaghash maps EOS "laghash <hash> [fields...]" to the device
+// laghash command (validated host-side).
+func aristaLaghash(client *Client, args []string, jsonMode bool) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: laghash <hash> [smac|dmac|spa|sip|dip|sport|dport]")
+	}
+	cmdText := "laghash " + strings.Join(args, " ")
+	if err := validateCmdText(cmdText); err != nil {
+		return err
+	}
+	return aristaConsole(client, cmdText, jsonMode)
+}
+
 // aristaNo handles the EOS "no <command>" inverse mappings.
 func aristaNo(client *Client, args []string, jsonMode bool) error {
 	if len(args) == 0 {
@@ -692,6 +787,20 @@ func aristaNo(client *Client, args []string, jsonMode bool) error {
 		case matchCmd(sub, "switchport") && len(args) >= 5 && matchCmd(args[3], "access") && matchCmd(args[4], "vlan"):
 			return aristaConsole(client, fmt.Sprintf("pvid %d 1", port), jsonMode)
 		}
+	case matchCmd(args[0], "telnet"):
+		return aristaConsole(client, "telnet off", jsonMode)
+	case matchCmd(args[0], "web"):
+		return aristaConsole(client, "web off", jsonMode)
+	case matchCmd(args[0], "isolate") && len(args) >= 2:
+		if err := validatePortNum(args[1], 9); err != nil {
+			return err
+		}
+		return aristaConsole(client, "isolate "+args[1]+" off", jsonMode)
+	case matchCmd(args[0], "pvid") && len(args) >= 2:
+		if err := validatePortNum(args[1], 9); err != nil {
+			return err
+		}
+		return aristaConsole(client, fmt.Sprintf("pvid %s 1", args[1]), jsonMode)
 	}
 	aristaUnknown("no "+strings.Join(args, " "), jsonMode)
 	return nil

@@ -1077,6 +1077,83 @@ func TestBinaryEndToEnd(t *testing.T) {
 		}
 	})
 
+	t.Run("direct_device_cmds", func(t *testing.T) {
+		cases := []struct {
+			args []string
+			want string
+		}{
+			{[]string{"hostname", "sw-01"}, "hostname sw-01"},
+			{[]string{"passwd", "secret99"}, "passwd secret99"},
+			{[]string{"ip", "192.168.10.50"}, "ip 192.168.10.50"},
+			{[]string{"ip", "dhcp"}, "ip dhcp"},
+			{[]string{"gw", "192.168.10.1"}, "gw 192.168.10.1"},
+			{[]string{"netmask", "255.255.255.0"}, "netmask 255.255.255.0"},
+			{[]string{"port", "3", "10g"}, "port 3 10g"},
+			{[]string{"port", "1", "name", "uplink"}, "port 1 name uplink"},
+			{[]string{"port", "2", "off"}, "port 2 off"},
+			{[]string{"port", "4", "duplex", "full"}, "port 4 duplex full"},
+			{[]string{"pvid", "5", "100"}, "pvid 5 100"},
+			{[]string{"ingress", "1t", "2u"}, "ingress 1t 2u"},
+			{[]string{"isolate", "1", "2", "3"}, "isolate 1 2 3"},
+			{[]string{"isolate", "2", "off"}, "isolate 2 off"},
+			{[]string{"laghash", "0", "smac", "dmac"}, "laghash 0 smac dmac"},
+			{[]string{"stp", "on"}, "stp on"},
+			{[]string{"telnet", "on"}, "telnet on"},
+			{[]string{"web", "off"}, "web off"},
+			{[]string{"commit"}, "commit"},
+			{[]string{"psk", strings.Repeat("a", 64)}, "preshared_key " + strings.Repeat("a", 64)},
+			{[]string{"sfp", "1", "10g"}, "sfp 1 10g"},
+			{[]string{"sfp", "1", "describe"}, "sfp 1 describe"},
+			{[]string{"sfp", "2", "write", "33", "35", "--pw", "deadbeef"}, "sfp 2 write 33 35 --pw deadbeef"},
+			{[]string{"regget", "0bb0"}, "regget 0bb0"},
+			{[]string{"regset", "0b", "abcd1234"}, "regset 0b abcd1234"},
+			{[]string{"sdsget", "0", "2", "3"}, "sdsget 0 2 3"},
+			{[]string{"sdsset", "1", "2", "3", "4"}, "sdsset 1 2 3 4"},
+			{[]string{"phyget", "0", "0", "0b"}, "phyget 0 0 0b"},
+			{[]string{"physet", "1", "2", "0b", "1234"}, "physet 1 2 0b 1234"},
+		}
+		for _, c := range cases {
+			mockCmdBodies = nil
+			ts2 := newMockServer(t)
+			h := strings.TrimPrefix(ts2.URL, "http://")
+			full := append([]string{"--host", h, "--password", "test123"}, c.args...)
+			out, err := exec.Command(bin, full...).CombinedOutput()
+			ts2.Close()
+			if err != nil {
+				t.Fatalf("%v failed: %v\noutput: %s", c.args, err, out)
+			}
+			if !strings.Contains(strings.Join(mockCmdBodies, ","), c.want) {
+				t.Errorf("expected %q via /cmd, got bodies: %v", c.want, mockCmdBodies)
+			}
+		}
+	})
+
+	t.Run("direct_device_cmds_invalid", func(t *testing.T) {
+		bad := [][]string{
+			{"hostname", "bad name"},
+			{"ip", "999.1.1.1"},
+			{"gw", "not-an-ip"},
+			{"port", "0", "10g"},
+			{"port", "3", "turbo"},
+			{"pvid", "2", "9999"},
+			{"telnet", "maybe"},
+			{"web", "sometimes"},
+			{"psk", "abcd"},
+			{"regget"},
+			{"physet", "1", "2", "0b"},
+		}
+		for _, c := range bad {
+			ts2 := newMockServer(t)
+			h := strings.TrimPrefix(ts2.URL, "http://")
+			full := append([]string{"--host", h, "--password", "test123"}, c...)
+			out, err := exec.Command(bin, full...).CombinedOutput()
+			ts2.Close()
+			if err == nil {
+				t.Errorf("expected error for %v, got success: %s", c, out)
+			}
+		}
+	})
+
 	t.Run("default_show_startup_config", func(t *testing.T) {
 		ts2 := newMockServer(t)
 		defer ts2.Close()
@@ -1322,6 +1399,68 @@ func TestBinaryEndToEnd(t *testing.T) {
 		} {
 			if !strings.Contains(bodies, want) {
 				t.Errorf("expected %q via /cmd, got: %v", want, mockCmdBodies)
+			}
+		}
+	})
+
+	t.Run("arista_service_and_debug", func(t *testing.T) {
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		cases := []struct {
+			args []string
+			want string
+		}{
+			{[]string{"telnet", "server", "enable"}, "telnet on"},
+			{[]string{"telnet", "server", "disable"}, "telnet off"},
+			{[]string{"telnet", "on"}, "telnet on"},
+			{[]string{"no", "telnet"}, "telnet off"},
+			{[]string{"web", "server", "enable"}, "web on"},
+			{[]string{"web", "off"}, "web off"},
+			{[]string{"no", "web"}, "web off"},
+			{[]string{"commit"}, "commit"},
+			{[]string{"pvid", "4", "20"}, "pvid 4 20"},
+			{[]string{"no", "pvid", "4"}, "pvid 4 1"},
+			{[]string{"isolate", "1", "2"}, "isolate 1 2"},
+			{[]string{"no", "isolate", "1"}, "isolate 1 off"},
+			{[]string{"ingress", "1t", "2u"}, "ingress 1t 2u"},
+			{[]string{"laghash", "2", "sip", "dip"}, "laghash 2 sip dip"},
+			{[]string{"sfp", "1", "describe"}, "sfp 1 describe"},
+			{[]string{"regget", "0bb0"}, "regget 0bb0"},
+			{[]string{"regset", "0b", "abcd1234"}, "regset 0b abcd1234"},
+			{[]string{"sdsget", "0", "2", "3"}, "sdsget 0 2 3"},
+			{[]string{"sdsset", "1", "2", "3", "4"}, "sdsset 1 2 3 4"},
+			{[]string{"phyget", "0", "0", "0b"}, "phyget 0 0 0b"},
+			{[]string{"physet", "1", "2", "0b", "1234"}, "physet 1 2 0b 1234"},
+			{[]string{"preshared-key", strings.Repeat("b", 64)}, "preshared_key " + strings.Repeat("b", 64)},
+		}
+		for _, c := range cases {
+			mockCmdBodies = nil
+			full := append([]string{"--host", h, "--password", "test123", "--mode", "arista"}, c.args...)
+			out, err := exec.Command(bin, full...).CombinedOutput()
+			if err != nil {
+				t.Fatalf("%v failed: %v\noutput: %s", c.args, err, out)
+			}
+			if !strings.Contains(strings.Join(mockCmdBodies, ","), c.want) {
+				t.Errorf("expected %q via /cmd for %v, got: %v", c.want, c.args, mockCmdBodies)
+			}
+		}
+	})
+
+	t.Run("arista_service_invalid", func(t *testing.T) {
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		for _, c := range [][]string{
+			{"telnet", "maybe"},
+			{"web", "server", "sometimes"},
+			{"pvid", "0", "5"},
+			{"preshared-key", "short"},
+		} {
+			full := append([]string{"--host", h, "--password", "test123", "--mode", "arista"}, c...)
+			out, err := exec.Command(bin, full...).CombinedOutput()
+			if err == nil {
+				t.Errorf("expected error for %v, got success: %s", c, out)
 			}
 		}
 	})

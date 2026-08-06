@@ -175,6 +175,50 @@ func runCmd(client *Client, args []string, cfg config) error {
 		return cmdQos(client, cmdArgs, cfg.jsonMode)
 	case "acl":
 		return cmdAcl(client, cmdArgs, cfg.jsonMode)
+	case "hostname":
+		return cmdHostname(client, cmdArgs, cfg.jsonMode)
+	case "passwd":
+		return cmdPasswd(client, cmdArgs, cfg.jsonMode)
+	case "ip":
+		return cmdIP(client, cmdArgs, cfg.jsonMode)
+	case "gw":
+		return cmdGW(client, cmdArgs, cfg.jsonMode)
+	case "netmask":
+		return cmdNetmask(client, cmdArgs, cfg.jsonMode)
+	case "port":
+		return cmdPort(client, cmdArgs, cfg.jsonMode)
+	case "pvid":
+		return cmdPvid(client, cmdArgs, cfg.jsonMode)
+	case "ingress":
+		return cmdIngress(client, cmdArgs, cfg.jsonMode)
+	case "isolate":
+		return cmdIsolate(client, cmdArgs, cfg.jsonMode)
+	case "laghash":
+		return cmdLaghash(client, cmdArgs, cfg.jsonMode)
+	case "stp":
+		return cmdStp(client, cmdArgs, cfg.jsonMode)
+	case "telnet":
+		return cmdTelnet(client, cmdArgs, cfg.jsonMode)
+	case "web":
+		return cmdWeb(client, cmdArgs, cfg.jsonMode)
+	case "commit":
+		return cmdCommit(client, cmdArgs, cfg.jsonMode)
+	case "sfp":
+		return cmdSfp(client, cmdArgs, cfg.jsonMode)
+	case "psk", "preshared-key":
+		return cmdPsk(client, cmdArgs, cfg.jsonMode)
+	case "regget":
+		return cmdRegget(client, cmdArgs, cfg.jsonMode)
+	case "regset":
+		return cmdRegset(client, cmdArgs, cfg.jsonMode)
+	case "sdsget":
+		return cmdSdsget(client, cmdArgs, cfg.jsonMode)
+	case "sdsset":
+		return cmdSdsset(client, cmdArgs, cfg.jsonMode)
+	case "phyget":
+		return cmdPhyget(client, cmdArgs, cfg.jsonMode)
+	case "physet":
+		return cmdPhyset(client, cmdArgs, cfg.jsonMode)
 	case "show":
 		return cmdShow(client, cmdArgs, cfg.jsonMode)
 	case "enc-cmd", "enccmd":

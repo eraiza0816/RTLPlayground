@@ -422,6 +422,212 @@ func cmdAcl(client *Client, args []string, asJSON bool) error {
 	return sendConsoleCmd(client, cmdText)
 }
 
+// ---- Dedicated subcommands for the remaining device CLI commands ----
+// Each validates locally (the firmware has minimal input validation) and
+// sends the command via /cmd; output appears on the switch console.
+
+// cmdDeviceCmd validates and sends a one-line device CLI command.
+func cmdDeviceCmd(client *Client, name string, args []string, usage string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: %s", usage)
+	}
+	cmdText := name + " " + strings.Join(args, " ")
+	if err := validateCmdText(cmdText); err != nil {
+		return err
+	}
+	return sendConsoleCmd(client, cmdText)
+}
+
+func cmdHostname(client *Client, args []string, asJSON bool) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: hostname <name>")
+	}
+	if err := validateDeviceHostname(args[0]); err != nil {
+		return err
+	}
+	return sendConsoleCmd(client, "hostname "+args[0])
+}
+
+func cmdPasswd(client *Client, args []string, asJSON bool) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: passwd <new-password>")
+	}
+	if err := validatePassword(args[0]); err != nil {
+		return err
+	}
+	return sendConsoleCmd(client, "passwd "+args[0])
+}
+
+func cmdIP(client *Client, args []string, asJSON bool) error {
+	if len(args) != 1 || args[0] != "dhcp" {
+		if len(args) != 1 {
+			return fmt.Errorf("usage: ip <a.b.c.d> | ip dhcp")
+		}
+		if err := validateIPAddr(args[0]); err != nil {
+			return err
+		}
+	}
+	return sendConsoleCmd(client, "ip "+args[0])
+}
+
+func cmdGW(client *Client, args []string, asJSON bool) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: gw <a.b.c.d>")
+	}
+	if err := validateIPAddr(args[0]); err != nil {
+		return err
+	}
+	return sendConsoleCmd(client, "gw "+args[0])
+}
+
+func cmdNetmask(client *Client, args []string, asJSON bool) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: netmask <a.b.c.d>")
+	}
+	if err := validateIPAddr(args[0]); err != nil {
+		return err
+	}
+	return sendConsoleCmd(client, "netmask "+args[0])
+}
+
+func cmdPort(client *Client, args []string, asJSON bool) error {
+	if len(args) < 2 {
+		return fmt.Errorf("usage: port <n> show|name|on|off|duplex|speed|auto")
+	}
+	if err := validatePortNum(args[0], 9); err != nil {
+		return err
+	}
+	p := args[0]
+	switch args[1] {
+	case "show":
+		return sendConsoleCmd(client, "port "+p+" show")
+	case "name":
+		if len(args) != 3 {
+			return fmt.Errorf("usage: port <n> name <name>")
+		}
+		if err := validateDeviceHostname(args[2]); err != nil {
+			return err
+		}
+		return sendConsoleCmd(client, "port "+p+" name "+args[2])
+	case "on", "off":
+		return sendConsoleCmd(client, "port "+p+" "+args[1])
+	case "duplex":
+		if len(args) != 3 {
+			return fmt.Errorf("usage: port <n> duplex <half|full>")
+		}
+		if err := validateDuplex(args[2]); err != nil {
+			return err
+		}
+		return sendConsoleCmd(client, "port "+p+" duplex "+args[2])
+	default:
+		if err := validateSpeedWord(args[1]); err != nil {
+			return err
+		}
+		return sendConsoleCmd(client, "port "+p+" "+args[1])
+	}
+}
+
+func cmdPvid(client *Client, args []string, asJSON bool) error {
+	if len(args) != 2 {
+		return fmt.Errorf("usage: pvid <port> <vid>")
+	}
+	if err := validatePortNum(args[0], 9); err != nil {
+		return err
+	}
+	if err := validateVLANID(args[1]); err != nil {
+		return err
+	}
+	return sendConsoleCmd(client, "pvid "+args[0]+" "+args[1])
+}
+
+func cmdIngress(client *Client, args []string, asJSON bool) error {
+	return cmdDeviceCmd(client, "ingress", args, "ingress [ports...]")
+}
+
+func cmdIsolate(client *Client, args []string, asJSON bool) error {
+	return cmdDeviceCmd(client, "isolate", args, "isolate <port> [ports...] | isolate <port> off|show")
+}
+
+func cmdLaghash(client *Client, args []string, asJSON bool) error {
+	return cmdDeviceCmd(client, "laghash", args, "laghash <hash> [smac|dmac|spa|sip|dip|sport|dport]")
+}
+
+func cmdStp(client *Client, args []string, asJSON bool) error {
+	return cmdDeviceCmd(client, "stp", args, "stp [on|off|show]")
+}
+
+func cmdTelnet(client *Client, args []string, asJSON bool) error {
+	if len(args) != 1 || (args[0] != "on" && args[0] != "off") {
+		return fmt.Errorf("usage: telnet on|off")
+	}
+	return sendConsoleCmd(client, "telnet "+args[0])
+}
+
+func cmdWeb(client *Client, args []string, asJSON bool) error {
+	if len(args) != 1 || (args[0] != "on" && args[0] != "off") {
+		return fmt.Errorf("usage: web on|off")
+	}
+	return sendConsoleCmd(client, "web "+args[0])
+}
+
+func cmdCommit(client *Client, args []string, asJSON bool) error {
+	if len(args) != 0 {
+		return fmt.Errorf("usage: commit")
+	}
+	return sendConsoleCmd(client, "commit")
+}
+
+// cmdSfp covers the SFP feature family.  Sensitive operations (save,
+// restore, fix, patch, clone, checksum --fix, write) accept --pw <hex8>;
+// the token is validated but passed through to the firmware as-is.
+func cmdSfp(client *Client, args []string, asJSON bool) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: sfp [1|2] [1g|2g5|10g|100m|auto|describe|dump|save|restore|fix|patch|clone|checksum|write|bulk]")
+	}
+	cmdText := "sfp " + strings.Join(args, " ")
+	if err := validateCmdText(cmdText); err != nil {
+		return err
+	}
+	return sendConsoleCmd(client, cmdText)
+}
+
+// cmdPsk sets the device-side preshared key for the encrypted /enc
+// endpoint (console command preshared_key).  Use --psk/--env-file to
+// configure the local key for enc-cmd instead.
+func cmdPsk(client *Client, args []string, asJSON bool) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: psk <64-hex-chars>")
+	}
+	if err := validatePSK(args[0]); err != nil {
+		return err
+	}
+	return sendConsoleCmd(client, "preshared_key "+args[0])
+}
+
+func cmdRegget(client *Client, args []string, asJSON bool) error {
+	return cmdDeviceCmd(client, "regget", args, "regget <addr>")
+}
+
+func cmdRegset(client *Client, args []string, asJSON bool) error {
+	return cmdDeviceCmd(client, "regset", args, "regset <addr> <hexvalue>")
+}
+
+func cmdSdsget(client *Client, args []string, asJSON bool) error {
+	return cmdDeviceCmd(client, "sdsget", args, "sdsget <bank> <page> <reg>")
+}
+
+func cmdSdsset(client *Client, args []string, asJSON bool) error {
+	return cmdDeviceCmd(client, "sdsset", args, "sdsset <bank> <page> <reg> <hexvalue>")
+}
+
+func cmdPhyget(client *Client, args []string, asJSON bool) error {
+	return cmdDeviceCmd(client, "phyget", args, "phyget <port> <addr> <reg>")
+}
+
+func cmdPhyset(client *Client, args []string, asJSON bool) error {
+	return cmdDeviceCmd(client, "physet", args, "physet <port> <addr> <reg> <hexvalue>")
+}
+
 // cmdEnc sends a command through the encrypted /enc endpoint (PSK auth).
 func cmdEnc(client *Client, args []string, asJSON bool, force bool) error {
 	if len(args) == 0 {
@@ -547,8 +753,32 @@ Commands (default mode):
   show running-config        Show the config 'commit' would save (console)
   show startup-config        Show the saved config from flash (console)
   show arp                   Show the switch ARP cache (console)
+  hostname <name>            Set the switch hostname
+  passwd <new>               Change the web/telnet password
+  ip <a.b.c.d>|dhcp          Set the management IP (or use DHCP)
+  gw <a.b.c.d>               Set the default gateway
+  netmask <a.b.c.d>          Set the netmask
+  port <n> ...               Port config: show|name|on|off|duplex|speed|auto
+  pvid <port> <vid>          Set the port VLAN ID
+  ingress [ports...]         Set 802.1Q ingress filtering (t = tagged-only)
+  isolate <port> [ports...]  Port isolation; <port> off clears it
+  laghash <hash> [fields]    LAG hash: 0-3 + smac|dmac|spa|sip|dip|sport|dport
+  stp [on|off|show]          Spanning-tree protocol
+  telnet on|off              Enable/disable the telnet console
+  web on|off                 Enable/disable the web UI
+  commit                     Save the running config to flash
+  psk <hex64>                Set the device preshared key (encrypted /enc)
+  sfp ...                    SFP module control (see below)
+  regget <addr>              Read an RTL8370 register (hex)
+  regset <addr> <hex>        Write an RTL8370 register
+  sdsget <bank> <page> <reg> Read a register via SDS access
+  sdsset <bank> <page> <reg> <hex>
+                               Write a register via SDS access
+  phyget <port> <addr> <reg> Read a PHY register
+  physet <port> <addr> <reg> <hex>
+                               Write a PHY register
 
-SFP commands (run via "cmd" / "enc-cmd"):
+SFP commands:
   sfp                          Show all SFP slots
   sfp [1|2] [1g|2g5|10g]       Set SFP speed (1g, 2g5, 10g, 100m, auto)
   sfp [1|2] dump               Hex dump of SFP EEPROM (0x00-0xFF)

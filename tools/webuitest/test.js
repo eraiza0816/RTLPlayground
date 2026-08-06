@@ -20,7 +20,7 @@ const { chromium } = require('playwright');
 
 const BASE = process.env.WUI_URL || process.argv[2] || 'http://127.0.0.1:18080';
 const PASSWORD = process.env.WUI_PASSWORD || process.argv[3] || '1234';
-const PAGES = ['dash', 'stat', 'vlan', 'eee', 'port', 'bw', 'mirror', 'lag', 'l2', 'sys', 'sfp'];
+const PAGES = ['dash', 'stat', 'vlan', 'eee', 'port', 'bw', 'qos', 'storm', 'acl', 'mirror', 'lag', 'l2', 'sys', 'sfp'];
 
 (async () => {
   const browser = await chromium.launch();

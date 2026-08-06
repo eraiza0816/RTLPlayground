@@ -1,6 +1,7 @@
 # BANK4 Creation Plan
 
-Status: **plan only — not implemented**
+Status: **implemented in v0.2.24+** (Tier 3 WebUI JSON endpoints are the
+first BANK4 resident)
 
 This document describes how to add a fourth code bank (BANK4) to the
 firmware. It was written after an investigation of the memory model, the
@@ -15,9 +16,10 @@ capped at 16 KB:
 | Region | Used (v0.2.24) | Capacity | Note |
 |---|---|---|---|
 | HOME / CSEG | ~15 KB | 16 KB (`CODE0_SIZE`) | hard cap, prefetched into code RAM at boot |
-| BANK1 | 44,015 B | 48 KB (`CODE_BANK_SIZE`) | ~90 % of window |
-| BANK2 | 44,658 B | 48 KB | ~91 % of window |
-| BANK3 | 24,846 B | 48 KB | ~51 % of window |
+| BANK1 | 47,894 B | 48 KB (`CODE_BANK_SIZE`) | ~98 % of window (Tier 3 + WebUI) |
+| BANK2 | 48,095 B | 48 KB | ~98 % of window |
+| BANK3 | 51,949 B (FULL) | 48 KB | over budget before BANK4 — see below |
+| BANK4 | 3,331 B | 44 KB (`0x64000..0x6EFFF`) | WebUI JSON endpoints (api_status.c) |
 
 Upcoming features (SFP work, LLDP, new CLI commands) will not fit into
 BANK3 and the remaining bank headroom, so a fourth bank is needed.
@@ -39,22 +41,36 @@ BANK3 and the remaining bank headroom, so a fourth bank is needed.
   time. Files opt in with `#pragma codeseg BANKn` / `constseg BANKn` and
   export `__banked` functions.
 
+### ⚠️ The image is compacted, not page-mapped (corrected model)
+
+The flash image produced by `tools/imagebuilder` does **not** place the
+banks at their page positions.  The imagebuilder reads each bank from the
+input `.img` at `n*0x10000 + 0x4000` and repacks it into **consecutive
+0xC000 slots**:
+
+| Bank | sdcc `-Wl-bBANKn` (input) | `.bin` flash offset |
+|---|---|---|
+| BANK1 | 0x14000 | 0x04000-0x0FFFF |
+| BANK2 | 0x24000 | 0x10000-0x1BFFF |
+| BANK3 | 0x34000 | 0x1C000-0x27FFF |
+| **BANK4** | **0x44000** | **0x28000-0x33FFF** |
+
+The device fetches the compacted slots: `flash = 0x4000 + (PSBANK-1)*0xC000
++ (PC-0x4000)`.  **BANK4 must therefore be linked at 0x44000, not at a
+page-6 address like 0x64000** — with `-Wl-bBANK4=0x64000` the imagebuilder
+reads an empty input window (the `.img`'s 0x44000-0x63FFF gap) and places
+zeros in the `.bin` bank-4 slot; the first banked call then executes
+garbage and hangs the switch.  This was found the hard way on hardware
+(commit history: BANK4 WebUI endpoints); verify the `.bin` bank content,
+not just the linker `.map`, when adding a bank.
+
 ## Current flash map (512 KB image)
 
-| Page | Range | Content |
-|---|---|---|
-| 0 | 0x00000-0x03FFF | HOME (common) code — prefetched into RAM |
-| 0 | 0x04000-0x13FFF | unused — HOME is deliberately kept within the 16 KB prefetch |
-| 1 | 0x14000-0x1FFFF | BANK1 (httpd, rtl837x_port, igmp, html_data) |
-| 2 | 0x24000-0x2FFFF | BANK2 (cmd_parser, dhcp, leds, bandwidth, sfp_bitbang) |
-| 3 | 0x34000-0x3FFFF | BANK3 (telnetd, stp, poly1305, cmd_help) |
-| 4 | 0x40000-0x4FFFF | web filesystem (html data, read via flash MMIO) |
-| 5 | 0x50000-0x5D000 | web filesystem (continued) |
-| 5 | 0x5E000-0x5E1FF | SFP EEPROM backup (target of this plan) |
-| 6 | 0x64000-0x6EFFF | **free — proposed BANK4 window** |
-| 6 | 0x6F000-0x6FFFF | default config (`DEFAULT_CONFIG_START`) |
-| 7 | 0x70000-0x7FFFF | live config (`CONFIG_START`, `CONFIG_LEN 0x1000`) |
-| 8+ | 0x80000-0xFFFFF | firmware update staging area (`FIRMWARE_UPLOAD_START`) |
+The `.bin` layout is the compacted one (see above): banks at 0x4000 /
+0x10000 / 0x1C000 / 0x28000, web filesystem at 0x40000+ (added by
+fileadder), config at 0x70000.  The 0x60000-0x6FFFF page-6 area is
+unused; the SFP EEPROM backup stays at 0x6E000 (no code window
+conflict in the compacted model).
 
 ## Constraints that shaped the plan
 
@@ -85,62 +101,53 @@ migration, which is rejected.
 
 ## Plan
 
-### Step 0 (prerequisite): relocate the SFP EEPROM backup to 0x5E000
+### Step 0 (prerequisite): ~~relocate the SFP EEPROM backup~~ — not needed
 
-The backup currently sits at `SFP_EEPROM_BACKUP 0x6e000`
-(rtl837x_common.h:92), inside the page-6 bank window. Move it to **0x5E000**:
+The original plan moved the SFP backup out of a page-6 bank window that
+does not exist in the compacted image model.  The backup stays at
+`SFP_EEPROM_BACKUP 0x6e000`; the compacted banks end at 0x33FFF and
+nothing else uses 0x6E000.
 
-- Only `sfp_bitbang.c` (sfp_save_backup / sfp_restore_backup) references the
-  macro; no other code change is needed.
-- 0x5E000-0x5E1FF is free: the web filesystem ends around 0x5C900
-  (0x5D000 with padding) and nothing else is placed in 0x5E000-0x5EFFF.
-- Both update paths cover 0x5E000. Note that firmware updates wipe the
-  backup area with the uploaded image (same as today at 0x6E000); the data
-  is recoverable with `sfp save`.
-- Existing backups stored at 0x6E000 are abandoned (2×256 B of module
-  EEPROM data).
-- ⚠️ The web filesystem grows forward from 0x40000 and the build tool
-  (tools/fileadder) does **not** detect overlaps: keep the html end below
-  ~0x5D000. If html grows close to 0x5E000, pick a new backup offset
-  outside the BANK4 window (0x64000-0x6EFFF) and the config areas, for
-  example 0x5F000, and update this document.
-- Update the comment in rtl837x_common.h accordingly.
+### Step 1: add BANK4
 
-### Step 1: add BANK4 at 0x64000
-
-- Makefile link line: add `-Wl-bBANK4=0x64000`.
+- Makefile link line: `-Wl-bBANK4=0x44000`. ✅ done — note this is the
+  **input** position for imagebuilder (see the corrected model above);
+  the `.bin` places the bank at 0x28000.
 - New/relocated bank code: `#pragma codeseg BANK4` + `#pragma constseg BANK4`
   and `__banked` functions, following the pattern of the existing banks.
-- **Usable size: 44 KB** (`0x64000 .. 0x6EFFF`). The 4 KB
-  `0x6F000-0x6FFFF` default-config region
-  (`flash_default_config()` copies it verbatim to 0x70000) must remain
-  untouched — do not move it.
-- Candidate content (TBD): SFP feature expansion, LLDP, new CLI commands.
-  Prefer moving the largest remaining home/bank code only when it fits.
+- **Usable size: 48 KB** (the `.bin` slot 0x28000-0x33FFF).
+- First resident: `httpd/api_status.c` (WebUI JSON status endpoints for
+  ping/arp/lldp/igmp/storm-control/qos/acl, moved out of BANK1/3).
 
 ### Step 2: verify
 
 1. Build both machines (`PCB_K0402WS_V3`, `SWGT024_V2_0_MANAGED`) — also
-   with `WEB=0` and `FULL=1`.
+   with `WEB=0` and `FULL=1`. ✅ lite + FULL pass on PCB_K0402WS_V3.
 2. Inspect `output/<machine>/rtlplayground.map`: the BANK4 segment must be
-   placed at 0x64000 and end at ≤ 0x6EFFF. ⚠️ The linker does **not** error
+   placed at 0x44000 and end at ≤ 0x4FFFF. ⚠️ The linker does **not** error
    when a bank crosses its 48 KB window; code beyond the window is
-   unreachable at runtime (crash). The .map check is mandatory.
+   unreachable at runtime (crash). The .map check is mandatory — **and also
+   verify the `.bin`: the bank-4 code must appear at the flash offset
+   0x28000** (see the corrected model above; an empty slot means the first
+   banked call executes garbage).
 3. On hardware:
-   - `sfp 1 save` / `sfp 1 restore` (backup at 0x5E000).
+   - `sfp 1 save` / `sfp 1 restore` (backup stays at 0x6E000).
    - Firmware update round trip: upload → reset → `check_and_flash_update_image`
      copies the image including BANK4 → verify the new features work.
    - Factory reset (button / `flash_default_config`) still restores the
      default config.
    - Basic web UI / telnet / rtlpctl smoke test (banked paths).
+   ✅ Round trip verified on the PCB_K0402WS_V3: the BANK4 JSON status
+   endpoints respond and the switch stays up.
 
 ## Rejected options
 
 | Option | Reason |
 |---|---|
-| BANK4 at 0x74000 (page 7) | outside web-update copy range; pre-BANK4 firmware would install a broken image |
-| Move `DEFAULT_CONFIG_START` (0x6F000) | complicates update copy ranges and factory reset for no gain (BANK4 fits in 44 KB) |
-| Bank code in page 8+ (1 MB flash) | 0x80000+ is the reserved update staging area |
+| BANK4 at 0x64000 (as originally planned) | breaks the imagebuilder's input pattern: the bank is read from the input at 0x44000, so 0x64000 produces an empty `.bin` slot and the first banked call crashes (found on hardware). |
+| BANK5+ beyond 0x54000 | the input pattern `n*0x10000+0x4000` collides with the web filesystem input area for n ≥ 6 (0x64000), and the `.bin` slots would collide with the web filesystem at 0x40000 for the 7th bank. |
+| Move `DEFAULT_CONFIG_START` (0x6F000) | complicates update copy ranges and factory reset for no gain (BANK4 fits before the web filesystem). |
+| Bank code in page 8+ (1 MB flash) | 0x80000+ is the reserved update staging area. |
 
 ## References
 

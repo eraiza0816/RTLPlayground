@@ -101,7 +101,7 @@ struct vlan_tag {
 // Store update image after running image
 #define FIRMWARE_UPLOAD_START 0x80000
 // SFP EEPROM backup area, must not overlap the web filesystem (0x40000-0x5D000)
-// or the config area (0x70000)
+// or the config area (0x70000).
 #define SFP_EEPROM_BACKUP 0x6e000
 
 // Constants for the circular command buffer, the size must be 2^n

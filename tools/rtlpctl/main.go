@@ -167,6 +167,14 @@ func runCmd(client *Client, args []string, cfg config) error {
 		return cmdPing(client, cmdArgs, cfg.jsonMode)
 	case "lldp":
 		return cmdLldp(client, cmdArgs, cfg.jsonMode)
+	case "igmp":
+		return cmdIgmp(client, cmdArgs, cfg.jsonMode)
+	case "storm-control":
+		return cmdStorm(client, cmdArgs, cfg.jsonMode)
+	case "qos":
+		return cmdQos(client, cmdArgs, cfg.jsonMode)
+	case "acl":
+		return cmdAcl(client, cmdArgs, cfg.jsonMode)
 	case "show":
 		return cmdShow(client, cmdArgs, cfg.jsonMode)
 	case "enc-cmd", "enccmd":

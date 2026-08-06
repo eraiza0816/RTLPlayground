@@ -72,6 +72,31 @@ var igmpDeviceCmds = []deviceCmd{
 	{"off", "Disable IGMP snooping"},
 	{"show", "Show IGMP snooping status"},
 	{"querier", "ASIC IGMP/MLD querier control (on|off|show)"},
+	{"mld", "MLD snooping control (on|off|show)"},
+}
+
+var stormDeviceCmds = []deviceCmd{
+	{"on", "Enable storm control for a type (broadcast|multicast|dlf|unknown-mcast)"},
+	{"off", "Disable storm control (per type or all)"},
+	{"status", "Show storm control configuration"},
+}
+
+var qosDeviceCmds = []deviceCmd{
+	{"on", "Enable QoS priority control"},
+	{"off", "Disable QoS priority control"},
+	{"mode", "Priority source: pcp|dscp|both"},
+	{"pcp", "Map PCP 0-7 to a queue 0-7"},
+	{"dscp", "Map DSCP 0-63 to a queue 0-7"},
+	{"sched", "Queue scheduling: strict or wfq"},
+	{"status", "Show QoS configuration"},
+}
+
+var aclDeviceCmds = []deviceCmd{
+	{"on", "Enable the ACL engine"},
+	{"off", "Disable the ACL engine"},
+	{"add", "Add a rule (mac|vlan|ip match)"},
+	{"del", "Delete a rule by index"},
+	{"show", "Show all ACL rules"},
 }
 
 var showDeviceCmds = []deviceCmd{
@@ -158,9 +183,12 @@ var deviceTopCmds = []deviceCmdGroup{
 	{"gw", "Show or set default gateway", nil},
 	{"netmask", "Show or set network mask", nil},
 	{"l2", "L2 MAC address table show, forget, delete", l2DeviceCmds},
-	{"igmp", "IGMP snooping control", igmpDeviceCmds},
+	{"igmp", "IGMP/MLD snooping control", igmpDeviceCmds},
 	{"stp", "Spanning Tree Protocol control", stpDeviceCmds},
 	{"lldp", "LLDP neighbor discovery (IEEE 802.1AB)", lldpDeviceCmds},
+	{"storm-control", "Storm control (BC/MC/unknown frames)", stormDeviceCmds},
+	{"qos", "QoS priority control (802.1p/DSCP)", qosDeviceCmds},
+	{"acl", "Ingress ACL rules", aclDeviceCmds},
 	{"ping", "Send 4 ICMP echoes to an IP address", nil},
 	{"pvid", "Set port VLAN ID (PVID)", nil},
 	{"vlan", "VLAN create, delete, show, and management", vlanDeviceCmds},

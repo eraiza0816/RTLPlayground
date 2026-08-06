@@ -333,6 +333,76 @@ func cmdLldp(client *Client, args []string, asJSON bool) error {
 	return sendConsoleCmd(client, cmdText)
 }
 
+// cmdIgmp controls IGMP snooping, the HW querier and MLD snooping
+// (Tier 2/3).  Output appears on the switch console.
+func cmdIgmp(client *Client, args []string, asJSON bool) error {
+	cmdText := "igmp"
+	switch len(args) {
+	case 0:
+	case 1:
+		switch args[0] {
+		case "on", "off", "show":
+			cmdText = "igmp " + args[0]
+		default:
+			return fmt.Errorf("usage: igmp [on|off|show|querier on|off|show|mld on|off|show]")
+		}
+	case 2:
+		switch args[0] {
+		case "querier", "mld":
+			switch args[1] {
+			case "on", "off", "show":
+				cmdText = "igmp " + args[0] + " " + args[1]
+			default:
+				return fmt.Errorf("usage: igmp %s on|off|show", args[0])
+			}
+		default:
+			return fmt.Errorf("usage: igmp [on|off|show|querier on|off|show|mld on|off|show]")
+		}
+	default:
+		return fmt.Errorf("usage: igmp [on|off|show|querier on|off|show|mld on|off|show]")
+	}
+	return sendConsoleCmd(client, cmdText)
+}
+
+// cmdStorm controls storm control (Tier 3).  The argument list mirrors
+// the device CLI; it is validated locally before sending.
+func cmdStorm(client *Client, args []string, asJSON bool) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: storm-control on|off|status")
+	}
+	cmdText := "storm-control " + strings.Join(args, " ")
+	if err := validateCmdText(cmdText); err != nil {
+		return err
+	}
+	return sendConsoleCmd(client, cmdText)
+}
+
+// cmdQos controls QoS priority (Tier 3).  The argument list mirrors the
+// device CLI; it is validated locally before sending.
+func cmdQos(client *Client, args []string, asJSON bool) error {
+	cmdText := "qos"
+	if len(args) > 0 {
+		cmdText = "qos " + strings.Join(args, " ")
+	}
+	if err := validateCmdText(cmdText); err != nil {
+		return err
+	}
+	return sendConsoleCmd(client, cmdText)
+}
+
+// cmdAcl controls ingress ACL rules (Tier 3).  The argument list mirrors
+// the device CLI; it is validated locally before sending.
+func cmdAcl(client *Client, args []string, asJSON bool) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: acl on|off|show|add|del")
+	}
+	cmdText := "acl " + strings.Join(args, " ")
+	if err := validateCmdText(cmdText); err != nil {
+		return err
+	}
+	return sendConsoleCmd(client, cmdText)
+}
+
 // cmdEnc sends a command through the encrypted /enc endpoint (PSK auth).
 func cmdEnc(client *Client, args []string, asJSON bool, force bool) error {
 	if len(args) == 0 {
@@ -449,6 +519,12 @@ Commands (default mode):
   reset                      Reboot the switch
   ping <ip>                  Send 4 ICMP echoes from the switch (v0.2.24+)
   lldp [on|off|show]         LLDP neighbor discovery (v0.2.24+)
+  igmp [on|off|show]         IGMP snooping control (v0.2.24+)
+  igmp querier [on|off|show] ASIC IGMP/MLD querier (v0.2.24+)
+  igmp mld [on|off|show]     MLD snooping control (v0.2.24+)
+  storm-control ...          Storm control: on <type> <rate>[k|p], off, status
+  qos ...                    QoS: on|off|mode|pcp|dscp|sched|status
+  acl ...                    ACL: on|off|add|del|show
   show running-config        Show the config 'commit' would save (console)
   show startup-config        Show the saved config from flash (console)
   show arp                   Show the switch ARP cache (console)

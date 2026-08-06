@@ -47,9 +47,11 @@ before it is sent. All known write commands are checked:
 - `passwd` — 5-20 chars
 - `ip` / `gw` / `netmask` — dotted-quad IPv4 (`ip dhcp` allowed)
 - `port`, `mtu`, `pvid`, `vlan`, `ingress`, `isolate`, `mirror`, `lag`,
-  `laghash`, `eee`, `bw`, `stp`, `igmp`, `telnet`, `web`, `l2`, `sfp`,
+  `laghash`, `eee`, `bw`, `stp`, `igmp` (incl. `querier`/`mld`), `lldp`,
+  `storm-control`, `qos`, `acl`, `telnet`, `web`, `l2`, `sfp`,
   `regget`/`regset`/`sdsget`/`sdsset`/`phyget`/`physet`, `commit`, `reset`
-  — argument counts, port numbers, VLAN IDs, speeds, hex values etc.
+  — argument counts, port numbers, VLAN IDs, speeds, rates, MAC addresses,
+  IP prefixes, hex values etc.
 
 Unknown or read-only commands pass through unchanged, so future firmware
 commands are never blocked. To send a command that fails validation anyway
@@ -91,6 +93,29 @@ rtlpctl cmd "hostname my-switch.old-firmware" --force
 | `config upload <file>` | POST /config (multipart) | Upload configuration file |
 | `upload firmware <file>` | POST /upload (multipart) | Firmware update |
 | `reset` | GET /reset | Reboot the switch |
+
+#### Console commands (output appears on the switch console)
+
+The firmware's `/cmd` endpoint acknowledges execution only; the command
+output is printed on the switch's serial console.  Commands in this
+group send their device CLI text through `/cmd` (validated locally
+first, see Command Validation):
+
+| Command | Description |
+|---------|-------------|
+| `ping <ip>` | Send 4 ICMP echoes from the switch |
+| `lldp [on\|off\|show]` | LLDP neighbor discovery |
+| `igmp [on\|off\|show]` | IGMP snooping control |
+| `igmp querier [on\|off\|show]` | ASIC IGMP/MLD querier |
+| `igmp mld [on\|off\|show]` | MLD snooping control |
+| `storm-control ...` | `on <type> <rate>[k\|p]`, `off [type\|all]`, `status` |
+| `qos ...` | `on\|off\|status`, `mode pcp\|dscp\|both`, `pcp`, `dscp`, `sched` |
+| `acl ...` | `on\|off`, `add <port> <permit\|deny> <match>`, `del <idx>`, `show` |
+| `show arp` | Switch ARP cache |
+
+`show running-config` and `show startup-config` (and the Arista
+`show running-config` / `sh run`) fetch their text over HTTP
+(`/running-config` resp. `/config`) and print it locally.
 
 ### Examples
 

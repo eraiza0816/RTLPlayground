@@ -937,6 +937,160 @@ func TestBinaryEndToEnd(t *testing.T) {
 		}
 	})
 
+	t.Run("direct_ping", func(t *testing.T) {
+		mockCmdBodies = nil
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		out, err := exec.Command(bin, "--host", h, "--password", "test123",
+			"ping", "192.168.10.99").CombinedOutput()
+		if err != nil {
+			t.Fatalf("ping failed: %v\noutput: %s", err, out)
+		}
+		if !strings.Contains(strings.Join(mockCmdBodies, ","), "ping 192.168.10.99") {
+			t.Errorf("expected 'ping 192.168.10.99' via /cmd, got bodies: %v", mockCmdBodies)
+		}
+	})
+
+	t.Run("direct_lldp", func(t *testing.T) {
+		for _, c := range []struct{ args []string; want string }{
+			{[]string{"lldp", "on"}, "lldp on"},
+			{[]string{"lldp", "off"}, "lldp off"},
+			{[]string{"lldp", "show"}, "lldp show"},
+		} {
+			mockCmdBodies = nil
+			ts2 := newMockServer(t)
+			h := strings.TrimPrefix(ts2.URL, "http://")
+			full := append([]string{"--host", h, "--password", "test123"}, c.args...)
+			out, err := exec.Command(bin, full...).CombinedOutput()
+			ts2.Close()
+			if err != nil {
+				t.Fatalf("lldp %v failed: %v\noutput: %s", c.args[1:], err, out)
+			}
+			if !strings.Contains(strings.Join(mockCmdBodies, ","), c.want) {
+				t.Errorf("expected %q via /cmd, got bodies: %v", c.want, mockCmdBodies)
+			}
+		}
+	})
+
+	t.Run("direct_igmp", func(t *testing.T) {
+		for _, c := range []struct{ args []string; want string }{
+			{[]string{"igmp", "on"}, "igmp on"},
+			{[]string{"igmp", "off"}, "igmp off"},
+			{[]string{"igmp", "show"}, "igmp show"},
+			{[]string{"igmp", "querier", "on"}, "igmp querier on"},
+			{[]string{"igmp", "mld", "on"}, "igmp mld on"},
+		} {
+			mockCmdBodies = nil
+			ts2 := newMockServer(t)
+			h := strings.TrimPrefix(ts2.URL, "http://")
+			full := append([]string{"--host", h, "--password", "test123"}, c.args...)
+			out, err := exec.Command(bin, full...).CombinedOutput()
+			ts2.Close()
+			if err != nil {
+				t.Fatalf("igmp %v failed: %v\noutput: %s", c.args[1:], err, out)
+			}
+			if !strings.Contains(strings.Join(mockCmdBodies, ","), c.want) {
+				t.Errorf("expected %q via /cmd, got bodies: %v", c.want, mockCmdBodies)
+			}
+		}
+	})
+
+	t.Run("direct_storm_control", func(t *testing.T) {
+		for _, c := range []struct{ args []string; want string }{
+			{[]string{"storm-control", "on", "broadcast", "100k"}, "storm-control on broadcast 100k"},
+			{[]string{"storm-control", "on", "unknown-mcast", "500p"}, "storm-control on unknown-mcast 500p"},
+			{[]string{"storm-control", "off", "all"}, "storm-control off all"},
+			{[]string{"storm-control", "status"}, "storm-control status"},
+		} {
+			mockCmdBodies = nil
+			ts2 := newMockServer(t)
+			h := strings.TrimPrefix(ts2.URL, "http://")
+			full := append([]string{"--host", h, "--password", "test123"}, c.args...)
+			out, err := exec.Command(bin, full...).CombinedOutput()
+			ts2.Close()
+			if err != nil {
+				t.Fatalf("storm-control %v failed: %v\noutput: %s", c.args[1:], err, out)
+			}
+			if !strings.Contains(strings.Join(mockCmdBodies, ","), c.want) {
+				t.Errorf("expected %q via /cmd, got bodies: %v", c.want, mockCmdBodies)
+			}
+		}
+	})
+
+	t.Run("direct_qos", func(t *testing.T) {
+		for _, c := range []struct{ args []string; want string }{
+			{[]string{"qos", "mode", "dscp"}, "qos mode dscp"},
+			{[]string{"qos", "pcp", "3", "1"}, "qos pcp 3 1"},
+			{[]string{"qos", "dscp", "46", "7"}, "qos dscp 46 7"},
+			{[]string{"qos", "sched", "5", "wfq", "16"}, "qos sched 5 wfq 16"},
+			{[]string{"qos", "status"}, "qos status"},
+		} {
+			mockCmdBodies = nil
+			ts2 := newMockServer(t)
+			h := strings.TrimPrefix(ts2.URL, "http://")
+			full := append([]string{"--host", h, "--password", "test123"}, c.args...)
+			out, err := exec.Command(bin, full...).CombinedOutput()
+			ts2.Close()
+			if err != nil {
+				t.Fatalf("qos %v failed: %v\noutput: %s", c.args[1:], err, out)
+			}
+			if !strings.Contains(strings.Join(mockCmdBodies, ","), c.want) {
+				t.Errorf("expected %q via /cmd, got bodies: %v", c.want, mockCmdBodies)
+			}
+		}
+	})
+
+	t.Run("direct_acl", func(t *testing.T) {
+		for _, c := range []struct{ args []string; want string }{
+			{[]string{"acl", "add", "3", "deny", "ip", "192.168.1.99/32"}, "acl add 3 deny ip 192.168.1.99/32"},
+			{[]string{"acl", "add", "1", "permit", "mac", "aa:bb:cc:dd:ee:ff"}, "acl add 1 permit mac aa:bb:cc:dd:ee:ff"},
+			{[]string{"acl", "del", "0"}, "acl del 0"},
+			{[]string{"acl", "show"}, "acl show"},
+		} {
+			mockCmdBodies = nil
+			ts2 := newMockServer(t)
+			h := strings.TrimPrefix(ts2.URL, "http://")
+			full := append([]string{"--host", h, "--password", "test123"}, c.args...)
+			out, err := exec.Command(bin, full...).CombinedOutput()
+			ts2.Close()
+			if err != nil {
+				t.Fatalf("acl %v failed: %v\noutput: %s", c.args[1:], err, out)
+			}
+			if !strings.Contains(strings.Join(mockCmdBodies, ","), c.want) {
+				t.Errorf("expected %q via /cmd, got bodies: %v", c.want, mockCmdBodies)
+			}
+		}
+	})
+
+	t.Run("default_show_running_config", func(t *testing.T) {
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		out, err := exec.Command(bin, "--host", h, "--password", "test123",
+			"show", "running-config").CombinedOutput()
+		if err != nil {
+			t.Fatalf("show running-config failed: %v\noutput: %s", err, out)
+		}
+		if !strings.Contains(string(out), "ip 192.168.1.1") {
+			t.Errorf("expected running config over HTTP, got: %s", out)
+		}
+	})
+
+	t.Run("default_show_startup_config", func(t *testing.T) {
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		out, err := exec.Command(bin, "--host", h, "--password", "test123",
+			"show", "startup-config").CombinedOutput()
+		if err != nil {
+			t.Fatalf("show startup-config failed: %v\noutput: %s", err, out)
+		}
+		if !strings.Contains(string(out), "ip 192.168.1.1") {
+			t.Errorf("expected startup config over HTTP, got: %s", out)
+		}
+	})
+
 	t.Run("arista_show_running_config", func(t *testing.T) {
 		ts2 := newMockServer(t)
 		defer ts2.Close()

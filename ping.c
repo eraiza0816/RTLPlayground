@@ -12,8 +12,8 @@
  * so the IP/ICMP checksum fields are left zero.
  */
 
-#pragma codeseg BANK2
-#pragma constseg BANK2
+#pragma codeseg BANK3
+#pragma constseg BANK3
 
 #include <stdint.h>
 #include "rtl837x_common.h"

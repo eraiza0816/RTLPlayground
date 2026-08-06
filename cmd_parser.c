@@ -15,6 +15,9 @@
 #include "rtl837x_stp.h"
 #include "rtl837x_igmp.h"
 #include "rtl837x_bandwidth.h"
+#include "rtl837x_storm.h"
+#include "rtl837x_qos.h"
+#include "rtl837x_acl.h"
 #include "dhcp.h"
 #include "uip/uip.h"
 #include "ping.h"
@@ -114,6 +117,25 @@ inline uint8_t isnumber(uint8_t l)
 	// return (l >= '0' && l <= '9');
 	l -= '0';
 	return (l <= ('9'-'0'));
+}
+
+
+inline uint8_t ishex(uint8_t l)
+{
+	if (l - '0' < 10)
+		return 1;
+	l |= 0x20;
+	l -= 'a';
+	return (l <= 5);
+}
+
+
+inline uint8_t hexval(uint8_t l)
+{
+	if (l - '0' < 10)
+		return l - '0';
+	l |= 0x20;
+	return l - 'a' + 10;
 }
 
 
@@ -1751,6 +1773,397 @@ void parse_bw(void)
 err:
 }
 
+
+/*
+ * storm-control on|off <type> [<rate>[k|p]] | status
+ * Types: broadcast, multicast, dlf (unknown unicast), unknown-mcast
+ * Rate: kbps (default) or pps with a 'p' suffix.  Phase 1 applies the
+ * rate to all user ports (extended storm control, see rtl837x_storm.c).
+ */
+/* Parser scratch (16/32-bit locals would land in the internal-RAM
+ * DSEG/overlay, which is full - see parse_acl) */
+static __xdata uint8_t sc_type;
+static __xdata uint32_t sc_rate;
+static __xdata uint8_t sc_pps;
+static __xdata uint8_t sc_i;
+static __xdata uint8_t sc_c;
+static __xdata uint8_t sc_d;
+static __xdata uint8_t sc_rb[3];   /* 24-bit rate, byte-wise accumulate */
+static __xdata uint8_t sc_carry;
+
+void parse_storm_control(void)
+{
+	sc_type = 0xff;
+	sc_rate = 0;
+	sc_pps = 0;
+	sc_i = 0;
+	sc_c = 0;
+	sc_d = 0;
+	sc_carry = 0;
+	sc_rb[0] = 0; sc_rb[1] = 0; sc_rb[2] = 0;
+
+	if (cmd_words_len >= 2 && cmd_compare(1, "status")) {
+		storm_control_status();
+		return;
+	}
+
+	if (cmd_words_len >= 3 && cmd_compare(1, "on")) {
+		if (cmd_compare(2, "broadcast")) sc_type = STORM_BCAST;
+		else if (cmd_compare(2, "multicast")) sc_type = STORM_MCAST;
+		else if (cmd_compare(2, "dlf")) sc_type = STORM_DLF;
+		else if (cmd_compare(2, "unknown-mcast")) sc_type = STORM_UNMCAST;
+		if (sc_type == 0xff || cmd_words_len < 4) {
+			print_string("Usage: storm-control on <broadcast|multicast|dlf|unknown-mcast> <rate>[k|p]\n");
+			return;
+		}
+		// Decimal rate, optional k (kbps, default) or p (pps) suffix.
+		// Accumulate byte-wise (rate*10+digit): a 32-bit local in the
+		// parser would need internal-RAM temporaries.
+		sc_i = cmd_words_b[3];
+		sc_rb[0] = 0; sc_rb[1] = 0; sc_rb[2] = 0;
+		while (isnumber(cmd_buffer[sc_i])) {
+			sc_d = cmd_buffer[sc_i] - '0';
+			// rate = rate * 10 + digit, byte-wise (no 32-bit ops)
+			sc_c = (uint8_t)(sc_rb[0] * 10 + sc_d);
+			sc_carry = (uint8_t)((sc_rb[0] * 10 + sc_d) >> 8);
+			sc_rb[0] = sc_c;
+			sc_c = (uint8_t)(sc_rb[1] * 10 + sc_carry);
+			sc_carry = (uint8_t)((sc_rb[1] * 10 + sc_carry) >> 8);
+			sc_rb[1] = sc_c;
+			sc_c = (uint8_t)(sc_rb[2] * 10 + sc_carry);
+			sc_carry = (uint8_t)((sc_rb[2] * 10 + sc_carry) >> 8);
+			sc_rb[2] = sc_c;
+			// 24-bit overflow, or above 10,000,000 (0x989680, the
+			// SDK maximum rate/pps value)
+			if (sc_carry || sc_rb[2] > 0x98 ||
+			    (sc_rb[2] == 0x98 && sc_rb[1] > 0x96) ||
+			    (sc_rb[2] == 0x98 && sc_rb[1] == 0x96 && sc_rb[0] > 0x80)) {
+				print_string("Rate too high (max 10000000)\n");
+				return;
+			}
+			sc_i++;
+		}
+		sc_c = cmd_buffer[sc_i];
+		if (sc_c == 'p' || sc_c == 'P') sc_pps = 1;
+		else if (sc_c == 'k' || sc_c == 'K') sc_pps = 0;
+		else if (sc_c != '\0' && sc_c != ' ') {
+			print_string("Bad rate suffix [k|p]\n");
+			return;
+		}
+		sc_rate = (sc_rb[0]) | ((uint32_t)sc_rb[1] << 8) | ((uint32_t)sc_rb[2] << 16);
+		if (sc_rate == 0) {
+			print_string("Rate must be > 0\n");
+			return;
+		}
+		storm_control_on(sc_type, sc_rate, sc_pps);
+		return;
+	}
+
+	if (cmd_words_len >= 2 && cmd_compare(1, "off")) {
+		if (cmd_words_len >= 3) {
+			if (cmd_compare(2, "broadcast")) sc_type = STORM_BCAST;
+			else if (cmd_compare(2, "multicast")) sc_type = STORM_MCAST;
+			else if (cmd_compare(2, "dlf")) sc_type = STORM_DLF;
+			else if (cmd_compare(2, "unknown-mcast")) sc_type = STORM_UNMCAST;
+			else if (cmd_compare(2, "all")) sc_type = STORM_ALL;
+		} else {
+			sc_type = STORM_ALL;
+		}
+		if (sc_type == 0xff) {
+			print_string("Usage: storm-control off [broadcast|multicast|dlf|unknown-mcast|all]\n");
+			return;
+		}
+		storm_control_off(sc_type);
+		return;
+	}
+
+	print_string("Usage: storm-control on|off|status\n");
+}
+
+
+/*
+ * qos on|off | qos mode pcp|dscp|both | qos pcp <0-7> <queue> |
+ * qos dscp <0-63> <queue> | qos sched <port> strict|wfq [weight] | qos status
+ */
+static __xdata uint8_t qc_port;
+static __xdata uint8_t qc_v1;
+static __xdata uint8_t qc_v2;
+
+void parse_qos(void)
+{
+	qc_port = 0;
+	qc_v1 = 0;
+	qc_v2 = 0;
+
+	if (cmd_words_len < 2) {
+		qos_status();
+		return;
+	}
+
+	if (cmd_compare(1, "on")) {
+		qos_on();
+		return;
+	}
+	if (cmd_compare(1, "off")) {
+		qos_off();
+		return;
+	}
+	if (cmd_compare(1, "status")) {
+		qos_status();
+		return;
+	}
+	if (cmd_compare(1, "mode")) {
+		if (cmd_compare(2, "pcp")) qos_mode_set(QOS_MODE_PCP);
+		else if (cmd_compare(2, "dscp")) qos_mode_set(QOS_MODE_DSCP);
+		else if (cmd_compare(2, "both")) qos_mode_set(QOS_MODE_BOTH);
+		else print_string("Usage: qos mode pcp|dscp|both\n");
+		return;
+	}
+	if (cmd_compare(1, "pcp")) {
+		if (cmd_words_len < 4 || !isnumber(cmd_buffer[cmd_words_b[2]]) ||
+		    !isnumber(cmd_buffer[cmd_words_b[3]])) {
+			print_string("Usage: qos pcp <0-7> <queue>\n");
+			return;
+		}
+		qc_v1 = cmd_buffer[cmd_words_b[2]] - '0';
+		qc_v2 = cmd_buffer[cmd_words_b[3]] - '0';
+		qos_pcp_set(qc_v1, qc_v2);
+		return;
+	}
+	if (cmd_compare(1, "dscp")) {
+		if (cmd_words_len < 4 || !isnumber(cmd_buffer[cmd_words_b[2]]) ||
+		    !isnumber(cmd_buffer[cmd_words_b[3]])) {
+			print_string("Usage: qos dscp <0-63> <queue>\n");
+			return;
+		}
+		qc_v1 = cmd_buffer[cmd_words_b[2]] - '0';
+		qc_v2 = cmd_buffer[cmd_words_b[3]] - '0';
+		qos_dscp_set(qc_v1, qc_v2);
+		return;
+	}
+	if (cmd_compare(1, "sched")) {
+		if (cmd_words_len < 4) {
+			print_string("Usage: qos sched <port> strict|wfq [weight]\n");
+			return;
+		}
+		qc_port = cmd_buffer[cmd_words_b[2]] - '1';
+		if (qc_port > 9) {
+			print_string("Bad port\n");
+			return;
+		}
+		qc_port = machine.phys_to_log_port[qc_port];
+		if (cmd_compare(3, "strict")) {
+			qos_sched_set(qc_port, 0, 0);
+			return;
+		}
+		if (cmd_compare(3, "wfq")) {
+			if (cmd_words_len >= 5 && isnumber(cmd_buffer[cmd_words_b[4]]))
+				qc_v1 = cmd_buffer[cmd_words_b[4]] - '0';
+			if (qc_v1 == 0 || qc_v1 > 127) {
+				print_string("WFQ weight 1-127\n");
+				return;
+			}
+			qos_sched_set(qc_port, 1, qc_v1);
+			return;
+		}
+		print_string("Usage: qos sched <port> strict|wfq [weight]\n");
+		return;
+	}
+
+	qos_status();
+}
+
+
+/*
+ * acl on|off | acl add <port> <permit|deny> <mac|vlan|ip> ... | acl del <idx> | acl show
+ * Match arguments:
+ *   mac <aa:bb:cc:dd:ee:ff>
+ *   vlan <id>
+ *   ip <addr>[/<prefix>]
+ * One match field per rule (templates are fixed in hardware, see
+ * rtl837x_acl.c).
+ */
+/* Parser scratch.  NOTE: SDCC puts 16/32-bit locals that are used in
+ * 16/32-bit arithmetic into the internal-RAM DSEG (the overlay is full
+ * in this firmware), so all parser state lives here as file-scope
+ * XDATA instead of function locals. */
+static __xdata uint8_t ac_port;
+static __xdata uint8_t ac_action;
+static __xdata uint8_t ac_i;
+static __xdata uint8_t ac_b;
+static __xdata uint16_t ac_val;
+static __xdata uint16_t ac_prefix;
+static __xdata uint32_t ac_ipval;
+static __xdata uint8_t ac_nib;
+static __xdata uint8_t ac_tpl;
+
+void parse_acl(void)
+{
+	ac_port = 0;
+	ac_action = 0;
+	ac_i = 0;
+	ac_b = 0;
+	ac_val = 0;
+	ac_prefix = 32;
+	ac_ipval = 0;
+	ac_nib = 0;
+	ac_tpl = 0;
+
+	if (cmd_words_len >= 2 && cmd_compare(1, "on")) {
+		acl_enable(1);
+		return;
+	}
+	if (cmd_words_len >= 2 && cmd_compare(1, "off")) {
+		acl_enable(0);
+		return;
+	}
+	if (cmd_words_len >= 2 && cmd_compare(1, "show")) {
+		acl_show();
+		return;
+	}
+	if (cmd_compare(1, "del") && cmd_words_len >= 3) {
+		ac_i = cmd_words_b[2];
+		ac_val = 0;
+		while (isnumber(cmd_buffer[ac_i])) {
+			ac_val = ac_val * 10 + (cmd_buffer[ac_i] - '0');
+			ac_i++;
+		}
+		if (ac_val > 95) {
+			print_string("ACL rule index 0-95\n");
+			return;
+		}
+		acl_rule_del(ac_val);
+		return;
+	}
+
+	if (!cmd_compare(1, "add") || cmd_words_len < 5) {
+		print_string("Usage: acl add <port> <permit|deny> [mac <aa:bb:cc:dd:ee:ff> | vlan <id> | ip <addr>[/<prefix>]]\n");
+		return;
+	}
+
+	ac_port = cmd_buffer[cmd_words_b[2]] - '1';
+	if (ac_port > 9) {
+		print_string("Bad port\n");
+		return;
+	}
+	ac_port = machine.phys_to_log_port[ac_port];
+
+	if (cmd_compare(3, "permit")) ac_action = 0;
+	else if (cmd_compare(3, "deny")) ac_action = 1;
+	else {
+		print_string("Action must be permit or deny\n");
+		return;
+	}
+
+	if (cmd_words_len >= 5 && cmd_compare(4, "mac") && cmd_words_len >= 6) {
+		ac_tpl = ACL_TPL_MAC;
+		// Parse aa:bb:cc:dd:ee:ff into acl_field[0..2] (DMAC0-2).
+		// field[0] = mac[5] | mac[4]<<8, field[1] = mac[3] | mac[2]<<8,
+		// field[2] = mac[1] | mac[0]<<8 (SDK byte order).
+		for (ac_b = 0; ac_b < 8; ac_b++) { acl_field[ac_b] = 0; acl_care[ac_b] = 0; }
+		ac_i = cmd_words_b[5];
+		ac_b = 0;
+		while (ac_b < 6 && cmd_buffer[ac_i]) {
+			ac_nib = 0;
+			if (!ishex(cmd_buffer[ac_i])) break;
+			ac_nib = hexval(cmd_buffer[ac_i]);
+			ac_i++;
+			if (ishex(cmd_buffer[ac_i])) {
+				ac_nib = (ac_nib << 4) | hexval(cmd_buffer[ac_i]);
+				ac_i++;
+			}
+			acl_field[(5 - ac_b) / 2] |= ((uint16_t)ac_nib) << ((ac_b & 1) ? 0 : 8);
+			acl_care[(5 - ac_b) / 2] = 0xffff;
+			if (ac_b < 5 && cmd_buffer[ac_i] == ':') ac_i++;
+			ac_b++;
+		}
+		if (ac_b != 6) {
+			print_string("Bad MAC address\n");
+			return;
+		}
+	} else if (cmd_words_len >= 5 && cmd_compare(4, "vlan") && cmd_words_len >= 6) {
+		ac_tpl = ACL_TPL_VLAN;
+		for (ac_b = 0; ac_b < 8; ac_b++) { acl_field[ac_b] = 0; acl_care[ac_b] = 0; }
+		ac_i = cmd_words_b[5];
+		ac_val = 0;
+		while (isnumber(cmd_buffer[ac_i])) {
+			ac_val = ac_val * 10 + (cmd_buffer[ac_i] - '0');
+			if (ac_val > 4095) break;
+			ac_i++;
+		}
+		if (ac_val > 4095 || ac_val == 0) {
+			print_string("VLAN 1-4095\n");
+			return;
+		}
+		// CTAG field (template 4, field 3): VID in the low 12 bits
+		acl_field[3] = ac_val;
+		acl_care[3] = 0x0fff;
+	} else if (cmd_words_len >= 5 && cmd_compare(4, "ip") && cmd_words_len >= 6) {
+		ac_tpl = ACL_TPL_IP;
+		// Parse the destination IP (a.b.c.d) with an optional /prefix
+		for (ac_b = 0; ac_b < 8; ac_b++) { acl_field[ac_b] = 0; acl_care[ac_b] = 0; }
+		ac_i = cmd_words_b[5];
+		ac_ipval = 0;
+		for (ac_b = 0; ac_b < 4; ac_b++) {
+			ac_val = 0;
+			if (!isnumber(cmd_buffer[ac_i])) {
+				print_string("Bad IP: missing octet\n");
+				return;
+			}
+			while (isnumber(cmd_buffer[ac_i])) {
+				ac_val = ac_val * 10 + (cmd_buffer[ac_i] - '0');
+				if (ac_val > 255) {
+					print_string("Bad IP: octet > 255\n");
+					return;
+				}
+				ac_i++;
+			}
+			ac_ipval = (ac_ipval << 8) | ac_val;
+			if (ac_b < 3 && cmd_buffer[ac_i++] != '.') {
+				print_string("Bad IP: expected '.'\n");
+				return;
+			}
+		}
+		ac_prefix = 32;
+		if (cmd_buffer[ac_i] == '/') {
+			ac_i++;
+			ac_prefix = 0;
+			while (isnumber(cmd_buffer[ac_i])) {
+				ac_prefix = ac_prefix * 10 + (cmd_buffer[ac_i] - '0');
+				ac_i++;
+			}
+			if (ac_prefix > 32) {
+				print_string("Prefix 0-32\n");
+				return;
+			}
+		} else if (cmd_buffer[ac_i] != '\0' && cmd_buffer[ac_i] != ' ') {
+			print_string("Bad IP: trailing chars\n");
+			return;
+		}
+		// DIP: field[2] = low 16 bits, field[3] = high 16 bits
+		acl_field[2] = ac_ipval & 0xffff;
+		acl_field[3] = (ac_ipval >> 16) & 0xffff;
+		if (ac_prefix == 0) {
+			acl_care[2] = 0;
+			acl_care[3] = 0;
+		} else if (ac_prefix < 16) {
+			acl_care[2] = (uint16_t)(0xffffu << (16 - ac_prefix));
+			acl_care[3] = 0;
+		} else if (ac_prefix == 16) {
+			acl_care[2] = 0xffff;
+			acl_care[3] = 0;
+		} else {
+			acl_care[2] = 0xffff;
+			acl_care[3] = (uint16_t)(0xffffu << (32 - ac_prefix));
+		}
+	} else {
+		print_string("Usage: acl add <port> <permit|deny> [mac <aa:bb:cc:dd:ee:ff> | vlan <id> | ip <addr>[/<prefix>]]\n");
+		return;
+	}
+
+	acl_rule_add(ac_port, ac_action, ac_tpl);
+}
+
 // Parse command into words
 // cmd_words_len contains the number of words found.
 // cmd_words_b[] contains only start of a word offset.
@@ -1874,6 +2287,9 @@ __code struct mode_entry mode_allow[] = {
 	{"laghash",     (1<<MODE_CONFIG)},
 	{"stp",         (1<<MODE_CONFIG)},
 	{"igmp",        (1<<MODE_CONFIG)},
+	{"storm-control", (1<<MODE_CONFIG)},
+	{"qos",         (1<<MODE_CONFIG)},
+	{"acl",         (1<<MODE_CONFIG)},
 	{"hostname",    (1<<MODE_CONFIG)},
 	{"eee",         (1<<MODE_CONFIG)},
 	{"bw",          (1<<MODE_CONFIG)},
@@ -2072,6 +2488,15 @@ void cmd_parser(void) __banked
 					igmp_querier_show();
 				else
 					print_string("Usage: igmp querier on|off|show\n");
+			} else if (cmd_compare(1, "mld")) {
+				if (cmd_compare(2, "on"))
+					igmp_mld_on();
+				else if (cmd_compare(2, "off"))
+					igmp_mld_off();
+				else if (cmd_compare(2, "show"))
+					igmp_mld_show();
+				else
+					print_string("Usage: igmp mld on|off|show\n");
 			} else
 				igmp_setup();  // Reverts to default with IP-MC being flooded
 		} else if (cmd_compare(0, "stp")) {
@@ -2128,6 +2553,12 @@ void cmd_parser(void) __banked
 			parse_eee();
 		} else if (cmd_compare(0, "bw")) {
 			parse_bw();
+		} else if (cmd_compare(0, "storm-control")) {
+			parse_storm_control();
+		} else if (cmd_compare(0, "qos")) {
+			parse_qos();
+		} else if (cmd_compare(0, "acl")) {
+			parse_acl();
 		} else if (cmd_compare(0, "telnet")) {
 			parse_telnet();
 		} else if (cmd_compare(0, "web")) {

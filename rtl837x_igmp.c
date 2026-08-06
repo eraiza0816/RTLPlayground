@@ -225,6 +225,124 @@ void igmp_querier_show(void) __banked
 
 
 /*
+ * MLD snooping (Tier 3): the ASIC's IGMP/MLD engine maintains the group
+ * database (33:33:xx L2MC entries) once IGMP_MLD_EN (0x5290 bit 0) is
+ * set.  The per-port protocol ops in RTL837X_IGMP_PORT_CFG decide what
+ * happens to MLDv1/v2 reports: 00 = HW processing, 01 = flood, 10 = trap.
+ * The CPU stack is IPv4-only, so trapped MLD frames are ignored by
+ * igmp_packet_handler(); the group database is entirely ASIC-side.
+ * igmp_mld_off() restores flood but never clears IGMP_MLD_EN, which is
+ * also used by the HW querier (igmp_querier_on).
+ */
+void igmp_mld_on(void) __banked
+{
+	// Enable the ASIC IGMP/MLD protocol engine
+	reg_read_m(RTL837X_IGMP_CTRL);
+	sfr_mask_data(0, 0x01, 0x01);
+	reg_write_m(RTL837X_IGMP_CTRL);
+
+	// Per-port: MLDv1/v2 reports are snooped and trapped to the CPU
+	// (bits 6-9 = 10b per protocol)
+	for (igmp_qport = machine.min_port; igmp_qport <= machine.max_port; igmp_qport++) {
+		reg_read_m(RTL837X_IGMP_PORT_CFG + (igmp_qport << 2));
+		sfr_mask_data(0, 0xc0, 0x80);  // MLDv1 (bits 6-7): trap
+		sfr_mask_data(1, 0x03, 0x02);  // MLDv2 (bits 8-9): trap
+		reg_write_m(RTL837X_IGMP_PORT_CFG + (igmp_qport << 2));
+	}
+	print_string("MLD snooping enabled\n");
+}
+
+void igmp_mld_off(void) __banked
+{
+	// Restore flood for MLDv1/v2 reports (bits 6-9 = 01b per protocol)
+	for (igmp_qport = machine.min_port; igmp_qport <= machine.max_port; igmp_qport++) {
+		reg_read_m(RTL837X_IGMP_PORT_CFG + (igmp_qport << 2));
+		sfr_mask_data(0, 0xc0, 0x40);  // MLDv1 (bits 6-7): flood
+		sfr_mask_data(1, 0x03, 0x01);  // MLDv2 (bits 8-9): flood
+		reg_write_m(RTL837X_IGMP_PORT_CFG + (igmp_qport << 2));
+	}
+	print_string("MLD snooping disabled\n");
+}
+
+/*
+ * Show the MLD state: engine enable, per-port protocol ops, and the
+ * ASIC group database (rtk_igmp_groupInfo_get equivalent).  The group
+ * table is read through the same ITA block as the L2 table.
+ */
+static __xdata uint16_t igmp_gidx;
+static __xdata uint16_t igmp_gmask;
+static __xdata uint8_t igmp_gvalid;
+/* Raw register bytes, copied right after reg_read_m: the print/itoa
+ * helpers clobber sfr_data, so any decode must happen on a scratch copy */
+static __xdata uint8_t igmp_raw[4];
+
+void igmp_mld_show(void) __banked
+{
+	/* NOTE: reg_read_m fills sfr_data big-endian (sfr_data[0] = bits
+	 * 24-31, sfr_data[3] = bits 0-7).  The scratch copy keeps the same
+	 * byte order; decodes below index the LSB side (igmp_raw[3] =
+	 * bits 0-7, igmp_raw[2] = bits 8-15). */
+	print_string("IGMP_MLD_EN: ");
+	reg_read_m(RTL837X_IGMP_CTRL);
+	igmp_raw[0] = sfr_data[0]; igmp_raw[1] = sfr_data[1];
+	igmp_raw[2] = sfr_data[2]; igmp_raw[3] = sfr_data[3];
+	if (igmp_raw[3] & 0x01)
+		print_string("on\n");
+	else
+		print_string("off\n");
+
+	print_string("Port MLD ops (00=HW 01=flood 10=trap 11=drop):\n");
+	for (igmp_qport = machine.min_port; igmp_qport <= machine.max_port; igmp_qport++) {
+		reg_read_m(RTL837X_IGMP_PORT_CFG + (igmp_qport << 2));
+		igmp_raw[0] = sfr_data[0]; igmp_raw[1] = sfr_data[1];
+		igmp_raw[2] = sfr_data[2]; igmp_raw[3] = sfr_data[3];
+		write_char('\t');
+		itoa(machine.log_to_phys_port[igmp_qport]);
+		write_char(':');
+		igmp_qbyte = (igmp_raw[3] >> 6) & 0x3;  // MLDv1 op (bits 6-7)
+		write_char(igmp_qbyte < 10 ? '0' + igmp_qbyte : '0');
+		if (igmp_qbyte == 0) print_string("(HW)");
+		else if (igmp_qbyte == 1) print_string("(flood)");
+		else if (igmp_qbyte == 2) print_string("(trap)");
+		else print_string("(drop)");
+		write_char(' ');
+		igmp_qbyte = (igmp_raw[2] >> 0) & 0x3;  // MLDv2 op (bits 8-9)
+		write_char(igmp_qbyte < 10 ? '0' + igmp_qbyte : '0');
+		if (igmp_qbyte == 0) print_string("(HW)");
+		else if (igmp_qbyte == 1) print_string("(flood)");
+		else if (igmp_qbyte == 2) print_string("(trap)");
+		else print_string("(drop)");
+		write_char('\n');
+	}
+
+	print_string("Group DB (idx: port mask):\n");
+	for (igmp_gidx = 0; igmp_gidx <= 0xff; igmp_gidx++) {
+		// Valid bit for this group index
+		reg_read_m(RTL837X_IGMP_TBL_USAGE(igmp_gidx));
+		igmp_qbyte = (uint8_t)(igmp_gidx & 0x1f);
+		// bit (idx%32): byte 0-3 of the register is sfr_data[3..0]
+		igmp_gvalid = (sfr_data[3 - (igmp_qbyte >> 3)] >> (igmp_qbyte & 7)) & 1;
+		if (!igmp_gvalid)
+			continue;
+		// Trigger a read of the group entry and pick up the port timers
+		reg_read_m(RTL837X_TBL_CTRL);  // serialized with any other table use
+		REG_WRITE(RTL837X_TBL_CTRL, (uint8_t)(igmp_gidx >> 8), (uint8_t)igmp_gidx,
+			  TB_TARGET_IGMP_GROUP, TB_EXECUTE | (TB_OP_READ << 1));
+		do {
+			reg_read_m(RTL837X_TBL_CTRL);
+		} while (sfr_data[3] & TB_EXECUTE);
+		reg_read_m(RTL837X_ITA_READ_DATA0(0));
+		// Port timers: bits 0-7 = sfr_data[3], bits 8-10 = sfr_data[2]
+		igmp_gmask = (uint16_t)sfr_data[3] | ((uint16_t)(sfr_data[2] & 0x07) << 8);
+		print_short(igmp_gidx);
+		print_string(": ");
+		print_short(igmp_gmask);
+		write_char('\n');
+	}
+}
+
+
+/*
  * Configures the IGMP static router port(s) that will receive all IGMP
  * Report and Leave messages
  */

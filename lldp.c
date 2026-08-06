@@ -17,6 +17,19 @@
  * scratch below.  All public functions are __banked (BANK3); omitting
  * it causes a plain lcall across banks and a boot crash (see
  * 新機能追加検証/README.md).
+ *
+ * TODO(実機検証): 完全なオンデバイス検証はまだ未達。実施時に必ず
+ *   確認すること:
+ *   1. TX ペイロード破損 — 実機から送出される LLDPDU のペイロードが
+ *      ワイヤ上で化ける事象が確認されている（RTL tag HTONS は修正済み、
+ *      上流 PR #299/#303 の知見を反映済みだが、まだ完全には解消されて
+ *      いない可能性がある）。tcpdump/Wireshark で TLV バイト列を
+ *      ダンプし、TlvLen とペイロードが一致するか確認。
+ *   2. RX 学習 — WSL 仮想スイッチのマルチキャストフィルタにより LLDP
+ *      の RX をこのテスト環境では実証できない。実機 + Linux ホスト
+ *      （lldpd 等）で 01:80:c2:00:00:0e 宛フレームが受信・テーブル
+ *      学習され、TTL 満了でエントリが消えること（lldp_show で確認）。
+ *   3. 回帰: igmp / show running-config 等、既存機能が壊れていないこと。
  */
 
 #pragma codeseg BANK3

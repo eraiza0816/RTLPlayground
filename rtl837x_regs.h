@@ -249,6 +249,13 @@
 #define IGMP_TRAP			0x0000002a
 #define IGMP_FLOOD			0x00000015
 #define IGMP_ASIC			0x00000000
+/* Per-protocol operations in RTL837X_IGMP_PORT_CFG (2 bits each):
+ * 00: HW processing by ASIC, 01: flood, 10: trap to CPU, 11: drop
+ * bits 0-1: IGMPv1, 2-3: IGMPv2, 4-5: IGMPv3, 6-7: MLDv1, 8-9: MLDv2 */
+#define MLD_FLOOD			0x00000140
+#define MLD_TRAP			0x00000280
+#define RTL837X_IGMP_CTRL		0x5290
+#define IGMP_MLD_EN			0x00000001
 #define RTL837X_IGMP_ROUTER_PORT	0x529c
 #define RTL837X_IPV4_UNKN_MC_FLD_PMSK	0x5368
 #define RTL837X_IPV6_UNKN_MC_FLD_PMSK	0x536c
@@ -302,6 +309,132 @@
 #define RTL837X_EGBW_CTRL		0x447c
 #define EGBW_INC_IFG			0x02
 #define EGBW_CPUMODE			0x01
+
+/*
+ * Storm control (per RTL8373 SDK, dal_rtl8373_storm.c)
+ * Per-port enable: one register per storm type, bit (port % 10).
+ */
+#define RTL837X_RX_STORM_BCAST_CTRL		0x54e4
+#define RTL837X_RX_STORM_MCAST_CTRL		0x54e8
+#define RTL837X_RX_STORM_UNUCAST_CTRL		0x54ec
+#define RTL837X_RX_STORM_UNMCAST_CTRL		0x54f0
+/* Per-port meter index per type: 6 bits per port, 5 ports per register */
+#define RTL837X_RX_STORM_BCAST_METER		0x54f4
+#define RTL837X_RX_STORM_MCAST_METER		0x54fc
+#define RTL837X_RX_STORM_UNUCAST_METER		0x5504
+#define RTL837X_RX_STORM_UNMCAST_METER		0x550c
+/* Extended (global) storm control: bits 0-3 per-type enable,
+ * bits 4-13 enabled port mask */
+#define RTL837X_CFG_STORM_EXT			0x5514
+#define STORM_EXT_EN_BCAST			0x1
+#define STORM_EXT_EN_MCAST			0x2
+#define STORM_EXT_EN_UNUCAST			0x4
+#define STORM_EXT_EN_UNMCAST			0x8
+/* Extended meter indices per type: BC bits 0-5, MC bits 8-13,
+ * unk-UC bits 16-21, unk-MC bits 24-29 */
+#define RTL837X_STORM_EXT_MTRIDX_CFG		0x5518
+/* Shared meters: 24-bit rate (kbps or pps per mode bit), 28-bit burst */
+#define RTL837X_SHARED_METER_RATE_CTRL(index)	(0x5cf0 + ((index) << 2))
+#define RTL837X_SHARED_METER_BURST_CTRL(index)	(0x5df0 + ((index) << 2))
+#define RTL837X_SHARED_METER_MODE(index)	(0x5ef0 + (((index) >> 5) << 2))
+#define RTL837X_SHARED_METER_IPG_CTRL(index)	(0x5f08 + (((index) >> 5) << 2))
+#define RTL837X_SHARED_METER_EXCEED(index)	(0x5ef8 + (((index) >> 5) << 2))
+#define METER_MODE_PPS_BIT(index)		((index) % 32)
+#define METER_IPG_CNTR_BIT(index)		((index) % 32)
+/* RMA_OP_CTRL_00 (0x4ecc = RTL837X_RMA0_CONF): bit 3 exempts the RMA
+ * frames (BPDU/LLDP...) of this group from storm control */
+#define RMA_DIS_STORM_CTRL			0x8
+
+/*
+ * QoS (per RTL8373 SDK, dal_rtl8373_qos.c)
+ * Ingress priority decision:
+ *  - PORT_PRI: default port priority, 3 bits per port
+ *  - DOT1Q_PRI_REMAP: PCP -> internal priority, 3 bits per value
+ *  - PRI_SEL_REMAP_DSCP: DSCP(0-63) -> internal priority, 3 bits per value
+ *  - PRI_WEIGHT: 5 weights x 5 bits (DOT1Q, PORT, DSCP, ACL, SVLAN)
+ *  - PORT_WEIGHT_SEL: per-port weight table select (2 tables)
+ *  - QID_TO_PRI: internal priority -> queue, 3 bits per priority
+ *    (field PRIxQNUM at offset x*4, queue number 0-7)
+ */
+#define RTL837X_PORT_PRI			0x5170
+#define RTL837X_DOT1Q_PRI_REMAP			0x5174
+#define RTL837X_PRI_SEL_REMAP_DSCP		0x5178
+#define RTL837X_PRI_WEIGHT			0x5198
+#define PRI_WEIGHT_DOT1Q_OFFSET			0
+#define PRI_WEIGHT_PORT_OFFSET			5
+#define PRI_WEIGHT_DSCP_OFFSET			10
+#define PRI_WEIGHT_ACL_OFFSET			15
+#define PRI_WEIGHT_SVLAN_OFFSET			20
+#define PRI_WEIGHT_MASK				0x1f
+#define RTL837X_PORT_WEIGHT_SEL			0x51a0
+#define RTL837X_QID_TO_PRI			0x51a4
+/* Scheduling: 8 queues per port, 0x1d28 + (port << 10) + (qid << 2).
+ * STRICT_EN (bit 7): 1 = strict priority, 0 = WFQ (weight bits 0-6) */
+#define RTL837X_SCHED_PORT_Q_CTRL_SET(port, qid) (0x1d28 + ((port) << 10) + ((qid) << 2))
+#define SCHED_Q_STRICT_EN			0x80
+#define SCHED_Q_WEIGHT_MASK			0x7f
+#define RTL837X_SCHED_PORT_ALGO_CTRL		0x4534
+/* Remarking */
+#define RTL837X_RMK_CTRL			0x6750
+#define RTL837X_RMK_PORT_CTRL(port)		(0x6754 + ((port) << 2))
+#define RMK_PORT_IPRI_RMK_EN			0x01
+#define RMK_PORT_DSCP_RMK_EN			0x02
+#define RTL837X_RMK_INTPRI2DSCP_CTRL		0x6780
+
+/*
+ * ACL (per RTL8373 SDK, dal_rtl8373_acl.c)
+ * The ACL rule/act tables are accessed through the same ITA block as the
+ * L2/VLAN tables (RTL837X_TBL_CTRL = 0x5cac) - table operations must be
+ * serialized (wait for the busy bit like every other table access).
+ * Table type (byte 1 of TBL_CTRL): 1 = ACL rule, 2 = ACL action.
+ * Rule table address: (type << 7) | rule, type 0 = care bits, 1 = data bits.
+ * A rule entry holds 8 x 16-bit fields (4 x 32-bit words) plus a rule-info
+ * word at ITA_WRITE_DATA0(4): templateIdx bits 0-2, active port mask
+ * bits 11-20, valid bit 21.
+ */
+#define RTL837X_ACL_CTRL			0x4810
+#define ACL_CTRL_TABLE_RST			0x1
+#define RTL837X_ACL_PORT_EN			0x4818
+#define RTL837X_ACL_PORT_UNMATCH_PERMIT		0x481c
+#define RTL837X_ACL_TEMPLATE_CTRL(index)	(0x4820 + ((index) << 3))
+#define RTL837X_ACL_ACT_CTRL(index)		(0x4848 + ((index) << 2))
+#define ACL_ACT_CTRL_FWD				0x20
+#define ACL_ACT_CTRL_NOT				0x100
+#define RTL837X_ACLRULETBADDR(type, rule)	(((type) << 7) | (rule))
+#define ACL_RULE_TEMPLATE_IDX_OFFSET		0
+#define ACL_RULE_ACTIVE_PMSK_OFFSET		11
+#define ACL_RULE_VALIDBIT_OFFSET		21
+#define RTL837X_ACLRULENO			96
+#define ACL_TEMPLATENO				5
+#define ACL_RULEFIELDNO				8
+#define ACL_RULE_ENTRY_LEN			5
+#define ACL_ACT_ENTRY_LEN			3
+/* ITA data ports (shared with the L2/VLAN tables) */
+#define RTL837X_ITA_WRITE_DATA0(index)		(0x5cb8 + ((index) << 2))
+#define RTL837X_ITA_READ_DATA0(index)		(0x5ccc + ((index) << 2))
+/* ITA_L2_CTRL (0x5cb0): read method for the L2 table, bits 14-17
+ * (0 = MAC, 1 = address, 2 = next address, 3 = next L2UC,
+ *  4 = next L2MC, 5 = next L3MC, 6 = next L2L3MC, 7 = next L2UCSPA) */
+#define RTL837X_ITA_L2_CTRL			0x5cb0
+#define ITA_L2_CTRL_READ_MTHD_MASK		0xf0000
+#define TBL_LUTREAD_NEXT_L2MC_BITS		(4 << 14)
+
+/*
+ * IGMP/MLD group table (per RTL8373 SDK, dal_rtl8373_igmp.c)
+ * Table type 5 = IGMP group. Per-group info: port timers in
+ * ITA_READ_DATA0(0) (3 bits per port, 11 ports) + ITA_READ_DATA0(1);
+ * the valid bit lives in the usage register 0x52d4 + ((idx >> 5) << 2).
+ */
+#define RTL837X_IGMP_TBL_USAGE(index)		(0x52d4 + (((index) >> 5) << 2))
+
+#define TB_OP_READ				0
+#define TB_OP_WRITE				1
+#define TB_EXECUTE				1
+#define TB_TARGET_ACLRULE			1
+#define TB_TARGET_ACLACT			2
+#define TB_TARGET_CVLAN				3
+#define TB_TARGET_L2				4
+#define TB_TARGET_IGMP_GROUP			5
 
 #ifdef REGDBG
 

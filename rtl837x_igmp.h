@@ -11,5 +11,8 @@ void igmp_show(void) __banked;
 void igmp_querier_on(void) __banked;
 void igmp_querier_off(void) __banked;
 void igmp_querier_show(void) __banked;
+void igmp_mld_on(void) __banked;
+void igmp_mld_off(void) __banked;
+void igmp_mld_show(void) __banked;
 
 #endif

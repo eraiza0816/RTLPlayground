@@ -117,11 +117,22 @@ func aristaShow(client *Client, args []string, jsonMode bool) error {
 	case matchCmd(sub, "interfaces") || matchCmd(sub, "int"):
 		return aristaShowInterfaces(client, args[1:], jsonMode)
 	case matchCmd(sub, "running-config") || matchCmd(sub, "run"):
-		/* Since v0.2.24 the firmware distinguishes running-config (in
-		 * memory) from startup-config (flash).  The /config endpoint
-		 * returns the flash copy, and the running config is only
-		 * available through the CLI (output on the switch console). */
-		return aristaConsoleCmd(client, "show running-config", jsonMode)
+		/* The /running-config endpoint (firmware v0.2.24+) returns the
+		 * in-memory config that 'commit' would save; /config serves
+		 * the flash copy (startup-config). */
+		data, err := client.GetText("/running-config")
+		if err != nil {
+			return err
+		}
+		if jsonMode {
+			eapiResult(data, "text")
+		} else {
+			fmt.Print(data)
+			if !strings.HasSuffix(data, "\n") {
+				fmt.Println()
+			}
+		}
+		return nil
 	case matchCmd(sub, "startup-config"):
 		data, err := client.GetText("/config")
 		if err != nil {

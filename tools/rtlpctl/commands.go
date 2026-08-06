@@ -289,15 +289,34 @@ func sendConsoleCmd(client *Client, cmdText string) error {
 	return nil
 }
 
-// cmdShow sends a read-only "show" subcommand (Tier 1: running/startup
-// config, ARP cache) through the CLI; the output appears on the console.
+// cmdShow fetches the running/startup config and the ARP cache.
+// The configs are served as text by the firmware (/running-config and
+// /config); the ARP cache is only available on the switch console.
 func cmdShow(client *Client, args []string, asJSON bool) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: show running-config|startup-config|arp")
 	}
 	switch args[0] {
-	case "running-config", "startup-config", "arp":
-		return sendConsoleCmd(client, "show "+args[0])
+	case "running-config", "startup-config":
+		path := "/running-config"
+		if args[0] == "startup-config" {
+			path = "/config"
+		}
+		text, err := client.GetText(path)
+		if err != nil {
+			return err
+		}
+		if asJSON {
+			printJSON(map[string]string{args[0]: text})
+		} else {
+			fmt.Print(text)
+			if !strings.HasSuffix(text, "\n") {
+				fmt.Println()
+			}
+		}
+		return nil
+	case "arp":
+		return sendConsoleCmd(client, "show arp")
 	}
 	return fmt.Errorf("unknown show target: %q (use running-config, startup-config, arp)", args[0])
 }

@@ -411,6 +411,9 @@ func TestClientEndpoints(t *testing.T) {
 		case "/config":
 			w.Header().Set("Content-Type", "text/plain")
 			fmt.Fprint(w, "ip 192.168.1.1\nnetmask 255.255.255.0\n")
+		case "/running-config":
+			w.Header().Set("Content-Type", "text/plain")
+			fmt.Fprint(w, "ip 192.168.1.1\nnetmask 255.255.255.0\n")
 		case "/cmd_log":
 			w.Header().Set("Content-Type", "text/plain")
 			fmt.Fprint(w, "ip 192.168.1.1\nstatus\n")
@@ -943,11 +946,8 @@ func TestBinaryEndToEnd(t *testing.T) {
 		if err != nil {
 			t.Fatalf("arista show running-config failed: %v\noutput: %s", err, out)
 		}
-		if !strings.Contains(string(out), "OK") {
-			t.Errorf("expected /cmd acknowledgement, got: %s", out)
-		}
-		if !strings.Contains(strings.Join(mockCmdBodies, ","), "show running-config") {
-			t.Errorf("expected 'show running-config' to be sent via /cmd, got bodies: %v", mockCmdBodies)
+		if !strings.Contains(string(out), "ip 192.168") {
+			t.Errorf("expected config output, got: %s", out)
 		}
 	})
 
@@ -1275,6 +1275,9 @@ func newMockServer(t *testing.T) *httptest.Server {
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, `[{"mac":"00:01:2f:00:00:01","vlan":"001","type":"l","port":7,"idx":"0x10"}]`)
 		case "/config":
+			w.Header().Set("Content-Type", "text/plain")
+			fmt.Fprint(w, "ip 192.168.1.1\nnetmask 255.255.255.0\n")
+		case "/running-config":
 			w.Header().Set("Content-Type", "text/plain")
 			fmt.Fprint(w, "ip 192.168.1.1\nnetmask 255.255.255.0\n")
 		case "/cmd_log":

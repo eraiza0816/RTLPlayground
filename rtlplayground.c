@@ -15,10 +15,15 @@
 #include "rtl837x_igmp.h"
 #include "rtl837x_leds.h"
 #include "rtl837x_bandwidth.h"
+#include "rtl837x_storm.h"
+#include "rtl837x_qos.h"
+#include "rtl837x_acl.h"
 #include "rtl837x_init.h"
 #include "dhcp.h"
 #include "cmd_parser.h"
 #include "cmd_editor.h"
+#include "ping.h"
+#include "lldp.h"
 #include "uip/uipopt.h"
 #include "uip/uip.h"
 #include "uip/uip_arp.h"
@@ -126,6 +131,7 @@ __xdata uint8_t uip_buf[UIP_CONF_BUFFER_SIZE+2];
 __xdata uint16_t rx_packet_vlan;
 __xdata uint16_t management_vlan;
 __xdata uint8_t tx_seq;
+                                //     for this frame (link-local protocol frames)
 
 __xdata char hostname[32];
 
@@ -1115,18 +1121,22 @@ void handle_rx(void)
 			}
 		} else if (ETH_IN->ether_type == HTONS(0x0800)) { // IPv4
 			if (!management_vlan || management_vlan == rx_packet_vlan) {
-				uip_arp_ipin();	// Learn MAC addresses in TCP packets
-				uip_input();
-				if (uip_len) {
-					// Add ethernet frame
-					uip_arp_out();
-					tcpip_output();
+				if (!ping_rx()) {          // ICMP echo replies consumed here
+					uip_arp_ipin();	// Learn MAC addresses in TCP packets
+					uip_input();
+					if (uip_len) {
+						// Add ethernet frame
+						uip_arp_out();
+						tcpip_output();
+					}
 				}
 			}
 		} else {
+			if (!lldp_rx()) {
 #ifdef RXTXDBG
-			print_string("Unknown RX on port "); print_byte(rx_headers[3] & 0xf); write_char('\n');
+				print_string("Unknown RX on port "); print_byte(rx_headers[3] & 0xf); write_char('\n');
 #endif
+			}
 		}
 	}
 }
@@ -1438,6 +1448,10 @@ void idle(void)
 	handle_rx();
 	// Check UIP for packets to transmit
 	handle_tx();
+	// Send pending ICMP echo requests / process ping timeouts
+	ping_pump();
+	// LLDP: 1s neighbor aging + 30s LLDPDU transmission
+	lldp_timers();
 	// If STP protocol enabled, decrease STP timers to trigger actions
 	if (stpEnabled) {
 		if (!stp_clock) {
@@ -2099,10 +2113,14 @@ void main(void)
 	port_l2_setup();
 	igmp_setup();
 	bandwidth_setup();
+	storm_control_setup();
+	qos_setup();
+	acl_setup();
 	uip_init();
 	uip_arp_init();
 	httpd_init();
 	telnetd_init();
+	lldp_setup();
 	telnet_active = 1;
 
 	management_vlan = 1; // Default management VLAN is 1

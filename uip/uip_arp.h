@@ -72,6 +72,7 @@ struct uip_eth_hdr {
 /* The uip_arp_init() function must be called before any of the other
    ARP functions. */
 void uip_arp_init(void) __banked;
+uint8_t uip_arp_entry_next(__xdata uint8_t * __xdata ip, __xdata uint8_t * __xdata mac, __xdata uint8_t * __xdata age) __banked;
 
 /* The uip_arp_ipin() function should be called whenever an IP packet
    arrives from the Ethernet. This function refreshes the ARP table or
@@ -104,6 +105,9 @@ void uip_arp_out(void) __banked;
 /* The uip_arp_timer() function should be called every ten seconds. It
    is responsible for flushing old entries in the ARP table. */
 void uip_arp_timer(void) __banked;
+
+/* Print the contents of the ARP cache (IP, MAC and age in seconds). */
+void uip_arp_dump(void) __banked;
 
 /** @} */
 

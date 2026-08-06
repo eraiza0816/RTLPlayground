@@ -9,6 +9,9 @@ var LANG = {
     nav_lag: 'Link Aggregation',
     nav_eee: 'EEE',
     nav_bandwidth: 'Bandwidth Limits',
+    nav_qos: 'QoS',
+    nav_storm: 'Storm Control',
+    nav_acl: 'ACL',
     nav_system: 'System Settings',
     nav_fw_update: 'Firmware Update',
 
@@ -188,6 +191,9 @@ var LANG = {
     nav_lag: 'リンクアグリゲーション',
     nav_eee: 'EEE',
     nav_bandwidth: '帯域制限',
+    nav_qos: 'QoS',
+    nav_storm: 'ストーム制御',
+    nav_acl: 'ACL',
     nav_system: 'システム設定',
     nav_fw_update: 'ファームウェア更新',
 

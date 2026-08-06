@@ -47,9 +47,11 @@ before it is sent. All known write commands are checked:
 - `passwd` — 5-20 chars
 - `ip` / `gw` / `netmask` — dotted-quad IPv4 (`ip dhcp` allowed)
 - `port`, `mtu`, `pvid`, `vlan`, `ingress`, `isolate`, `mirror`, `lag`,
-  `laghash`, `eee`, `bw`, `stp`, `igmp`, `telnet`, `web`, `l2`, `sfp`,
+  `laghash`, `eee`, `bw`, `stp`, `igmp` (incl. `querier`/`mld`), `lldp`,
+  `storm-control`, `qos`, `acl`, `telnet`, `web`, `l2`, `sfp`,
   `regget`/`regset`/`sdsget`/`sdsset`/`phyget`/`physet`, `commit`, `reset`
-  — argument counts, port numbers, VLAN IDs, speeds, hex values etc.
+  — argument counts, port numbers, VLAN IDs, speeds, rates, MAC addresses,
+  IP prefixes, hex values etc.
 
 Unknown or read-only commands pass through unchanged, so future firmware
 commands are never blocked. To send a command that fails validation anyway
@@ -91,6 +93,51 @@ rtlpctl cmd "hostname my-switch.old-firmware" --force
 | `config upload <file>` | POST /config (multipart) | Upload configuration file |
 | `upload firmware <file>` | POST /upload (multipart) | Firmware update |
 | `reset` | GET /reset | Reboot the switch |
+
+#### Console commands (output appears on the switch console)
+
+The firmware's `/cmd` endpoint acknowledges execution only; the command
+output is printed on the switch's serial console.  Commands in this
+group send their device CLI text through `/cmd` (validated locally
+first, see Command Validation):
+
+| Command | Description |
+|---------|-------------|
+| `ping <ip>` | Send 4 ICMP echoes from the switch |
+| `lldp [on\|off\|show]` | LLDP neighbor discovery |
+| `igmp [on\|off\|show]` | IGMP snooping control |
+| `igmp querier [on\|off\|show]` | ASIC IGMP/MLD querier |
+| `igmp mld [on\|off\|show]` | MLD snooping control |
+| `storm-control ...` | `on <type> <rate>[k\|p]`, `off [type\|all]`, `status` |
+| `qos ...` | `on\|off\|status`, `mode pcp\|dscp\|both`, `pcp`, `dscp`, `sched` |
+| `acl ...` | `on\|off`, `add <port> <permit\|deny> <match>`, `del <idx>`, `show` |
+| `show arp` | Switch ARP cache |
+| `hostname <name>` | Set the switch hostname |
+| `passwd <new>` | Change the web/telnet password |
+| `ip <a.b.c.d>\|dhcp` | Set the management IP (or use DHCP) |
+| `gw <a.b.c.d>` | Set the default gateway |
+| `netmask <a.b.c.d>` | Set the netmask |
+| `port <n> ...` | Port config: `show`, `name`, `on`, `off`, `duplex`, `speed`, `auto` |
+| `pvid <port> <vid>` | Set the port VLAN ID |
+| `ingress [ports...]` | 802.1Q ingress filtering (`t` = tagged-only) |
+| `isolate <port> [ports...]` | Port isolation; `<port> off` clears it |
+| `laghash <hash> [fields]` | LAG hash (0-3) + `smac\|dmac\|spa\|sip\|dip\|sport\|dport` |
+| `stp [on\|off\|show]` | Spanning-tree protocol |
+| `telnet on\|off` | Enable/disable the telnet console |
+| `web on\|off` | Enable/disable the web UI |
+| `commit` | Save the running config to flash |
+| `psk <hex64>` | Set the device preshared key (encrypted `/enc`) |
+| `sfp ...` | SFP module control: speed, `describe`, `dump`, `save`, `restore`, `checksum [--fix]`, `fix`, `patch`, `clone`, `write <off> <val>`, `bulk <hex>` (all take `--pw <hex8>` where applicable) |
+| `regget <addr>` | Read an RTL8370 register (hex) |
+| `regset <addr> <hex>` | Write an RTL8370 register |
+| `sdsget <bank> <page> <reg>` | Read a register via SDS access |
+| `sdsset <bank> <page> <reg> <hex>` | Write a register via SDS access |
+| `phyget <port> <addr> <reg>` | Read a PHY register |
+| `physet <port> <addr> <reg> <hex>` | Write a PHY register |
+
+`show running-config` and `show startup-config` (and the Arista
+`show running-config` / `sh run`) fetch their text over HTTP
+(`/running-config` resp. `/config`) and print it locally.
 
 ### Examples
 
@@ -189,7 +236,8 @@ Use `--mode arista` or the environment variable `MODE=arista` for Arista EOS-com
 | `show interfaces status` | GET /status.json |
 | `show interfaces Ethernet<X> status` | GET /status.json (port filtered) |
 | `show interfaces counters [Ethernet<X>]` | GET /counters.json |
-| `show running-config` | GET /config |
+| `show running-config` | GET /running-config |
+| `show startup-config` | GET /config |
 | `show vlan` | GET /vlanlist |
 | `show vlan id <vid>` | GET /vlan.json |
 | `show inventory` | GET /information.json |
@@ -201,12 +249,58 @@ Use `--mode arista` or the environment variable `MODE=arista` for Arista EOS-com
 | `show system` | GET /information.json |
 | `show mtu` | GET /mtu.json |
 | `show config` | GET /config |
+| `show lldp neighbors` | console `lldp show` |
+| `show ip igmp snooping` | console `igmp show` |
+| `show ip igmp snooping querier` | console `igmp querier show` |
+| `show ip igmp snooping groups` | console `igmp mld show` |
+| `show qos` | console `qos status` |
+| `show storm-control` | console `storm-control status` |
+| `show ip access-lists` | console `acl show` |
+| `ping <ip>` | console `ping <ip>` |
+| `lldp enable` / `lldp disable` | console `lldp on` / `lldp off` |
+| `ip igmp snooping enable` / `disable` | console `igmp on` / `igmp off` |
+| `storm-control <type> level <rate>` | console `storm-control on <type> <rate>` |
+| `hostname <name>` | console `hostname <name>` |
+| `ip address <a.b.c.d>[/prefix]` | console `ip <a.b.c.d>` + `netmask` |
+| `ip address dhcp` | console `ip dhcp` |
+| `ip default-gateway <ip>` / `ip route 0.0.0.0/0 <ip>` | console `gw <ip>` |
+| `username <name> [secret\|password] <pw>` | console `passwd <pw>` |
+| `spanning-tree mode <mode>` | console `stp on` |
+| `vlan <id>` / `vlan <id> name <name>` | console `vlan <id>` / `vlan <id> <name>` |
+| `interface Ethernet<X> speed <speed>` | console `port <X> <speed>` |
+| `interface Ethernet<X> duplex <half\|full>` | console `port <X> duplex ...` |
+| `interface Ethernet<X> switchport access vlan <id>` | console `pvid <X> <id>` |
+| `interface Ethernet<X> mtu <size>` | console `mtu <X> <size>` |
+| `interface Ethernet<X> description <name>` | console `port <X> name <name>` |
+| `interface Ethernet<X> shutdown` | console `port <X> off` |
+| `no spanning-tree mode` | console `stp off` |
+| `no vlan <id>` | console `vlan <id> d` |
+| `no storm-control <type> level` | console `storm-control off <type>` |
+| `no lldp` / `no ip igmp snooping` | console `lldp off` / `igmp off` |
+| `no interface Ethernet<X> shutdown` | console `port <X> on` |
+| `telnet server enable` / `disable` (or `telnet on\|off`) | console `telnet on` / `telnet off` |
+| `web server enable` / `disable` (or `web on\|off`) | console `web on` / `web off` |
+| `commit` | console `commit` |
+| `pvid <port> <vid>` | console `pvid <port> <vid>` |
+| `no pvid <port>` | console `pvid <port> 1` |
+| `isolate <port> [ports...]` | console `isolate ...` |
+| `no isolate <port>` | console `isolate <port> off` |
+| `ingress [ports...]` | console `ingress ...` |
+| `laghash <hash> [fields...]` | console `laghash ...` |
+| `sfp ...` | console `sfp ...` |
+| `regget` / `regset` / `sdsget` / `sdsset` / `phyget` / `physet` | console passthrough |
+| `preshared-key <hex64>` (or `psk <hex64>`) | console `preshared_key <hex64>` |
 | `configure [terminal]` | Enter config mode |
 | `copy running-config startup-config` | Save configuration |
 | `write memory` | Save configuration |
 | `clear mac address-table dynamic` | Flush learned MACs (`l2 forget`) |
 | `clear logging` | Clear command log |
 | `enable` | Privileged mode |
+
+Storm-control types map to the device: `broadcast`, `multicast`,
+`unknown-unicast` (device `dlf`), `unknown-multicast` (device
+`unknown-mcast`).  "Console" commands are sent through `/cmd`; their
+output appears on the switch's serial console.
 
 > **Note:** `copy running-config startup-config` / `write memory` save the
 > configuration via the encrypted `/enc` endpoint and therefore require a

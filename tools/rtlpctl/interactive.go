@@ -392,7 +392,7 @@ var internalCmdNames = []string{
 }
 
 var aristaShowSubs = []string{
-	"interfaces", "running-config", "vlan", "inventory", "mac",
+	"interfaces", "running-config", "startup-config", "arp", "vlan", "inventory", "mac",
 	"logging", "port-channel", "monitoring", "queue", "system",
 	"mtu", "eee", "config", "cmd-log",
 }
@@ -518,6 +518,14 @@ Internal commands:
   cmd-log clear          Clear command history
   upload firmware <file> Upload firmware
   reset                  Reboot the switch
+  ping <ip>              Send 4 ICMP echoes from the switch
+  lldp [on|off|show]     LLDP neighbor discovery
+  igmp [on|off|show]     IGMP snooping control
+  igmp querier [..]      ASIC IGMP/MLD querier (on|off|show)
+  igmp mld [..]          MLD snooping control (on|off|show)
+  storm-control ...      Storm control: on <type> <rate>[k|p], off, status
+  qos ...                QoS: on|off|mode|pcp|dscp|sched|status
+  acl ...                ACL: on|off|add|del|show
   host [IP]              Show or set host
   password [PWD]         Set password
   mode [arista|default]  Switch CLI mode

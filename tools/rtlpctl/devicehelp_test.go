@@ -80,7 +80,8 @@ func TestAristaCompletions(t *testing.T) {
 		{nil, "wr", []string{"write"}},
 		{[]string{"show"}, "in", []string{"interfaces", "inventory"}},
 		{[]string{"show"}, "r", []string{"running-config"}},
-		{[]string{"show", "interfaces"}, "st", nil},
+		{[]string{"show"}, "st", []string{"startup-config"}},
+		{[]string{"show"}, "a", []string{"arp"}},
 	}
 	for _, c := range cases {
 		got := aristaCompletions(c.words, c.prefix, nil)

@@ -207,6 +207,44 @@ func validateIPAddr(s string) error {
 	return nil
 }
 
+// validateIPOrPrefix checks an IPv4 address with an optional /prefix
+// suffix (used by the ACL "ip <addr>[/<prefix>]" match).
+func validateIPOrPrefix(s string) error {
+	host := s
+	if i := strings.IndexByte(s, '/'); i >= 0 {
+		host = s[:i]
+		prefix := s[i+1:]
+		n, err := strconv.Atoi(prefix)
+		if err != nil || n < 0 || n > 32 {
+			return fmt.Errorf("invalid prefix: %q (must be 0-32)", prefix)
+		}
+		if strings.ContainsAny(prefix, "+- ") {
+			return fmt.Errorf("invalid prefix: %q (must be 0-32)", prefix)
+		}
+	}
+	return validateIPAddr(host)
+}
+
+// validateMacAddr checks a MAC address in aa:bb:cc:dd:ee:ff form.
+func validateMacAddr(s string) error {
+	if len(s) != 17 {
+		return fmt.Errorf("invalid MAC address: %q (use aa:bb:cc:dd:ee:ff)", s)
+	}
+	for i := 0; i < 17; i++ {
+		c := s[i]
+		if i%3 == 2 {
+			if c != ':' {
+				return fmt.Errorf("invalid MAC address: %q (use aa:bb:cc:dd:ee:ff)", s)
+			}
+			continue
+		}
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') {
+			return fmt.Errorf("invalid MAC address: %q (use aa:bb:cc:dd:ee:ff)", s)
+		}
+	}
+	return nil
+}
+
 // validatePortNum checks a single-digit physical port number (1..maxPort).
 func validatePortNum(s string, maxPort int) error {
 	if len(s) != 1 || s[0] < '1' || s[0] > '9' {

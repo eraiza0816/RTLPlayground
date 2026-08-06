@@ -17,6 +17,14 @@ void send_lag(void);
 void send_vlanlist(void);
 void send_sfp_eeprom(uint8_t slot);
 void send_sfp_diag(void);
+void send_running_config(void);
+void send_ping(void) __banked;
+void send_arp(void) __banked;
+void send_lldp(void) __banked;
+void send_igmp(void) __banked;
+void send_storm(void) __banked;
+void send_qos(void) __banked;
+void send_acl(void) __banked;
 
 /* Implemented in hand-written assembly (rtlplayground_util.asm) */
 void string_to_html(__code const char *s);

@@ -538,6 +538,62 @@ static void cmd_bw(struct conn *c, char **w, int nw)
 	}
 }
 
+static void cmd_storm(struct conn *c, char **w, int nw)
+{
+	if (nw >= 2 && !strcmp(w[1], "status")) {
+		conn_send(c, "CFG_STORM_EXT (0x5514): 00000000\n"
+			  "STORM_EXT_MTRIDX (0x5518): 00000000\n");
+	} else if (nw >= 3 && !strcmp(w[1], "on") && nw >= 4) {
+		conn_send(c, "Storm control enabled, type: ");
+		conn_send(c, w[2]);
+		conn_send(c, "\n");
+	} else if (nw >= 2 && !strcmp(w[1], "off")) {
+		conn_send(c, "Storm control disabled\n");
+	} else {
+		conn_send(c, "Usage: storm-control on|off|status\n");
+	}
+}
+
+static void cmd_qos(struct conn *c, char **w, int nw)
+{
+	if (nw >= 2 && !strcmp(w[1], "status")) {
+		conn_send(c, "Mode: off\nPRI_WEIGHT: 00000000\n");
+	} else if (nw >= 3 && !strcmp(w[1], "mode")) {
+		conn_send(c, "QoS mode: ");
+		conn_send(c, w[2]);
+		conn_send(c, "\n");
+	} else if (nw >= 2 && !strcmp(w[1], "on")) {
+		conn_send(c, "QoS enabled\n");
+	} else if (nw >= 2 && !strcmp(w[1], "off")) {
+		conn_send(c, "QoS disabled\n");
+	} else if (nw >= 2 && !strcmp(w[1], "pcp")) {
+		conn_send(c, "PCP -> queue set\n");
+	} else if (nw >= 2 && !strcmp(w[1], "dscp")) {
+		conn_send(c, "DSCP -> queue set\n");
+	} else if (nw >= 2 && !strcmp(w[1], "sched")) {
+		conn_send(c, "Queue scheduling set\n");
+	} else {
+		conn_send(c, "Usage: qos on|off|mode|pcp|dscp|sched|status\n");
+	}
+}
+
+static void cmd_acl(struct conn *c, char **w, int nw)
+{
+	if (nw >= 2 && !strcmp(w[1], "show")) {
+		conn_send(c, "Idx Tpl Pmsk Act  Match\n");
+	} else if (nw >= 2 && (!strcmp(w[1], "on") || !strcmp(w[1], "off"))) {
+		conn_send(c, "ACL ");
+		conn_send(c, w[1]);
+		conn_send(c, "\n");
+	} else if (nw >= 2 && !strcmp(w[1], "add")) {
+		conn_send(c, "ACL rule added\n");
+	} else if (nw >= 3 && !strcmp(w[1], "del")) {
+		conn_send(c, "ACL rule deleted\n");
+	} else {
+		conn_send(c, "Usage: acl on|off|add|del|show\n");
+	}
+}
+
 static void cmd_lag(struct conn *c, char **w, int nw)
 {
 	if (nw >= 2 && !strcmp(w[1], "show")) {
@@ -650,6 +706,51 @@ static void cmd_show_port_vlan(struct conn *c)
 		    "port are dropped\nPVID - Assumed VLAN for untagged packets\n");
 }
 
+static void cmd_show_running_config(struct conn *c)
+{
+	char buf[256];
+	snprintf(buf, sizeof(buf),
+		"hostname %s\n"
+		"ip 192.168.10.247\n"
+		"gw 192.168.10.1\n"
+		"netmask 255.255.255.0\n"
+		"passwd %s\n"
+		"stp %s\n"
+		"telnet %s\n"
+		"web %s\n",
+		hostname, passwd,
+		stp_enabled ? "on" : "off",
+		telnet_enabled ? "on" : "off",
+		web_enabled ? "on" : "off");
+	conn_send(c, buf);
+}
+
+static void cmd_show_startup_config(struct conn *c)
+{
+	/* Simulator: running and startup config are the same. */
+	cmd_show_running_config(c);
+}
+
+static void cmd_show_arp(struct conn *c)
+{
+	conn_send(c, "IP               MAC                 Age\n");
+	conn_send(c, "192.168.10.1     18:ec:e7:95:a9:87   0s\n");
+}
+
+static void cmd_lldp(struct conn *c, char **w, int nw)
+{
+	if (nw >= 2 && !strcmp(w[1], "on")) {
+		conn_send(c, "LLDP enabled\n");
+	} else if (nw >= 2 && !strcmp(w[1], "off")) {
+		conn_send(c, "LLDP disabled\n");
+	} else if (nw >= 2 && !strcmp(w[1], "show")) {
+		conn_send(c, "Port  Chassis ID         Port ID      System Name      TTL\n");
+		conn_send(c, "1     18:ec:e7:95:a9:87  port 1      neighbor-switch    118\n");
+	} else {
+		conn_send(c, "LLDP: disabled\n");
+	}
+}
+
 static void cmd_stp(struct conn *c, char **w, int nw)
 {
 	if (nw >= 2 && !strcmp(w[1], "on")) {
@@ -659,6 +760,43 @@ static void cmd_stp(struct conn *c, char **w, int nw)
 		stp_enabled = 0;
 		conn_send(c, "STP disabled\n");
 	}
+}
+
+static void cmd_ping(struct conn *c, char **w, int nw)
+{
+	if (nw < 2) {
+		conn_send(c, "Usage: ping <ip>\n");
+		return;
+	}
+	/* Validate dotted quad */
+	const char *ip = w[1];
+	int dots = 0, digits = 0, ok = 1;
+	for (const char *p = ip; *p; p++) {
+		if (*p == '.') {
+			dots++;
+			digits = 0;
+		} else if (*p >= '0' && *p <= '9') {
+			digits++;
+		} else {
+			ok = 0;
+			break;
+		}
+	}
+	if (!ok || dots != 3) {
+		conn_send(c, "Bad IP\n");
+		return;
+	}
+	char buf[160];
+	for (int seq = 0; seq < 4; seq++) {
+		snprintf(buf, sizeof(buf), "Reply from %s: seq=%d time=0ms\n", ip, seq);
+		conn_send(c, buf);
+	}
+	snprintf(buf, sizeof(buf),
+		"--- %s ping statistics ---\n"
+		"4 packets transmitted, 4 received, 0%% packet loss\n"
+		"rtt min/avg/max = 0/0/0 ms\n",
+		ip);
+	conn_send(c, buf);
 }
 
 static void cmd_igmp(struct conn *c, char **w, int nw)
@@ -672,6 +810,20 @@ static void cmd_igmp(struct conn *c, char **w, int nw)
 	} else if (nw >= 2 && !strcmp(w[1], "show")) {
 		conn_send(c, igmp_enabled ? "IGMP snooping: enabled\n"
 					    : "IGMP snooping: disabled\n");
+	} else if (nw >= 3 && !strcmp(w[1], "mld")) {
+		if (!strcmp(w[2], "on"))
+			conn_send(c, "MLD snooping enabled\n");
+		else if (!strcmp(w[2], "off"))
+			conn_send(c, "MLD snooping disabled\n");
+		else if (!strcmp(w[2], "show"))
+			conn_send(c, "IGMP_MLD_EN: off\n");
+	} else if (nw >= 3 && !strcmp(w[1], "querier")) {
+		if (!strcmp(w[2], "on"))
+			conn_send(c, "IGMP querier enabled\n");
+		else if (!strcmp(w[2], "off"))
+			conn_send(c, "IGMP querier disabled\n");
+		else if (!strcmp(w[2], "show"))
+			conn_send(c, "Query interval: 0\n");
 	}
 }
 
@@ -793,8 +945,16 @@ static void execute_line(struct conn *c, char *line)
 
 	if (!strcmp(cmd, "version"))
 		cmd_version(c);
+	else if (!strcmp(cmd, "show") && nw >= 2 && !strcmp(words[1], "running-config"))
+		cmd_show_running_config(c);
+	else if (!strcmp(cmd, "show") && nw >= 2 && !strcmp(words[1], "startup-config"))
+		cmd_show_startup_config(c);
+	else if (!strcmp(cmd, "show") && nw >= 2 && !strcmp(words[1], "arp"))
+		cmd_show_arp(c);
 	else if (!strcmp(cmd, "show") && nw >= 2 && !strcmp(words[1], "port"))
 		cmd_show_port_vlan(c);
+	else if (!strcmp(cmd, "ping"))
+		cmd_ping(c, words, nw);
 	else if (!strcmp(cmd, "show"))
 		cmd_show(c);
 	else if (!strcmp(cmd, "stat"))
@@ -815,6 +975,12 @@ static void execute_line(struct conn *c, char *line)
 		cmd_mirror(c, words, nw);
 	else if (!strcmp(cmd, "bw"))
 		cmd_bw(c, words, nw);
+	else if (!strcmp(cmd, "storm-control"))
+		cmd_storm(c, words, nw);
+	else if (!strcmp(cmd, "qos"))
+		cmd_qos(c, words, nw);
+	else if (!strcmp(cmd, "acl"))
+		cmd_acl(c, words, nw);
 	else if (!strcmp(cmd, "lag"))
 		cmd_lag(c, words, nw);
 	else if (!strcmp(cmd, "isolate"))
@@ -835,6 +1001,8 @@ static void execute_line(struct conn *c, char *line)
 		cmd_netmask(c, words, nw);
 	else if (!strcmp(cmd, "stp"))
 		cmd_stp(c, words, nw);
+	else if (!strcmp(cmd, "lldp"))
+		cmd_lldp(c, words, nw);
 	else if (!strcmp(cmd, "igmp"))
 		cmd_igmp(c, words, nw);
 	else if (!strcmp(cmd, "telnet"))

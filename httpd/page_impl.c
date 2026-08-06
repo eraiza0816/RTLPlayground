@@ -6,7 +6,14 @@
 #include "rtl837x_port.h"
 #include "rtl837x_flash.h"
 #include "rtl837x_pins.h"
+#include "rtl837x_storm.h"
+#include "rtl837x_qos.h"
+#include "rtl837x_igmp.h"
+#include "rtl837x_acl.h"
+#include "ping.h"
+#include "lldp.h"
 #include "uip.h"
+#include "uip/uip_arp.h"
 #include <stdint.h>
 #include "phy.h"
 #include "version.h"
@@ -41,6 +48,9 @@ extern __xdata uint16_t cmd_history_ptr;
 
 extern __xdata struct flash_region_t flash_region;
 
+extern __xdata uint8_t flash_buf[FLASH_BUF_SIZE];
+extern uint16_t running_config_serialize(void) __banked;
+
 extern __xdata char sfp_module_vendor[2][17];
 extern __xdata char sfp_module_model[2][17];
 extern __xdata char sfp_module_serial[2][17];
@@ -60,20 +70,20 @@ void charhex_to_html(char c)
 
 
 // Convert (uint8_t) bool to ascii '0' or '1' char push on html-buffer.
-void bool_to_html(char c)
+void bool_to_html(char c) __banked
 {
 	outbuf[slen++] = c ? '1' : '0';
 }
 
 
-void char_to_html(char c)
+void char_to_html(char c) __banked
 {
 	outbuf[slen++] = c;
 }
 
 
 //  Convert uint8_t to ascii HEX char.
-void byte_to_html(uint8_t val)
+void byte_to_html(uint8_t val) __banked
 {
 	uint8_t cnt = 2;
 	do {
@@ -88,7 +98,7 @@ void byte_to_html(uint8_t val)
    Uses repeated subtraction instead of division so no 16-bit division
    library routine (__divuint/__moduint) gets linked in.
 */
-void itoa_html(uint8_t v)
+void itoa_html(uint8_t v) __banked
 {
 	uint8_t t, print_zeros = 0;
 	t = 0;
@@ -100,7 +110,7 @@ void itoa_html(uint8_t v)
 	char_to_html('0' + v);
 }
 
-void itoa16_html(uint16_t v) /* sufficient for VLAN IDs (max 4094) */
+void itoa16_html(uint16_t v) __banked /* sufficient for VLAN IDs (max 4094) */
 {
 	uint8_t d, print_zeros = 0;
 	d = 0;
@@ -800,7 +810,7 @@ void send_sfp_diag(void)
 {
 	slen = strtox(outbuf, HTTP_RESPONCE_JSON);
 	char_to_html('[');
-	uint8_t first = 1;
+	__xdata uint8_t first = 1;
 	// Iterate in physical port order (1..N) so the display matches the
 	// front-panel labels; the chip register access uses the logical port.
 	for (uint8_t p = 0; p <= machine.max_port - machine.min_port; p++) {
@@ -877,6 +887,24 @@ found_end:
 	slen += valid_len;
 }
 
+/* GET /running-config: the in-memory configuration that 'commit' would
+ * save, serialized by the CLI (cmd_commit.c).  Unlike /config (which
+ * serves the flash copy = startup-config), this reflects uncommitted
+ * changes. */
+void send_running_config(void)
+{
+	__xdata uint16_t len;
+	__xdata uint16_t i;
+
+	dbg_string("send_running_config called\n");
+	slen = strtox(outbuf, HTTP_RESPONCE_TXT);
+	len = running_config_serialize();
+	if (len > TCP_OUTBUF_SIZE - slen)
+		len = TCP_OUTBUF_SIZE - slen;
+	for (i = 0; i < len; i++)
+		outbuf[slen++] = flash_buf[i];
+}
+
 void send_cmd_log(void)
 {
 	dbg_string("send_cmd_log called\n");
@@ -902,7 +930,7 @@ void send_vlanlist(void)
 	 * At worst case ~18 VLANs fit; typical configs with short names fit many more. */
 	__xdata uint16_t i;
 	__xdata uint16_t n;
-	uint8_t first = 1;
+	__xdata uint8_t first = 1;
 
 	slen = strtox(outbuf, HTTP_RESPONCE_JSON);
 	char_to_html('[');

@@ -131,6 +131,42 @@ static __xdata u8_t i, c;
 static __xdata u8_t arptime;
 static __xdata u8_t tmpage;
 
+/* Scan pointer into arp_table for uip_arp_entry_next().  Walked byte-
+ * wise: indexing a struct with a variable n needs 16-bit multiply
+ * temporaries, and the internal-RAM DSEG is completely full. */
+static __xdata uint8_t * __xdata arp_scan;
+
+/*
+ * Return the next in-use ARP table entry, walking the table with a
+ * byte pointer.  Fills ip (4 bytes, a.b.c.d order), mac (6 bytes) and
+ * the age in 10s ticks; returns 0 at the end of the table (the scan
+ * restarts).  Used by the HTTP /arp.json endpoint.
+ */
+uint8_t uip_arp_entry_next(__xdata uint8_t * __xdata ip, __xdata uint8_t * __xdata mac, __xdata uint8_t * __xdata age) __banked
+{
+	__xdata uint8_t * __xdata end = (__xdata uint8_t * __xdata)&arp_table[UIP_ARPTAB_SIZE];
+
+	if (!arp_scan)
+		arp_scan = (__xdata uint8_t * __xdata)&arp_table[0];
+	while (arp_scan < end) {
+		/* Entry layout: ipaddr[2] big-endian u16 (4 bytes),
+		 * ethaddr (6 bytes), time (1 byte) = 11 bytes. */
+		if (arp_scan[0] | arp_scan[1] | arp_scan[2] | arp_scan[3]) {
+			ip[0] = arp_scan[0];
+			ip[1] = arp_scan[1];
+			ip[2] = arp_scan[2];
+			ip[3] = arp_scan[3];
+			memcpy(mac, arp_scan + 4, 6);
+			*age = (u8_t)(arptime - arp_scan[10]);
+			arp_scan += 11;
+			return 1;
+		}
+		arp_scan += 11;
+	}
+	arp_scan = (__xdata uint8_t * __xdata)&arp_table[0];
+	return 0;
+}
+
 #define BUF   ((__xdata struct arp_hdr_i *)&uip_buf[0])
 #define BUF_O ((__xdata struct arp_hdr_o *)&uip_buf[RTL_FRAME_DESC_SIZE])
 #define IPBUF ((__xdata struct ethip_hdr *)&uip_buf[RTL_FRAME_DESC_SIZE])
@@ -426,6 +462,64 @@ uip_arp_out(void) __banked
   IPBUF->ethhdr.type = HTONS(UIP_ETHTYPE_IP);
 
   uip_len += sizeof(struct uip_eth_hdr);
+}
+/*-----------------------------------------------------------------------------------*/
+/* Decimal 16-bit output without library division.  Value is passed via
+   the XDATA scratch so no internal-RAM overlay space is used. */
+static __xdata uint16_t arp_dec_v;
+static __xdata uint8_t arp_dec_d;
+static __xdata uint8_t arp_dec_z;
+
+static void uip_arp_dec16(void)
+{
+  uint16_t v = arp_dec_v;
+  uint8_t d, z = 0;
+  d = 0; while (v >= 10000) { v -= 10000; d++; }
+  if (d || z) { write_char('0' + d); z = 1; }
+  d = 0; while (v >= 1000) { v -= 1000; d++; }
+  if (d || z) { write_char('0' + d); z = 1; }
+  d = 0; while (v >= 100) { v -= 100; d++; }
+  if (d || z) { write_char('0' + d); z = 1; }
+  d = 0; while (v >= 10) { v -= 10; d++; }
+  if (d || z) { write_char('0' + d); }
+  write_char('0' + v);
+}
+
+void
+uip_arp_dump(void) __banked
+{
+  /* No locals: the 8051 internal RAM overlay is full, everything must
+     live in XDATA.  (A static pointer here would end up in DSEG, so
+     the table is accessed by index directly.) */
+  static __xdata uint8_t dump_i;
+  static __xdata uint8_t dump_entries;
+  static __xdata uint8_t dump_j;
+
+  print_string("IP               MAC                 Age\n");
+  dump_entries = 0;
+  for(dump_i = 0; dump_i < UIP_ARPTAB_SIZE; ++dump_i) {
+    if((arp_table[dump_i].ipaddr[0] | arp_table[dump_i].ipaddr[1]) == 0)
+      continue;
+    dump_entries++;
+    itoa(arp_table[dump_i].ipaddr[0] & 0xff); write_char('.');
+    itoa(arp_table[dump_i].ipaddr[0] >> 8); write_char('.');
+    itoa(arp_table[dump_i].ipaddr[1] & 0xff); write_char('.');
+    itoa(arp_table[dump_i].ipaddr[1] >> 8);
+    write_char(' ');
+    write_char(' ');
+    for(dump_j = 0; dump_j < 6; dump_j++) {
+      print_byte(arp_table[dump_i].ethaddr.addr[dump_j]);
+      if (dump_j < 5) write_char(':');
+    }
+    write_char(' ');
+    write_char(' ');
+    arp_dec_v = (uint16_t)(arptime - arp_table[dump_i].time) * 10;
+    uip_arp_dec16();
+    write_char('s');
+    write_char('\n');
+  }
+  if (!dump_entries)
+    print_string("(no ARP entries)\n");
 }
 /*-----------------------------------------------------------------------------------*/
 

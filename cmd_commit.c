@@ -5,6 +5,8 @@
 #include "rtl837x_flash.h"
 #include "rtl837x_regs.h"
 #include "rtl837x_sfr.h"
+#include "rtl837x_storm.h"
+#include "rtl837x_qos.h"
 #include "uip/uip.h"
 
 extern __xdata uint8_t flash_buf[FLASH_BUF_SIZE];
@@ -25,6 +27,15 @@ extern void reg_read_m(uint16_t reg_addr);
 extern void reg_write_m(uint16_t reg_addr);
 
 static __xdata uint16_t commit_pos;
+static __xdata uint8_t cfg_psk_set;
+static __xdata uint8_t cfg_psk_i;
+static __xdata uint16_t cfg_i;
+/* Scratch for the decimal emitters below (block-scope locals of the
+ * macros would land in the internal-RAM overlay, which is full) */
+static __xdata uint16_t cfg_vv16;
+static __xdata uint32_t cfg_vv32;
+static __xdata uint8_t cfg_d;
+static __xdata uint8_t cfg_z;
 
 #define COMMIT_PUTC(c) do { \
 	if (commit_pos < FLASH_BUF_SIZE) \
@@ -58,17 +69,36 @@ static __xdata uint16_t commit_pos;
    library routine (__divuint/__moduint) gets linked in.  Leading zeros
    are suppressed; the config parser (atoi_short) accepts both forms. */
 #define COMMIT_DEC16(v16) do { \
-	uint16_t __vv = (v16); \
-	uint8_t __d, __z = 0; \
-	__d = 0; while (__vv >= 10000) { __vv -= 10000; __d++; } \
-	if (__d || __z) { COMMIT_PUTC('0' + __d); __z = 1; } \
-	__d = 0; while (__vv >= 1000) { __vv -= 1000; __d++; } \
-	if (__d || __z) { COMMIT_PUTC('0' + __d); __z = 1; } \
-	__d = 0; while (__vv >= 100) { __vv -= 100; __d++; } \
-	if (__d || __z) { COMMIT_PUTC('0' + __d); __z = 1; } \
-	__d = 0; while (__vv >= 10) { __vv -= 10; __d++; } \
-	if (__d || __z) { COMMIT_PUTC('0' + __d); } \
-	COMMIT_PUTC('0' + __vv); \
+	cfg_vv16 = (v16); \
+	cfg_z = 0; \
+	cfg_d = 0; while (cfg_vv16 >= 10000) { cfg_vv16 -= 10000; cfg_d++; } \
+	if (cfg_d || cfg_z) { COMMIT_PUTC('0' + cfg_d); cfg_z = 1; } \
+	cfg_d = 0; while (cfg_vv16 >= 1000) { cfg_vv16 -= 1000; cfg_d++; } \
+	if (cfg_d || cfg_z) { COMMIT_PUTC('0' + cfg_d); cfg_z = 1; } \
+	cfg_d = 0; while (cfg_vv16 >= 100) { cfg_vv16 -= 100; cfg_d++; } \
+	if (cfg_d || cfg_z) { COMMIT_PUTC('0' + cfg_d); cfg_z = 1; } \
+	cfg_d = 0; while (cfg_vv16 >= 10) { cfg_vv16 -= 10; cfg_d++; } \
+	if (cfg_d || cfg_z) { COMMIT_PUTC('0' + cfg_d); } \
+	COMMIT_PUTC('0' + cfg_vv16); \
+} while(0)
+
+/* Same for a 24-bit value (storm rates up to 10,000,000 kbps) */
+#define COMMIT_DEC24(v24) do { \
+	cfg_vv32 = (v24); \
+	cfg_z = 0; \
+	cfg_d = 0; while (cfg_vv32 >= 1000000) { cfg_vv32 -= 1000000; cfg_d++; } \
+	if (cfg_d || cfg_z) { COMMIT_PUTC('0' + cfg_d); cfg_z = 1; } \
+	cfg_d = 0; while (cfg_vv32 >= 100000) { cfg_vv32 -= 100000; cfg_d++; } \
+	if (cfg_d || cfg_z) { COMMIT_PUTC('0' + cfg_d); cfg_z = 1; } \
+	cfg_d = 0; while (cfg_vv32 >= 10000) { cfg_vv32 -= 10000; cfg_d++; } \
+	if (cfg_d || cfg_z) { COMMIT_PUTC('0' + cfg_d); cfg_z = 1; } \
+	cfg_d = 0; while (cfg_vv32 >= 1000) { cfg_vv32 -= 1000; cfg_d++; } \
+	if (cfg_d || cfg_z) { COMMIT_PUTC('0' + cfg_d); cfg_z = 1; } \
+	cfg_d = 0; while (cfg_vv32 >= 100) { cfg_vv32 -= 100; cfg_d++; } \
+	if (cfg_d || cfg_z) { COMMIT_PUTC('0' + cfg_d); cfg_z = 1; } \
+	cfg_d = 0; while (cfg_vv32 >= 10) { cfg_vv32 -= 10; cfg_d++; } \
+	if (cfg_d || cfg_z) { COMMIT_PUTC('0' + cfg_d); } \
+	COMMIT_PUTC('0' + cfg_vv32); \
 } while(0)
 
 #define COMMIT_IP(ip) do { \
@@ -107,12 +137,25 @@ static void commit_write_flash(void)
 	flash_write_bytes(flash_buf);
 }
 
-void parse_commit(void) __banked
+/* Storm type names (BANK3 const; rtl837x_storm.c's table is BANK2 const
+ * and not readable from here). */
+static __code char * __code storm_type_names[4] = {
+	"broadcast", "multicast", "dlf", "unknown-mcast"
+};
+
+/* QoS mode names */
+static __code char * __code qos_mode_names[4] = {
+	"off", "pcp", "dscp", "both"
+};
+
+/*
+ * Serialize the current in-memory configuration into flash_buf as a
+ * NUL-terminated text blob.  Used both by parse_commit() (flash write)
+ * and show_running_config() (console output).
+ */
+static uint16_t config_serialize(void)
 {
 	commit_pos = 0;
-	flash_region.addr = CONFIG_START;
-	flash_init(0);
-	flash_sector_erase();
 
 	if (hostname[0]) {
 		COMMIT_PUTS("hostname "); COMMIT_PUTSX(hostname); COMMIT_PUTC('\n');
@@ -127,13 +170,13 @@ void parse_commit(void) __banked
 	}
 
 	{
-		uint8_t i, psk_set = 0;
-		for (i = 0; i < 32; i++)
-			psk_set |= preshared_key[i];
-		if (psk_set) {
+		cfg_psk_set = 0;
+		for (cfg_psk_i = 0; cfg_psk_i < 32; cfg_psk_i++)
+			cfg_psk_set |= preshared_key[cfg_psk_i];
+		if (cfg_psk_set) {
 			COMMIT_PUTS("preshared_key ");
-			for (i = 0; i < 32; i++)
-				COMMIT_HEX8(preshared_key[i]);
+			for (cfg_psk_i = 0; cfg_psk_i < 32; cfg_psk_i++)
+				COMMIT_HEX8(preshared_key[cfg_psk_i]);
 			COMMIT_PUTC('\n');
 		}
 	}
@@ -154,9 +197,93 @@ void parse_commit(void) __banked
 	COMMIT_PUTS("web ");
 	if (web_enabled) COMMIT_PUTS("on\n"); else COMMIT_PUTS("off\n");
 
+	/* Storm control: one line per enabled type (replay: all ports) */
+	for (cfg_i = 0; cfg_i < 4; cfg_i++) {
+		if (storm_type_en[cfg_i]) {
+			COMMIT_PUTS("storm-control on ");
+			COMMIT_PUTS(storm_type_names[cfg_i]);
+			COMMIT_PUTC(' ');
+			COMMIT_DEC24(storm_type_rate[cfg_i]);
+			COMMIT_PUTC('\n');
+		}
+	}
+
+	/* QoS mode (the PCP/DSCP maps themselves are not persisted yet:
+	 * 64 entries do not fit the 512 byte config buffer; they reset to
+	 * the identity/zero maps on boot.  ACL rules live in the ASIC only. */
+	if (qos_mode != QOS_MODE_OFF) {
+		COMMIT_PUTS("qos mode ");
+		if (qos_mode <= 3)
+			COMMIT_PUTS(qos_mode_names[qos_mode]);
+		else
+			COMMIT_PUTS("pcp");
+		COMMIT_PUTC('\n');
+	}
+
+	flash_buf[commit_pos] = 0;
+	return commit_pos;
+}
+
+void parse_commit(void) __banked
+{
+	config_serialize();
+	flash_region.addr = CONFIG_START;
+	flash_init(0);
+	flash_sector_erase();
 	commit_write_flash();
 	flash_init(1);
 	print_string("Config committed\n");
+}
+
+/*
+ * Show the configuration that would be saved by `commit`, without
+ * touching the flash.
+ */
+static __xdata uint16_t cfg_len;
+
+/* Serialize the running configuration into flash_buf and return its
+ * length, without printing.  Used by the HTTP /running-config endpoint
+ * (page_impl.c); show_running_config prints the same buffer to the
+ * console. */
+uint16_t running_config_serialize(void) __banked
+{
+	return config_serialize();
+}
+
+void show_running_config(void) __banked
+{
+	cfg_len = config_serialize();
+	for (cfg_i = 0; cfg_i < cfg_len; cfg_i++)
+		write_char(flash_buf[cfg_i]);
+}
+
+/*
+ * Show the configuration stored in flash (startup-config).
+ * Reads CONFIG_START in 256 byte chunks until the NUL terminator
+ * (same scan pattern as send_config() in httpd/page_impl.c).
+ */
+static __xdata uint32_t cfg_pos;
+static __xdata uint16_t cfg_left;
+static __xdata uint16_t cfg_chunk;
+
+void show_startup_config(void) __banked
+{
+	cfg_pos = CONFIG_START;
+	cfg_left = CONFIG_LEN;
+
+	do {
+		cfg_chunk = (cfg_left > 256) ? 256 : cfg_left;
+		flash_region.addr = cfg_pos;
+		flash_region.len = cfg_chunk;
+		flash_read_bulk(flash_buf);
+		for (cfg_i = 0; cfg_i < cfg_chunk; cfg_i++) {
+			if (!flash_buf[cfg_i])
+				return;
+			write_char(flash_buf[cfg_i]);
+		}
+		cfg_left -= cfg_chunk;
+		cfg_pos += cfg_chunk;
+	} while (cfg_left > 0);
 }
 
 void parse_l2_delete(void) __banked

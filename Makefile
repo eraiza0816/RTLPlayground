@@ -1,4 +1,4 @@
-VERSION=0.2.24
+VERSION=0.2.25
 
 # WebUI option: WEB=1 (default) to enable, WEB=0 to disable
 WEB ?= 1
@@ -62,12 +62,15 @@ create_build_dir:
 
 SRCS = rtlplayground.c crc16.c rtl837x_flash.c rtl837x_leds.c rtl837x_phy.c rtl837x_port.c cmd_parser.c html_data.c rtl837x_igmp.c
 SRCS += rtl837x_stp.c rtl837x_pins.c dhcp.c machine.c cmd_editor.c rtl837x_bandwidth.c rtl837x_init.c
+SRCS += rtl837x_storm.c rtl837x_qos.c rtl837x_acl.c
 SRCS += uip/timer.c uip/uip.c uip/uip_arp.c uip/uiplib.c uip/uip-fw.c uip/uip-neighbor.c uip/uip-split.c udp_apps.c
-SRCS += httpd/httpd.c httpd/page_impl.c
+SRCS += httpd/httpd.c httpd/page_impl.c httpd/api_status.c
 SRCS += sfp_bitbang.c
 SRCS += telnetd/telnetd.c
 SRCS += cmd_commit.c
 SRCS += cmd_xmodem.c
+SRCS += ping.c
+SRCS += lldp.c
 SRCS += crypto/chacha20.c crypto/poly1305.c crypto/aead.c
 
 ifeq ($(WEB),0)
@@ -128,7 +131,7 @@ $(BUILDDIR)/%.rel: %.asm
 #	mv -f $(addprefix $(basename $^), .lst .rel .sym) .
 
 $(BUILDDIR)/rtlplayground.ihx: $(OBJS) $(BUILDDIR)/crtstart.rel $(BUILDDIR)/rtlplayground_mem.rel $(BUILDDIR)/rtlplayground_util.rel
-	$(CC) $(CC_FLAGS) -Wl-bHOME=0x00000 -Wl-bBANK1=0x14000 -Wl-bBANK2=0x24000 -Wl-bBANK3=0x34000 -Wl-r -o $@ $^
+	$(CC) $(CC_FLAGS) -Wl-bHOME=0x00000 -Wl-bBANK1=0x14000 -Wl-bBANK2=0x24000 -Wl-bBANK3=0x34000 -Wl-bBANK4=0x44000 -Wl-r -o $@ $^
 
 $(BUILDDIR)/rtlplayground.img: $(BUILDDIR)/rtlplayground.ihx
 	objcopy --input-target=ihex -O binary $< $@

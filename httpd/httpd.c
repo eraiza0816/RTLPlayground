@@ -477,6 +477,30 @@ static uint8_t handle_api_path(__xdata uint8_t *q)
 	} else if (is_word(q, "/config")) {
 		send_config();
 		return 1;
+	} else if (is_word(q, "/running-config")) {
+		send_running_config();
+		return 1;
+	} else if (is_word(q, "/ping.json")) {
+		send_ping();
+		return 1;
+	} else if (is_word(q, "/arp.json")) {
+		send_arp();
+		return 1;
+	} else if (is_word(q, "/lldp.json")) {
+		send_lldp();
+		return 1;
+	} else if (is_word(q, "/igmp.json")) {
+		send_igmp();
+		return 1;
+	} else if (is_word(q, "/storm-control.json")) {
+		send_storm();
+		return 1;
+	} else if (is_word(q, "/qos.json")) {
+		send_qos();
+		return 1;
+	} else if (is_word(q, "/acl.json")) {
+		send_acl();
+		return 1;
 	} else if (is_word(q, "/cmd_log")) {
 		send_cmd_log();
 		return 1;

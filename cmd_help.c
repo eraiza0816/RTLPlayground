@@ -192,6 +192,33 @@ __code struct cmd_entry bw_cmds[] = {
     {0, 0}
 };
 
+__code struct cmd_entry storm_cmds[] = {
+    {"on",    "Enable storm control for a type (broadcast|multicast|dlf|unknown-mcast)"},
+    {"off",   "Disable storm control (per type or all)"},
+    {"status","Show storm control configuration"},
+    {0, 0}
+};
+
+__code struct cmd_entry qos_cmds[] = {
+    {"on",     "Enable QoS priority control"},
+    {"off",    "Disable QoS priority control"},
+    {"mode",   "Priority source: pcp|dscp|both"},
+    {"pcp",    "Map PCP 0-7 to a queue 0-7"},
+    {"dscp",   "Map DSCP 0-63 to a queue 0-7"},
+    {"sched",  "Queue scheduling: strict or wfq"},
+    {"status", "Show QoS configuration"},
+    {0, 0}
+};
+
+__code struct cmd_entry acl_cmds[] = {
+    {"on",   "Enable the ACL engine"},
+    {"off",  "Disable the ACL engine"},
+    {"add",  "Add a rule (mac|vlan|ip match)"},
+    {"del",  "Delete a rule by index"},
+    {"show", "Show all ACL rules"},
+    {0, 0}
+};
+
 __code struct cmd_entry telnet_cmds[] = {
     {"on",  "Enable telnet server"},
     {"off", "Disable telnet server"},
@@ -242,6 +269,9 @@ __code struct cmd_group top_cmds[] = {
     {"hostname","Show or set device hostname",                        0, (1<<MODE_CONFIG)},
     {"eee",     "Energy Efficient Ethernet control",                  eee_cmds, (1<<MODE_CONFIG)},
     {"bw",      "Per-port bandwidth control",                         bw_cmds, (1<<MODE_CONFIG)},
+    {"storm-control", "Storm control (BC/MC/unknown frames)",         storm_cmds, (1<<MODE_CONFIG)},
+    {"qos",     "QoS priority control (802.1p/DSCP)",                 qos_cmds, (1<<MODE_CONFIG)},
+    {"acl",     "Ingress ACL rules",                                  acl_cmds, (1<<MODE_CONFIG)},
     {"telnet",  "Telnet server control",                              telnet_cmds, (1<<MODE_CONFIG)},
     {"web",     "Web interface control",                              web_cmds, (1<<MODE_CONFIG)},
     {"commit",  "Save running configuration to flash",                0, (1<<MODE_PRIVILEGED)},

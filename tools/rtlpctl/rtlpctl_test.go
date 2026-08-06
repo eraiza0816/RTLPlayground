@@ -411,6 +411,9 @@ func TestClientEndpoints(t *testing.T) {
 		case "/config":
 			w.Header().Set("Content-Type", "text/plain")
 			fmt.Fprint(w, "ip 192.168.1.1\nnetmask 255.255.255.0\n")
+		case "/running-config":
+			w.Header().Set("Content-Type", "text/plain")
+			fmt.Fprint(w, "ip 192.168.1.1\nnetmask 255.255.255.0\n")
 		case "/cmd_log":
 			w.Header().Set("Content-Type", "text/plain")
 			fmt.Fprint(w, "ip 192.168.1.1\nstatus\n")
@@ -908,6 +911,263 @@ func TestBinaryEndToEnd(t *testing.T) {
 		}
 	})
 
+	t.Run("default_show_arp", func(t *testing.T) {
+		mockCmdBodies = nil
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		out, err := exec.Command(bin, "--host", h, "--password", "test123",
+			"show", "arp").CombinedOutput()
+		if err != nil {
+			t.Fatalf("show arp failed: %v\noutput: %s", err, out)
+		}
+		if !strings.Contains(strings.Join(mockCmdBodies, ","), "show arp") {
+			t.Errorf("expected 'show arp' via /cmd, got bodies: %v", mockCmdBodies)
+		}
+	})
+
+	t.Run("default_show_bad_target", func(t *testing.T) {
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		out, err := exec.Command(bin, "--host", h, "--password", "test123",
+			"show", "frobnicate").CombinedOutput()
+		if err == nil || !strings.Contains(string(out), "unknown show target") {
+			t.Errorf("expected 'unknown show target' error, got err=%v out=%s", err, out)
+		}
+	})
+
+	t.Run("direct_ping", func(t *testing.T) {
+		mockCmdBodies = nil
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		out, err := exec.Command(bin, "--host", h, "--password", "test123",
+			"ping", "192.168.10.99").CombinedOutput()
+		if err != nil {
+			t.Fatalf("ping failed: %v\noutput: %s", err, out)
+		}
+		if !strings.Contains(strings.Join(mockCmdBodies, ","), "ping 192.168.10.99") {
+			t.Errorf("expected 'ping 192.168.10.99' via /cmd, got bodies: %v", mockCmdBodies)
+		}
+	})
+
+	t.Run("direct_lldp", func(t *testing.T) {
+		for _, c := range []struct{ args []string; want string }{
+			{[]string{"lldp", "on"}, "lldp on"},
+			{[]string{"lldp", "off"}, "lldp off"},
+			{[]string{"lldp", "show"}, "lldp show"},
+		} {
+			mockCmdBodies = nil
+			ts2 := newMockServer(t)
+			h := strings.TrimPrefix(ts2.URL, "http://")
+			full := append([]string{"--host", h, "--password", "test123"}, c.args...)
+			out, err := exec.Command(bin, full...).CombinedOutput()
+			ts2.Close()
+			if err != nil {
+				t.Fatalf("lldp %v failed: %v\noutput: %s", c.args[1:], err, out)
+			}
+			if !strings.Contains(strings.Join(mockCmdBodies, ","), c.want) {
+				t.Errorf("expected %q via /cmd, got bodies: %v", c.want, mockCmdBodies)
+			}
+		}
+	})
+
+	t.Run("direct_igmp", func(t *testing.T) {
+		for _, c := range []struct{ args []string; want string }{
+			{[]string{"igmp", "on"}, "igmp on"},
+			{[]string{"igmp", "off"}, "igmp off"},
+			{[]string{"igmp", "show"}, "igmp show"},
+			{[]string{"igmp", "querier", "on"}, "igmp querier on"},
+			{[]string{"igmp", "mld", "on"}, "igmp mld on"},
+		} {
+			mockCmdBodies = nil
+			ts2 := newMockServer(t)
+			h := strings.TrimPrefix(ts2.URL, "http://")
+			full := append([]string{"--host", h, "--password", "test123"}, c.args...)
+			out, err := exec.Command(bin, full...).CombinedOutput()
+			ts2.Close()
+			if err != nil {
+				t.Fatalf("igmp %v failed: %v\noutput: %s", c.args[1:], err, out)
+			}
+			if !strings.Contains(strings.Join(mockCmdBodies, ","), c.want) {
+				t.Errorf("expected %q via /cmd, got bodies: %v", c.want, mockCmdBodies)
+			}
+		}
+	})
+
+	t.Run("direct_storm_control", func(t *testing.T) {
+		for _, c := range []struct{ args []string; want string }{
+			{[]string{"storm-control", "on", "broadcast", "100k"}, "storm-control on broadcast 100k"},
+			{[]string{"storm-control", "on", "unknown-mcast", "500p"}, "storm-control on unknown-mcast 500p"},
+			{[]string{"storm-control", "off", "all"}, "storm-control off all"},
+			{[]string{"storm-control", "status"}, "storm-control status"},
+		} {
+			mockCmdBodies = nil
+			ts2 := newMockServer(t)
+			h := strings.TrimPrefix(ts2.URL, "http://")
+			full := append([]string{"--host", h, "--password", "test123"}, c.args...)
+			out, err := exec.Command(bin, full...).CombinedOutput()
+			ts2.Close()
+			if err != nil {
+				t.Fatalf("storm-control %v failed: %v\noutput: %s", c.args[1:], err, out)
+			}
+			if !strings.Contains(strings.Join(mockCmdBodies, ","), c.want) {
+				t.Errorf("expected %q via /cmd, got bodies: %v", c.want, mockCmdBodies)
+			}
+		}
+	})
+
+	t.Run("direct_qos", func(t *testing.T) {
+		for _, c := range []struct{ args []string; want string }{
+			{[]string{"qos", "mode", "dscp"}, "qos mode dscp"},
+			{[]string{"qos", "pcp", "3", "1"}, "qos pcp 3 1"},
+			{[]string{"qos", "dscp", "46", "7"}, "qos dscp 46 7"},
+			{[]string{"qos", "sched", "5", "wfq", "16"}, "qos sched 5 wfq 16"},
+			{[]string{"qos", "status"}, "qos status"},
+		} {
+			mockCmdBodies = nil
+			ts2 := newMockServer(t)
+			h := strings.TrimPrefix(ts2.URL, "http://")
+			full := append([]string{"--host", h, "--password", "test123"}, c.args...)
+			out, err := exec.Command(bin, full...).CombinedOutput()
+			ts2.Close()
+			if err != nil {
+				t.Fatalf("qos %v failed: %v\noutput: %s", c.args[1:], err, out)
+			}
+			if !strings.Contains(strings.Join(mockCmdBodies, ","), c.want) {
+				t.Errorf("expected %q via /cmd, got bodies: %v", c.want, mockCmdBodies)
+			}
+		}
+	})
+
+	t.Run("direct_acl", func(t *testing.T) {
+		for _, c := range []struct{ args []string; want string }{
+			{[]string{"acl", "add", "3", "deny", "ip", "192.168.1.99/32"}, "acl add 3 deny ip 192.168.1.99/32"},
+			{[]string{"acl", "add", "1", "permit", "mac", "aa:bb:cc:dd:ee:ff"}, "acl add 1 permit mac aa:bb:cc:dd:ee:ff"},
+			{[]string{"acl", "del", "0"}, "acl del 0"},
+			{[]string{"acl", "show"}, "acl show"},
+		} {
+			mockCmdBodies = nil
+			ts2 := newMockServer(t)
+			h := strings.TrimPrefix(ts2.URL, "http://")
+			full := append([]string{"--host", h, "--password", "test123"}, c.args...)
+			out, err := exec.Command(bin, full...).CombinedOutput()
+			ts2.Close()
+			if err != nil {
+				t.Fatalf("acl %v failed: %v\noutput: %s", c.args[1:], err, out)
+			}
+			if !strings.Contains(strings.Join(mockCmdBodies, ","), c.want) {
+				t.Errorf("expected %q via /cmd, got bodies: %v", c.want, mockCmdBodies)
+			}
+		}
+	})
+
+	t.Run("default_show_running_config", func(t *testing.T) {
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		out, err := exec.Command(bin, "--host", h, "--password", "test123",
+			"show", "running-config").CombinedOutput()
+		if err != nil {
+			t.Fatalf("show running-config failed: %v\noutput: %s", err, out)
+		}
+		if !strings.Contains(string(out), "ip 192.168.1.1") {
+			t.Errorf("expected running config over HTTP, got: %s", out)
+		}
+	})
+
+	t.Run("direct_device_cmds", func(t *testing.T) {
+		cases := []struct {
+			args []string
+			want string
+		}{
+			{[]string{"hostname", "sw-01"}, "hostname sw-01"},
+			{[]string{"passwd", "secret99"}, "passwd secret99"},
+			{[]string{"ip", "192.168.10.50"}, "ip 192.168.10.50"},
+			{[]string{"ip", "dhcp"}, "ip dhcp"},
+			{[]string{"gw", "192.168.10.1"}, "gw 192.168.10.1"},
+			{[]string{"netmask", "255.255.255.0"}, "netmask 255.255.255.0"},
+			{[]string{"port", "3", "10g"}, "port 3 10g"},
+			{[]string{"port", "1", "name", "uplink"}, "port 1 name uplink"},
+			{[]string{"port", "2", "off"}, "port 2 off"},
+			{[]string{"port", "4", "duplex", "full"}, "port 4 duplex full"},
+			{[]string{"pvid", "5", "100"}, "pvid 5 100"},
+			{[]string{"ingress", "1t", "2u"}, "ingress 1t 2u"},
+			{[]string{"isolate", "1", "2", "3"}, "isolate 1 2 3"},
+			{[]string{"isolate", "2", "off"}, "isolate 2 off"},
+			{[]string{"laghash", "0", "smac", "dmac"}, "laghash 0 smac dmac"},
+			{[]string{"stp", "on"}, "stp on"},
+			{[]string{"telnet", "on"}, "telnet on"},
+			{[]string{"web", "off"}, "web off"},
+			{[]string{"commit"}, "commit"},
+			{[]string{"psk", strings.Repeat("a", 64)}, "preshared_key " + strings.Repeat("a", 64)},
+			{[]string{"sfp", "1", "10g"}, "sfp 1 10g"},
+			{[]string{"sfp", "1", "describe"}, "sfp 1 describe"},
+			{[]string{"sfp", "2", "write", "33", "35", "--pw", "deadbeef"}, "sfp 2 write 33 35 --pw deadbeef"},
+			{[]string{"regget", "0bb0"}, "regget 0bb0"},
+			{[]string{"regset", "0b", "abcd1234"}, "regset 0b abcd1234"},
+			{[]string{"sdsget", "0", "2", "3"}, "sdsget 0 2 3"},
+			{[]string{"sdsset", "1", "2", "3", "4"}, "sdsset 1 2 3 4"},
+			{[]string{"phyget", "0", "0", "0b"}, "phyget 0 0 0b"},
+			{[]string{"physet", "1", "2", "0b", "1234"}, "physet 1 2 0b 1234"},
+		}
+		for _, c := range cases {
+			mockCmdBodies = nil
+			ts2 := newMockServer(t)
+			h := strings.TrimPrefix(ts2.URL, "http://")
+			full := append([]string{"--host", h, "--password", "test123"}, c.args...)
+			out, err := exec.Command(bin, full...).CombinedOutput()
+			ts2.Close()
+			if err != nil {
+				t.Fatalf("%v failed: %v\noutput: %s", c.args, err, out)
+			}
+			if !strings.Contains(strings.Join(mockCmdBodies, ","), c.want) {
+				t.Errorf("expected %q via /cmd, got bodies: %v", c.want, mockCmdBodies)
+			}
+		}
+	})
+
+	t.Run("direct_device_cmds_invalid", func(t *testing.T) {
+		bad := [][]string{
+			{"hostname", "bad name"},
+			{"ip", "999.1.1.1"},
+			{"gw", "not-an-ip"},
+			{"port", "0", "10g"},
+			{"port", "3", "turbo"},
+			{"pvid", "2", "9999"},
+			{"telnet", "maybe"},
+			{"web", "sometimes"},
+			{"psk", "abcd"},
+			{"regget"},
+			{"physet", "1", "2", "0b"},
+		}
+		for _, c := range bad {
+			ts2 := newMockServer(t)
+			h := strings.TrimPrefix(ts2.URL, "http://")
+			full := append([]string{"--host", h, "--password", "test123"}, c...)
+			out, err := exec.Command(bin, full...).CombinedOutput()
+			ts2.Close()
+			if err == nil {
+				t.Errorf("expected error for %v, got success: %s", c, out)
+			}
+		}
+	})
+
+	t.Run("default_show_startup_config", func(t *testing.T) {
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		out, err := exec.Command(bin, "--host", h, "--password", "test123",
+			"show", "startup-config").CombinedOutput()
+		if err != nil {
+			t.Fatalf("show startup-config failed: %v\noutput: %s", err, out)
+		}
+		if !strings.Contains(string(out), "ip 192.168.1.1") {
+			t.Errorf("expected startup config over HTTP, got: %s", out)
+		}
+	})
+
 	t.Run("arista_show_running_config", func(t *testing.T) {
 		ts2 := newMockServer(t)
 		defer ts2.Close()
@@ -919,6 +1179,34 @@ func TestBinaryEndToEnd(t *testing.T) {
 		}
 		if !strings.Contains(string(out), "ip 192.168") {
 			t.Errorf("expected config output, got: %s", out)
+		}
+	})
+
+	t.Run("arista_show_startup_config", func(t *testing.T) {
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		out, err := exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+			"show", "startup-config").CombinedOutput()
+		if err != nil {
+			t.Fatalf("arista show startup-config failed: %v\noutput: %s", err, out)
+		}
+		if !strings.Contains(string(out), "ip 192.168") {
+			t.Errorf("expected config output, got: %s", out)
+		}
+	})
+
+	t.Run("arista_show_arp", func(t *testing.T) {
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		out, err := exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+			"show", "arp").CombinedOutput()
+		if err != nil {
+			t.Fatalf("arista show arp failed: %v\noutput: %s", err, out)
+		}
+		if !strings.Contains(strings.Join(mockCmdBodies, ","), "show arp") {
+			t.Errorf("expected 'show arp' to be sent via /cmd, got bodies: %v", mockCmdBodies)
 		}
 	})
 
@@ -969,6 +1257,211 @@ func TestBinaryEndToEnd(t *testing.T) {
 			"show", "foo").CombinedOutput()
 		if !strings.Contains(string(out), "Unknown command") {
 			t.Errorf("expected Unknown command error, got: %s", out)
+		}
+	})
+
+	t.Run("arista_ping", func(t *testing.T) {
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		_, err := exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+			"ping", "192.168.10.1").CombinedOutput()
+		if err != nil {
+			t.Fatalf("arista ping failed: %v", err)
+		}
+		if !strings.Contains(strings.Join(mockCmdBodies, ","), "ping 192.168.10.1") {
+			t.Errorf("expected 'ping 192.168.10.1' via /cmd, got: %v", mockCmdBodies)
+		}
+	})
+
+	t.Run("arista_lldp", func(t *testing.T) {
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+			"lldp", "enable").CombinedOutput()
+		if !strings.Contains(strings.Join(mockCmdBodies, ","), "lldp on") {
+			t.Errorf("expected 'lldp on' via /cmd, got: %v", mockCmdBodies)
+		}
+		exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+			"show", "lldp", "neighbors").CombinedOutput()
+		if !strings.Contains(strings.Join(mockCmdBodies, ","), "lldp show") {
+			t.Errorf("expected 'lldp show' via /cmd, got: %v", mockCmdBodies)
+		}
+	})
+
+	t.Run("arista_igmp", func(t *testing.T) {
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+			"ip", "igmp", "snooping", "enable").CombinedOutput()
+		if !strings.Contains(strings.Join(mockCmdBodies, ","), "igmp on") {
+			t.Errorf("expected 'igmp on' via /cmd, got: %v", mockCmdBodies)
+		}
+		exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+			"no", "ip", "igmp", "snooping").CombinedOutput()
+		if !strings.Contains(strings.Join(mockCmdBodies, ","), "igmp off") {
+			t.Errorf("expected 'igmp off' via /cmd, got: %v", mockCmdBodies)
+		}
+		exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+			"show", "ip", "igmp", "snooping", "querier").CombinedOutput()
+		if !strings.Contains(strings.Join(mockCmdBodies, ","), "igmp querier show") {
+			t.Errorf("expected 'igmp querier show' via /cmd, got: %v", mockCmdBodies)
+		}
+		exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+			"show", "ip", "igmp", "snooping", "groups").CombinedOutput()
+		if !strings.Contains(strings.Join(mockCmdBodies, ","), "igmp mld show") {
+			t.Errorf("expected 'igmp mld show' via /cmd, got: %v", mockCmdBodies)
+		}
+	})
+
+	t.Run("arista_storm", func(t *testing.T) {
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+			"storm-control", "broadcast", "level", "5000").CombinedOutput()
+		if !strings.Contains(strings.Join(mockCmdBodies, ","), "storm-control on broadcast 5000") {
+			t.Errorf("expected 'storm-control on broadcast 5000' via /cmd, got: %v", mockCmdBodies)
+		}
+		exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+			"storm-control", "unknown-unicast", "level", "100p").CombinedOutput()
+		if !strings.Contains(strings.Join(mockCmdBodies, ","), "storm-control on dlf 100p") {
+			t.Errorf("expected 'storm-control on dlf 100p' via /cmd, got: %v", mockCmdBodies)
+		}
+		exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+			"no", "storm-control", "broadcast", "level").CombinedOutput()
+		if !strings.Contains(strings.Join(mockCmdBodies, ","), "storm-control off broadcast") {
+			t.Errorf("expected 'storm-control off broadcast' via /cmd, got: %v", mockCmdBodies)
+		}
+	})
+
+	t.Run("arista_config_commands", func(t *testing.T) {
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+			"hostname", "switch-1").CombinedOutput()
+		exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+			"ip", "address", "192.168.1.100/24").CombinedOutput()
+		exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+			"ip", "default-gateway", "192.168.1.1").CombinedOutput()
+		exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+			"username", "admin", "secret", "secret123").CombinedOutput()
+		exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+			"spanning-tree", "mode", "rstp").CombinedOutput()
+		exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+			"no", "spanning-tree", "mode").CombinedOutput()
+		exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+			"vlan", "100").CombinedOutput()
+		exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+			"no", "vlan", "100").CombinedOutput()
+		bodies := strings.Join(mockCmdBodies, ",")
+		for _, want := range []string{
+			"hostname switch-1",
+			"ip 192.168.1.100",
+			"netmask 255.255.255.0",
+			"gw 192.168.1.1",
+			"passwd secret123",
+			"stp on",
+			"stp off",
+			"vlan 100",
+			"vlan 100 d",
+		} {
+			if !strings.Contains(bodies, want) {
+				t.Errorf("expected %q via /cmd, got: %v", want, mockCmdBodies)
+			}
+		}
+	})
+
+	t.Run("arista_interface", func(t *testing.T) {
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+			"interface", "Ethernet1", "speed", "1g").CombinedOutput()
+		exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+			"interface", "Et2", "duplex", "full").CombinedOutput()
+		exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+			"interface", "Ethernet3", "switchport", "access", "vlan", "10").CombinedOutput()
+		exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+			"interface", "Ethernet1", "shutdown").CombinedOutput()
+		exec.Command(bin, "--host", h, "--password", "test123", "--mode", "arista",
+			"no", "interface", "Ethernet1", "shutdown").CombinedOutput()
+		bodies := strings.Join(mockCmdBodies, ",")
+		for _, want := range []string{
+			"port 1 1g",
+			"port 2 duplex full",
+			"pvid 3 10",
+			"port 1 off",
+			"port 1 on",
+		} {
+			if !strings.Contains(bodies, want) {
+				t.Errorf("expected %q via /cmd, got: %v", want, mockCmdBodies)
+			}
+		}
+	})
+
+	t.Run("arista_service_and_debug", func(t *testing.T) {
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		cases := []struct {
+			args []string
+			want string
+		}{
+			{[]string{"telnet", "server", "enable"}, "telnet on"},
+			{[]string{"telnet", "server", "disable"}, "telnet off"},
+			{[]string{"telnet", "on"}, "telnet on"},
+			{[]string{"no", "telnet"}, "telnet off"},
+			{[]string{"web", "server", "enable"}, "web on"},
+			{[]string{"web", "off"}, "web off"},
+			{[]string{"no", "web"}, "web off"},
+			{[]string{"commit"}, "commit"},
+			{[]string{"pvid", "4", "20"}, "pvid 4 20"},
+			{[]string{"no", "pvid", "4"}, "pvid 4 1"},
+			{[]string{"isolate", "1", "2"}, "isolate 1 2"},
+			{[]string{"no", "isolate", "1"}, "isolate 1 off"},
+			{[]string{"ingress", "1t", "2u"}, "ingress 1t 2u"},
+			{[]string{"laghash", "2", "sip", "dip"}, "laghash 2 sip dip"},
+			{[]string{"sfp", "1", "describe"}, "sfp 1 describe"},
+			{[]string{"regget", "0bb0"}, "regget 0bb0"},
+			{[]string{"regset", "0b", "abcd1234"}, "regset 0b abcd1234"},
+			{[]string{"sdsget", "0", "2", "3"}, "sdsget 0 2 3"},
+			{[]string{"sdsset", "1", "2", "3", "4"}, "sdsset 1 2 3 4"},
+			{[]string{"phyget", "0", "0", "0b"}, "phyget 0 0 0b"},
+			{[]string{"physet", "1", "2", "0b", "1234"}, "physet 1 2 0b 1234"},
+			{[]string{"preshared-key", strings.Repeat("b", 64)}, "preshared_key " + strings.Repeat("b", 64)},
+		}
+		for _, c := range cases {
+			mockCmdBodies = nil
+			full := append([]string{"--host", h, "--password", "test123", "--mode", "arista"}, c.args...)
+			out, err := exec.Command(bin, full...).CombinedOutput()
+			if err != nil {
+				t.Fatalf("%v failed: %v\noutput: %s", c.args, err, out)
+			}
+			if !strings.Contains(strings.Join(mockCmdBodies, ","), c.want) {
+				t.Errorf("expected %q via /cmd for %v, got: %v", c.want, c.args, mockCmdBodies)
+			}
+		}
+	})
+
+	t.Run("arista_service_invalid", func(t *testing.T) {
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		for _, c := range [][]string{
+			{"telnet", "maybe"},
+			{"web", "server", "sometimes"},
+			{"pvid", "0", "5"},
+			{"preshared-key", "short"},
+		} {
+			full := append([]string{"--host", h, "--password", "test123", "--mode", "arista"}, c...)
+			out, err := exec.Command(bin, full...).CombinedOutput()
+			if err == nil {
+				t.Errorf("expected error for %v, got success: %s", c, out)
+			}
 		}
 	})
 
@@ -1218,6 +1711,9 @@ func newMockServer(t *testing.T) *httptest.Server {
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, `[{"mac":"00:01:2f:00:00:01","vlan":"001","type":"l","port":7,"idx":"0x10"}]`)
 		case "/config":
+			w.Header().Set("Content-Type", "text/plain")
+			fmt.Fprint(w, "ip 192.168.1.1\nnetmask 255.255.255.0\n")
+		case "/running-config":
 			w.Header().Set("Content-Type", "text/plain")
 			fmt.Fprint(w, "ip 192.168.1.1\nnetmask 255.255.255.0\n")
 		case "/cmd_log":

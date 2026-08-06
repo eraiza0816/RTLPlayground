@@ -9,6 +9,10 @@ only the following features are provided:
 - A modern web-interface with mouse-over to display further information
 - A serial console (UART) and Telnet interface to configure all features
 - CLI commands to save settings to flash (`commit`) and display current config (`show`)
+- `ping <ip>` — ICMP echo diagnostics from the switch with RTT statistics
+- `show running-config` / `show startup-config` / `show arp` — configuration and ARP-cache inspection
+- LLDP (IEEE 802.1AB) neighbor discovery (`lldp on|off|show`)
+- IGMP snooping plus the ASIC hardware IGMP/MLD querier (`igmp querier on|off|show`)
 - IGMP to configure Multicast streaming
 - Port configuration showing detailed informtion about own and Link-partner advertised
   Speed settins and configuration of these settings on the local side
@@ -29,12 +33,12 @@ only the following features are provided:
 <img width="1420" height="623" alt="GUI" src="doc/images/gui.png" />
 
 While the firmware provides already considerable improvements over the original managed firmware,
-the firmware still lacks support for STP and the proprietary loop prevention
-protocols as well as DHCP. If you need these features, do not install the playground on your managed
-devices. In any case, installation is strongly discouraged unless you can at least make
-a backup of the original flash content via a SOIC clamp such as also used for BIOS
-backups and can re-install that firmware in case something is wrong. For this no soldering
-skills are necessary.
+the firmware still lacks production-ready STP/RSTP and LACP (only basic stubs or static LAG are
+available) as well as the proprietary loop prevention protocols. If you need these features, do
+not install the playground on your managed devices. In any case, installation is strongly
+discouraged unless you can at least make a backup of the original flash content via a SOIC clamp
+such as also used for BIOS backups and can re-install that firmware in case something is wrong.
+For this no soldering skills are necessary.
 
 The firmware supports all hardware featues of devices with
 - 4 2.5GBit ports + 2 SFP+ ports
@@ -328,6 +332,10 @@ hostname [name]         = Show or set hostname
 passwd <password>       = Set password (min 4 chars)
 commit                  = Save current settings to flash
 show                    = Display all current settings
+show running-config     = Display the config that `commit` would save
+show startup-config     = Display the saved config from flash
+show arp                = Display the ARP cache
+ping <ip>               = Send 4 ICMP echo requests and report RTT
 telnet on|off           = Enable or disable Telnet access
 syslog on|off|ip [addr] = Configure syslog
 ```
@@ -347,6 +355,8 @@ mtu show|<n> <size>
 l2 [forget|learned|del <idx>]
 stp on|off
 igmp on|off|show
+igmp querier on|off|show
+lldp on|off|show
 ```
 
 ### VLAN

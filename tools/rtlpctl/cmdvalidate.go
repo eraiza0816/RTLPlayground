@@ -30,6 +30,11 @@ var cmdValidators = map[string]func([]string) error{
 	"bw":            vBW,
 	"stp":           vStp,
 	"igmp":          vIgmp,
+	"lldp":          vLLDP,
+	"ping":          vPing,
+	"storm-control": vStorm,
+	"qos":           vQos,
+	"acl":           vAcl,
 	"telnet":        vOnOff("telnet"),
 	"web":           vOnOff("web"),
 	"l2":            vL2,
@@ -379,13 +384,226 @@ func vStp(words []string) error {
 }
 
 func vIgmp(words []string) error {
+	if len(words) == 3 && words[1] == "querier" {
+		switch words[2] {
+		case "on", "off", "show":
+			return nil
+		}
+		return fmt.Errorf("usage: igmp querier on|off|show")
+	}
+	if len(words) == 3 && words[1] == "mld" {
+		switch words[2] {
+		case "on", "off", "show":
+			return nil
+		}
+		return fmt.Errorf("usage: igmp mld on|off|show")
+	}
 	if len(words) > 2 {
-		return fmt.Errorf("usage: igmp [on|off|show]")
+		return fmt.Errorf("usage: igmp [on|off|show|querier on|off|show|mld on|off|show]")
 	}
 	if len(words) == 2 && words[1] != "on" && words[1] != "off" && words[1] != "show" {
 		return fmt.Errorf("usage: igmp [on|off|show]")
 	}
 	return nil
+}
+
+// vLLDP validates the lldp command (LLDP neighbor discovery, Tier 2).
+func vLLDP(words []string) error {
+	if len(words) > 2 {
+		return fmt.Errorf("usage: lldp [on|off|show]")
+	}
+	if len(words) == 2 && words[1] != "on" && words[1] != "off" && words[1] != "show" {
+		return fmt.Errorf("usage: lldp [on|off|show]")
+	}
+	return nil
+}
+
+// vPing validates the ping command: exactly one dotted-quad IP address.
+func vPing(words []string) error {
+	if len(words) != 2 {
+		return fmt.Errorf("usage: ping <ip-address>")
+	}
+	return validateIPAddr(words[1])
+}
+
+// vStorm validates the storm-control command (Tier 3): per-type rate
+// limiting of broadcast/multicast/unknown frames on all user ports.
+func vStorm(words []string) error {
+	if len(words) == 2 && words[1] == "status" {
+		return nil
+	}
+	if len(words) >= 3 && words[1] == "on" {
+		if len(words) != 4 {
+			return fmt.Errorf("usage: storm-control on <broadcast|multicast|dlf|unknown-mcast> <rate>[k|p]")
+		}
+		switch words[2] {
+		case "broadcast", "multicast", "dlf", "unknown-mcast":
+		default:
+			return fmt.Errorf("unknown storm type: %q (use broadcast, multicast, dlf, unknown-mcast)", words[2])
+		}
+		return validateStormRate(words[3])
+	}
+	if len(words) >= 2 && words[1] == "off" {
+		if len(words) == 2 {
+			return nil // no type: all types
+		}
+		if len(words) != 3 {
+			return fmt.Errorf("usage: storm-control off [broadcast|multicast|dlf|unknown-mcast|all]")
+		}
+		switch words[2] {
+		case "broadcast", "multicast", "dlf", "unknown-mcast", "all":
+			return nil
+		}
+		return fmt.Errorf("unknown storm type: %q (use broadcast, multicast, dlf, unknown-mcast, all)", words[2])
+	}
+	return fmt.Errorf("usage: storm-control on|off|status")
+}
+
+// validateStormRate checks a storm rate: decimal 1-10000000 with an
+// optional k (kbps, default) or p (pps) suffix, matching the firmware.
+func validateStormRate(s string) error {
+	r := s
+	if len(r) > 0 {
+		switch r[len(r)-1] {
+		case 'k', 'K', 'p', 'P':
+			r = r[:len(r)-1]
+		}
+	}
+	if r == "" {
+		return fmt.Errorf("missing rate in %q (use 1-10000000 with optional k or p suffix)", s)
+	}
+	n := 0
+	for _, c := range r {
+		if c < '0' || c > '9' {
+			return fmt.Errorf("invalid rate: %q (use 1-10000000 with optional k or p suffix)", s)
+		}
+		n = n*10 + int(c-'0')
+		if n > 10000000 {
+			return fmt.Errorf("rate too high: %q (max 10000000)", s)
+		}
+	}
+	if n == 0 {
+		return fmt.Errorf("rate must be > 0: %q", s)
+	}
+	return nil
+}
+
+// vQos validates the qos command (Tier 3): priority decision weights,
+// PCP/DSCP queue maps and queue scheduling.
+func vQos(words []string) error {
+	if len(words) == 1 {
+		return nil // plain "qos" shows the status
+	}
+	switch words[1] {
+	case "on", "off", "status":
+		if len(words) != 2 {
+			return fmt.Errorf("usage: qos %s", words[1])
+		}
+		return nil
+	case "mode":
+		if len(words) != 3 {
+			return fmt.Errorf("usage: qos mode pcp|dscp|both")
+		}
+		switch words[2] {
+		case "pcp", "dscp", "both":
+			return nil
+		}
+		return fmt.Errorf("unknown qos mode: %q (use pcp, dscp, both)", words[2])
+	case "pcp", "dscp":
+		if len(words) != 4 {
+			return fmt.Errorf("usage: qos %s <value> <queue>", words[1])
+		}
+		max := 7
+		if words[1] == "dscp" {
+			max = 63
+		}
+		v, err := strconv.Atoi(words[2])
+		if err != nil || v < 0 || v > max {
+			return fmt.Errorf("invalid %s value: %q (must be 0-%d)", words[1], words[2], max)
+		}
+		q, err := strconv.Atoi(words[3])
+		if err != nil || q < 0 || q > 7 {
+			return fmt.Errorf("invalid queue: %q (must be 0-7)", words[3])
+		}
+		return nil
+	case "sched":
+		if len(words) < 4 || len(words) > 5 {
+			return fmt.Errorf("usage: qos sched <port> strict|wfq [weight]")
+		}
+		if err := validatePortNum(words[2], 9); err != nil {
+			return err
+		}
+		switch words[3] {
+		case "strict":
+			if len(words) != 4 {
+				return fmt.Errorf("usage: qos sched <port> strict")
+			}
+			return nil
+		case "wfq":
+			if len(words) != 5 {
+				return fmt.Errorf("usage: qos sched <port> wfq <weight>")
+			}
+			w, err := strconv.Atoi(words[4])
+			if err != nil || w < 1 || w > 127 {
+				return fmt.Errorf("invalid WFQ weight: %q (must be 1-127)", words[4])
+			}
+			return nil
+		}
+		return fmt.Errorf("unknown scheduler: %q (use strict or wfq)", words[3])
+	}
+	return fmt.Errorf("usage: qos on|off|status|mode pcp|dscp|both|pcp|dscp|sched")
+}
+
+// vAcl validates the acl command (Tier 3): ingress rules with one match
+// field (mac, vlan or ip) per rule.
+func vAcl(words []string) error {
+	if len(words) == 1 {
+		return fmt.Errorf("usage: acl on|off|show|add|del")
+	}
+	if len(words) == 2 {
+		switch words[1] {
+		case "on", "off", "show":
+			return nil
+		}
+		return fmt.Errorf("usage: acl on|off|show|add|del")
+	}
+	if words[1] == "del" {
+		if len(words) != 3 {
+			return fmt.Errorf("usage: acl del <idx> (0-95)")
+		}
+		n, err := strconv.Atoi(words[2])
+		if err != nil || n < 0 || n > 95 {
+			return fmt.Errorf("invalid ACL rule index: %q (must be 0-95)", words[2])
+		}
+		return nil
+	}
+	if words[1] == "add" {
+		if len(words) != 6 {
+			return fmt.Errorf("usage: acl add <port> <permit|deny> [mac <aa:bb:cc:dd:ee:ff> | vlan <id> | ip <addr>[/<prefix>]]")
+		}
+		if err := validatePortNum(words[2], 9); err != nil {
+			return err
+		}
+		switch words[3] {
+		case "permit", "deny":
+		default:
+			return fmt.Errorf("action must be permit or deny: %q", words[3])
+		}
+		switch words[4] {
+		case "mac":
+			return validateMacAddr(words[5])
+		case "vlan":
+			n, err := strconv.Atoi(words[5])
+			if err != nil || n < 1 || n > 4095 {
+				return fmt.Errorf("invalid VLAN ID: %q (must be 1-4095)", words[5])
+			}
+			return nil
+		case "ip":
+			return validateIPOrPrefix(words[5])
+		}
+		return fmt.Errorf("unknown ACL match field: %q (use mac, vlan, ip)", words[4])
+	}
+	return fmt.Errorf("usage: acl on|off|show|add|del")
 }
 
 func vL2(words []string) error {

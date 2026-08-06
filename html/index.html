@@ -198,6 +198,9 @@
     <li onclick="nav('lag')" id="nav-lag" data-i18n="nav_lag">Link Aggregation</li>
     <li onclick="nav('eee')" id="nav-eee" data-i18n="nav_eee">EEE</li>
     <li onclick="nav('bw')" id="nav-bw" data-i18n="nav_bandwidth">Bandwidth Limits</li>
+    <li onclick="nav('qos')" id="nav-qos" data-i18n="nav_qos">QoS</li>
+    <li onclick="nav('storm')" id="nav-storm" data-i18n="nav_storm">Storm Control</li>
+    <li onclick="nav('acl')" id="nav-acl" data-i18n="nav_acl">ACL</li>
     <li onclick="nav('sfp')" id="nav-sfp">SFP EEPROM</li>
     <li onclick="nav('sys')" id="nav-sys" data-i18n="nav_system">System Settings</li>
   </ul>
@@ -272,7 +275,14 @@
     <label style="font-weight:600;">IGMP Snooping:</label>
     <input type="checkbox" id="igmp-en" style="transform:scale(1.5);margin:0 15px;">
     <button class="btn" style="padding:6px 12px;font-size:12px;" onclick="applyIGMP()">Save IGMP</button>
+    <label style="font-weight:600;margin-left:30px;">IGMP Querier:</label>
+    <input type="checkbox" id="querier-en" style="transform:scale(1.5);margin:0 15px;">
+    <button class="btn" style="padding:6px 12px;font-size:12px;" onclick="applyQuerier()">Save Querier</button>
+    <label style="font-weight:600;margin-left:30px;">MLD Snooping:</label>
+    <input type="checkbox" id="mld-en" style="transform:scale(1.5);margin:0 15px;">
+    <button class="btn" style="padding:6px 12px;font-size:12px;" onclick="applyMLD()">Save MLD</button>
   </div>
+  <div id="igmp-groups" style="margin-bottom:15px;font-size:13px;"></div>
   <h3>MAC Address Table</h3>
   <div class="table-responsive">
     <table id="l2table">
@@ -289,6 +299,79 @@
     <table id="stat-table">
       <thead><tr><th data-i18n="stat_col_port">Port</th><th data-i18n="stat_col_name">Name</th><th data-i18n="stat_col_link">Link</th><th data-i18n="stat_col_tx_good">Tx Good</th><th data-i18n="stat_col_tx_bad">Tx Bad</th><th data-i18n="stat_col_rx_good">Rx Good</th><th data-i18n="stat_col_rx_bad">Rx Bad</th><th style="width:80px;"><span data-i18n="stat_col_all">Details</span></th></tr></thead>
       <tbody id="stat-body"><tr><td colspan="8" style="text-align:center;">Loading statistics...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- QoS -->
+<div id="qos" class="panel">
+  <h2>QoS Configuration</h2>
+  <div class="input-row">
+    <label style="font-weight:600;">Priority Decision Mode:</label>
+    <select id="qos-mode" style="min-width:150px;">
+      <option value="0">Off</option>
+      <option value="1">PCP (802.1p)</option>
+      <option value="2">DSCP</option>
+      <option value="3">PCP + DSCP</option>
+    </select>
+    <button class="btn" onclick="applyQosMode()">Apply Mode</button>
+  </div>
+  <h3>PCP → Queue</h3>
+  <div class="table-responsive">
+    <table id="qos-pcp-table" class="narrow"></table>
+  </div>
+  <div class="input-row">
+    <button class="btn" onclick="applyQosPcp()">Apply PCP Map</button>
+  </div>
+  <h3>DSCP → Queue</h3>
+  <div class="table-responsive">
+    <table id="qos-dscp-table" class="narrow"></table>
+  </div>
+  <div class="input-row">
+    <button class="btn" onclick="applyQosDscp()">Apply DSCP Map</button>
+  </div>
+  <h3>Queue Scheduling</h3>
+  <div id="qos-sched" style="font-size:13px;"></div>
+  <p style="color:#64748b;font-size:12px;">(Remember to 'Save UI Changes to Flash' in System tab to persist reboots)</p>
+</div>
+
+<!-- STORM CONTROL -->
+<div id="storm" class="panel">
+  <h2>Storm Control</h2>
+  <p style="color:#64748b;font-size:12px;">Per-type ingress rate limit for broadcast / multicast / unknown frames on all user ports.</p>
+  <div class="table-responsive">
+    <table id="storm-table">
+      <thead><tr><th>Type</th><th>Enabled</th><th>Rate</th><th>Unit</th><th style="width:80px;">Apply</th></tr></thead>
+      <tbody id="storm-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ACL -->
+<div id="acl" class="panel">
+  <h2>Ingress ACL Rules</h2>
+  <div class="input-row">
+    <label style="font-weight:600;">Port:</label>
+    <input type="number" id="acl-port" min="1" max="9" style="width:70px;">
+    <label style="font-weight:600;margin-left:20px;">Action:</label>
+    <select id="acl-action" style="width:100px;">
+      <option value="deny">Deny</option>
+      <option value="permit">Permit</option>
+    </select>
+    <label style="font-weight:600;margin-left:20px;">Match:</label>
+    <select id="acl-match-type" style="width:90px;">
+      <option value="ip">IP</option>
+      <option value="mac">MAC</option>
+      <option value="vlan">VLAN</option>
+    </select>
+    <input type="text" id="acl-match" placeholder="192.168.1.1/24, aa:bb:cc:dd:ee:ff, or VLAN 1-4095" style="width:300px;font-family:monospace;">
+    <button class="btn" onclick="aclAdd()">Add Rule</button>
+  </div>
+  <p style="color:#64748b;font-size:12px;">Note: on some boards the ACL engine is strap-disabled (see firmware docs); rules still write and read back.</p>
+  <div class="table-responsive">
+    <table id="acl-table">
+      <thead><tr><th>Idx</th><th>Port</th><th>Action</th><th>Match</th><th style="width:80px;">Remove</th></tr></thead>
+      <tbody id="acl-body"><tr><td colspan="5" style="text-align:center;">Loading...</td></tr></tbody>
     </table>
   </div>
 </div>
@@ -440,6 +523,27 @@
       <button class="btn" onclick="sendConsoleCmd()" data-i18n="sys_send_cmd">Send Command</button>
     </div>
     <p style="color:#64748b;font-size:12px;" data-i18n="sys_console_warn">Be careful — you can lock yourself out!</p>
+
+    <h3>Ping</h3>
+    <div class="input-row">
+      <input type="text" id="ping-ip" placeholder="192.168.1.1" style="width:200px;font-family:monospace;">
+      <button class="btn" onclick="runPing()">Ping</button>
+      <span id="ping-result" style="font-family:monospace;font-size:13px;"></span>
+    </div>
+
+    <h3>ARP Cache</h3>
+    <div class="table-responsive">
+      <table>
+        <thead><tr><th>IP</th><th>MAC</th><th>Age (10s ticks)</th></tr></thead>
+        <tbody id="arp-body"><tr><td colspan="3" style="text-align:center;">Loading...</td></tr></tbody>
+      </table>
+    </div>
+
+    <h3>Running Configuration</h3>
+    <pre id="running-config" style="background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;font-size:12px;overflow:auto;max-height:300px;">Loading...</pre>
+    <div class="input-row" style="margin-top:10px;">
+      <button class="btn" onclick="refreshRunningConfig()">Refresh Running Config</button>
+    </div>
   </div>
 
   <div id="sys-tab-update" class="tab-content">
@@ -467,7 +571,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (onload) s.onload = onload;
     document.head.appendChild(s);
   }
-  loadScript('/chacha20poly1305.js', function() { loadScript('/i18n.js', function() { loadScript('/main.js'); }); });
+  loadScript('/chacha20poly1305.js', function() { loadScript('/i18n.js', function() { loadScript('/main.js', function() { loadScript('/features.js'); }); }); });
 });
 </script>
 </body>

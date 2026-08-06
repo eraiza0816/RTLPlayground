@@ -2,6 +2,18 @@
 // Kept in a separate file because the httpd truncates any file > 64 KB
 // (file length fields are 16-bit) and main.js is close to the limit.
 
+/** Send a chain of CLI commands sequentially (the /cmd endpoint has no
+ *  response body, so each step is only acknowledged). */
+function sendCmdChain(cmds, doneMsg) {
+  if (!cmds.length) { notify(doneMsg, 'success'); return; }
+  var i = 0;
+  function next() {
+    if (i >= cmds.length) { notify(doneMsg, 'success'); return; }
+    fetchAPI('POST', '/cmd', next, cmds[i++]);
+  }
+  next();
+}
+
 /** L2 panel: IGMP querier + MLD snooping toggles, group table **/
 function loadIgmpState() {
   fetchAPI('GET', '/igmp.json', function(raw) {

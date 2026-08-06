@@ -41,6 +41,9 @@ extern __xdata uint16_t cmd_history_ptr;
 
 extern __xdata struct flash_region_t flash_region;
 
+extern __xdata uint8_t flash_buf[FLASH_BUF_SIZE];
+extern uint16_t running_config_serialize(void) __banked;
+
 extern __xdata char sfp_module_vendor[2][17];
 extern __xdata char sfp_module_model[2][17];
 extern __xdata char sfp_module_serial[2][17];
@@ -875,6 +878,24 @@ found_end:
 	flash_region.len = valid_len;
 	flash_read_bulk(outbuf + slen);
 	slen += valid_len;
+}
+
+/* GET /running-config: the in-memory configuration that 'commit' would
+ * save, serialized by the CLI (cmd_commit.c).  Unlike /config (which
+ * serves the flash copy = startup-config), this reflects uncommitted
+ * changes. */
+void send_running_config(void)
+{
+	__xdata uint16_t len;
+	__xdata uint16_t i;
+
+	dbg_string("send_running_config called\n");
+	slen = strtox(outbuf, HTTP_RESPONCE_TXT);
+	len = running_config_serialize();
+	if (len > TCP_OUTBUF_SIZE - slen)
+		len = TCP_OUTBUF_SIZE - slen;
+	for (i = 0; i < len; i++)
+		outbuf[slen++] = flash_buf[i];
 }
 
 void send_cmd_log(void)

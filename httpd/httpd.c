@@ -477,6 +477,9 @@ static uint8_t handle_api_path(__xdata uint8_t *q)
 	} else if (is_word(q, "/config")) {
 		send_config();
 		return 1;
+	} else if (is_word(q, "/running-config")) {
+		send_running_config();
+		return 1;
 	} else if (is_word(q, "/cmd_log")) {
 		send_cmd_log();
 		return 1;

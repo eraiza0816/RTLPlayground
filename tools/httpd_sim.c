@@ -648,6 +648,148 @@ struct Server serverConstructor(int port, void (*launch)(struct Server *server))
     return server;
 }
 
+void send_ping(int s)
+{
+	struct json_object *v;
+	const char *jstring;
+	char *header = "HTTP/1.1 200 OK\r\n"
+		"Content-Type: application/json; charset=UTF-8\r\n\r\n";
+	v = json_object_new_object();
+	json_object_object_add(v, "state", json_object_new_int(0));
+	json_object_object_add(v, "dst", json_object_new_string("192.168.10.100"));
+	json_object_object_add(v, "sent", json_object_new_int(4));
+	json_object_object_add(v, "rcvd", json_object_new_int(4));
+	json_object_object_add(v, "min_rtt", json_object_new_int(1));
+	json_object_object_add(v, "max_rtt", json_object_new_int(9));
+	json_object_object_add(v, "sum_rtt", json_object_new_int(18));
+	write(s, header, strlen(header));
+	jstring = json_object_to_json_string_ext(v, JSON_C_TO_STRING_PLAIN);
+	write(s, jstring, strlen(jstring));
+	json_object_put(v);
+}
+
+void send_arp(int s)
+{
+	struct json_object *arr, *v;
+	const char *jstring;
+	char *header = "HTTP/1.1 200 OK\r\n"
+		"Content-Type: application/json; charset=UTF-8\r\n\r\n";
+	arr = json_object_new_array_ext(2);
+	v = json_object_new_object();
+	json_object_object_add(v, "ip", json_object_new_string("192.168.10.1"));
+	json_object_object_add(v, "mac", json_object_new_string("00:11:22:33:44:55"));
+	json_object_object_add(v, "age", json_object_new_int(3));
+	json_object_array_add(arr, v);
+	v = json_object_new_object();
+	json_object_object_add(v, "ip", json_object_new_string("192.168.10.100"));
+	json_object_object_add(v, "mac", json_object_new_string("18:ec:e7:95:a9:87"));
+	json_object_object_add(v, "age", json_object_new_int(0));
+	json_object_array_add(arr, v);
+	write(s, header, strlen(header));
+	jstring = json_object_to_json_string_ext(arr, JSON_C_TO_STRING_PLAIN);
+	write(s, jstring, strlen(jstring));
+	json_object_put(arr);
+}
+
+void send_lldp(int s)
+{
+	char *header = "HTTP/1.1 200 OK\r\n"
+		"Content-Type: application/json; charset=UTF-8\r\n\r\n";
+	write(s, header, strlen(header));
+	write(s, "[]", 2);
+}
+
+void send_igmp(int s)
+{
+	struct json_object *v, *ops, *groups;
+	const char *jstring;
+	char *header = "HTTP/1.1 200 OK\r\n"
+		"Content-Type: application/json; charset=UTF-8\r\n\r\n";
+	v = json_object_new_object();
+	json_object_object_add(v, "mld_en", json_object_new_int(0));
+	json_object_object_add(v, "querier", json_object_new_int(0));
+	ops = json_object_new_array_ext(PORTS);
+	for (int i = 0; i < PORTS; i++)
+		json_object_array_add(ops, json_object_new_int(0));
+	json_object_object_add(v, "ops", ops);
+	groups = json_object_new_array_ext(0);
+	json_object_object_add(v, "groups", groups);
+	write(s, header, strlen(header));
+	jstring = json_object_to_json_string_ext(v, JSON_C_TO_STRING_PLAIN);
+	write(s, jstring, strlen(jstring));
+	json_object_put(v);
+}
+
+void send_storm(int s)
+{
+	struct json_object *arr, *v;
+	const char *jstring;
+	char *header = "HTTP/1.1 200 OK\r\n"
+		"Content-Type: application/json; charset=UTF-8\r\n\r\n";
+	const char *types[4] = { "00000000", "00000000", "00000000", "00000000" };
+	arr = json_object_new_array_ext(4);
+	for (int i = 0; i < 4; i++) {
+		v = json_object_new_object();
+		json_object_object_add(v, "type", json_object_new_int(i));
+		json_object_object_add(v, "en", json_object_new_int(0));
+		json_object_object_add(v, "rate", json_object_new_string(types[i]));
+		json_object_object_add(v, "pps", json_object_new_int(0));
+		json_object_array_add(arr, v);
+	}
+	write(s, header, strlen(header));
+	jstring = json_object_to_json_string_ext(arr, JSON_C_TO_STRING_PLAIN);
+	write(s, jstring, strlen(jstring));
+	json_object_put(arr);
+}
+
+void send_qos(int s)
+{
+	struct json_object *v, *pcp, *dscp, *sched;
+	const char *jstring;
+	char *header = "HTTP/1.1 200 OK\r\n"
+		"Content-Type: application/json; charset=UTF-8\r\n\r\n";
+	v = json_object_new_object();
+	json_object_object_add(v, "mode", json_object_new_int(0));
+	pcp = json_object_new_array_ext(8);
+	for (int i = 0; i < 8; i++)
+		json_object_array_add(pcp, json_object_new_int(i));
+	json_object_object_add(v, "pcp", pcp);
+	dscp = json_object_new_array_ext(64);
+	for (int i = 0; i < 64; i++)
+		json_object_array_add(dscp, json_object_new_int(0));
+	json_object_object_add(v, "dscp", dscp);
+	sched = json_object_new_array_ext(PORTS);
+	for (int i = 0; i < PORTS; i++)
+		json_object_array_add(sched, json_object_new_string("S1S1S1S1S1S1S1S1"));
+	json_object_object_add(v, "sched", sched);
+	write(s, header, strlen(header));
+	jstring = json_object_to_json_string_ext(v, JSON_C_TO_STRING_PLAIN);
+	write(s, jstring, strlen(jstring));
+	json_object_put(v);
+}
+
+void send_acl(int s)
+{
+	char *header = "HTTP/1.1 200 OK\r\n"
+		"Content-Type: application/json; charset=UTF-8\r\n\r\n";
+	write(s, header, strlen(header));
+	write(s, "[]", 2);
+}
+
+void send_running_config(int s)
+{
+	char *header = "HTTP/1.1 200 OK\r\n"
+		"Content-Type: text/plain; charset=UTF-8\r\n\r\n";
+	char *body =
+		"hostname rtlplayground\r\n"
+		"port 1 speed auto\r\n"
+		"igmp off\r\n"
+		"qos off\r\n"
+		"storm-control off\r\n";
+	write(s, header, strlen(header));
+	write(s, body, strlen(body));
+}
+
 void send_not_found(int socket) {
 	char *response = "HTTP/1.1 404 Not found\r\n"
 			"Content-Type: text/html\r\n\r\n"
@@ -909,6 +1051,54 @@ void launch(struct Server *server)
 						send_unauthorized(new_socket);
 					else
 						send_counters(new_socket, port);
+					goto done;
+				} else if (!strncmp(&buffer[4], "/ping.json", 10)) {
+					if (!authenticated)
+						send_unauthorized(new_socket);
+					else
+						send_ping(new_socket);
+					goto done;
+				} else if (!strncmp(&buffer[4], "/arp.json", 9)) {
+					if (!authenticated)
+						send_unauthorized(new_socket);
+					else
+						send_arp(new_socket);
+					goto done;
+				} else if (!strncmp(&buffer[4], "/lldp.json", 10)) {
+					if (!authenticated)
+						send_unauthorized(new_socket);
+					else
+						send_lldp(new_socket);
+					goto done;
+				} else if (!strncmp(&buffer[4], "/igmp.json", 10)) {
+					if (!authenticated)
+						send_unauthorized(new_socket);
+					else
+						send_igmp(new_socket);
+					goto done;
+				} else if (!strncmp(&buffer[4], "/storm-control.json", 19)) {
+					if (!authenticated)
+						send_unauthorized(new_socket);
+					else
+						send_storm(new_socket);
+					goto done;
+				} else if (!strncmp(&buffer[4], "/qos.json", 9)) {
+					if (!authenticated)
+						send_unauthorized(new_socket);
+					else
+						send_qos(new_socket);
+					goto done;
+				} else if (!strncmp(&buffer[4], "/acl.json", 9)) {
+					if (!authenticated)
+						send_unauthorized(new_socket);
+					else
+						send_acl(new_socket);
+					goto done;
+				} else if (!strncmp(&buffer[4], "/running-config", 15)) {
+					if (!authenticated)
+						send_unauthorized(new_socket);
+					else
+						send_running_config(new_socket);
 					goto done;
 				}
 				if (!authenticated && strncmp(&buffer[4], "/login.html", 11) && strncmp(&buffer[4], "/main.js", 8) && strncmp(&buffer[4], "/i18n.js", 8)) {

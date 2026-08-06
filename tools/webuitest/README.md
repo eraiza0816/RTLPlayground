@@ -50,8 +50,26 @@ WUI_URL=http://127.0.0.1:18080 WUI_PASSWORD=1234 node test.js
 | ログイン遷移 | `/` → `login.html` へのリダイレクト |
 | 認証 | `pwd` フォーム送信 → ダッシュボード表示 |
 | ポート順 | `#port-grid` が物理順 (1..N) で描画されること |
-| 全ページ遷移 | dash / stat / vlan / eee / port / bw / mirror / lag / l2 / sys / sfp / update で例外なし |
+| 全ページ遷移 | dash / stat / vlan / eee / port / bw / qos / storm / acl / mirror / lag / l2 / sys / sfp / update で例外なし |
+| パネル描画 | 各パネルの要素数・制御 (stat 行数、eee/bw/port テーブル、qos の PCP/DSCP マップ、storm の 4 行、ACL 追加フォーム、sys タブ、SFP コントロール) |
+| コンソールタブ | ARP テーブル、running-config 表示、ping 結果 (実行時) |
+| 適用フロー | シミュレータのみ: QoS/storm/ACL/IGMP/mirror/bw/lag/eee/vlan の適用操作で `/cmd` が期待通りに送信され 200 が返ること |
 | エラー検出 | console error / pageerror / requestfailed が 0 であること |
+
+## 動作モード
+
+- ホストが `127.0.0.1` / `localhost` (既定のシミュレータ) の場合、
+  適用フロー (設定変更コマンドの送信) を含む全チェックを実行する。
+- 実機 (`http://192.168.10.247:80` など) に対しては読み取り専用
+  (ログインと描画・遷移チェックのみ。`/cmd` は送信しない)。
+
+## シミュレータの API 対応
+
+`httpd_sim` は静的ファイルに加えてファームウェアと同じ JSON API を
+模擬する: `/status.json`, `/eee.json`, `/bandwidth.json`, `/mirror.json`,
+`/lag.json`, `/vlanlist`, `/config`, `/running-config`, `/ping.json`,
+`/arp.json`, `/lldp.json`, `/igmp.json`, `/storm-control.json`,
+`/qos.json`, `/acl.json`, `/cmd`, `/login`, `/upload` 等。
 
 ## 注意
 

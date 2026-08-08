@@ -43,10 +43,17 @@ change to operate it safely.
 
 For configuration changes in particular, the pre-shared key provides
 an extra layer: setting a PSK (`psk <hex64>` on the device, `--psk` on
-the client) switches the privileged operations (e.g. `commit`) to the
-encrypted `/enc` endpoint, so the commands travel over the wire
-encrypted and the settings changes cannot be read or tampered with in
-transit.
+the client) switches the switch into **PSK mode** (see
+[doc/authentication.md](../../doc/authentication.md)):
+
+- password logins are **rejected** on the switch while a PSK is set
+- rtlpctl logs in with an **encrypted challenge** (`enc=<hex>`), so the
+  PSK itself never leaves the client
+- privileged operations (e.g. `commit`) use the encrypted `/enc`
+  endpoint, so the commands travel over the wire encrypted and the
+  settings changes cannot be read or tampered with in transit
+- the telnet console keeps working with the password; it is recommended
+  to disable it (`telnet off`) in PSK mode
 
 ## Build
 

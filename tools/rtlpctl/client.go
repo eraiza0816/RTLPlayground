@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -41,7 +42,16 @@ func NewClient(host, password string) *Client {
 }
 
 func (c *Client) Login() error {
-	req, err := http.NewRequest("POST", c.baseURL+"/login", strings.NewReader("pwd="+url.QueryEscape(c.password)))
+	var form string
+	if len(c.psk) == aeadKeyLen {
+		// PSK configured: log in with the encrypted challenge so the PSK
+		// itself never leaves the client.  The firmware rejects password
+		// logins while a pre-shared key is set.
+		form = "enc=" + c.pskLoginChallenge()
+	} else {
+		form = "pwd=" + url.QueryEscape(c.password)
+	}
+	req, err := http.NewRequest("POST", c.baseURL+"/login", strings.NewReader(form))
 	if err != nil {
 		return err
 	}
@@ -79,6 +89,24 @@ func (c *Client) Login() error {
 	}
 	body, _ := io.ReadAll(resp.Body)
 	return fmt.Errorf("login failed (status %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+}
+
+// pskLoginChallenge encrypts the fixed login challenge with the pre-shared
+// key and returns hex(nonce[12] || ct || tag), the format the firmware's
+// /login expects in the enc= field.
+func (c *Client) pskLoginChallenge() string {
+	nonce := make([]byte, aeadNonceLen)
+	if _, err := rand.Read(nonce); err != nil {
+		// crypto/rand should never fail; fall back to a counter-based nonce
+		for i := range nonce {
+			nonce[i] = byte(i + 1)
+		}
+	}
+	enc, err := aeadEncrypt(c.psk, nonce, []byte("RTLP-LOGIN-1"))
+	if err != nil {
+		return ""
+	}
+	return hex.EncodeToString(enc)
 }
 
 func (c *Client) get(path string) (*http.Response, error) {

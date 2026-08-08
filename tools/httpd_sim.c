@@ -1178,17 +1178,58 @@ void launch(struct Server *server)
 				} else if (is_word(&buffer[5], "/login")) {
 					printf("POST login\n");
 					p += 4; // Skip \r\n\r\n after headers
-					p += 4; // Skip "pwd="
 					char *response;
-                    if (is_word(p, PASSWORD)) {
-						printf("Password accepted!\n");
-						response = "HTTP/1.1 302 Found\r\n"
-							   "Location: index.html\r\n"
-							   "Set-Cookie: session=" SESSION_ID "; Path=/; SameSite=Strict\r\n"
-							   "\r\n";
+					if (is_word(p, "enc")) {
+						/* PSK login: hex(nonce[12] || ct || tag) of the fixed
+						 * 12-byte challenge, encrypted with the psk */
+						char *hexp = p + 4;
+						uint8_t raw[AEAD_NONCE_LEN + AEAD_NONCE_LEN + AEAD_TAG_LEN];
+						uint8_t pt[AEAD_NONCE_LEN];
+						int i, ok = 1;
+						for (i = 0; i < (int)sizeof(raw); i++) {
+							int hi, lo;
+							char c1 = hexp[i * 2], c2 = hexp[i * 2 + 1];
+							hi = (c1 >= '0' && c1 <= '9') ? c1 - '0' :
+							     (c1 >= 'a' && c1 <= 'f') ? c1 - 'a' + 10 :
+							     (c1 >= 'A' && c1 <= 'F') ? c1 - 'A' + 10 : -1;
+							lo = (c2 >= '0' && c2 <= '9') ? c2 - '0' :
+							     (c2 >= 'a' && c2 <= 'f') ? c2 - 'a' + 10 :
+							     (c2 >= 'A' && c2 <= 'F') ? c2 - 'A' + 10 : -1;
+							if (hi < 0 || lo < 0) { ok = 0; break; }
+							raw[i] = (hi << 4) | lo;
+						}
+						if (ok && aead_decrypt((uint8_t *)psk, raw, NULL, 0,
+								       raw + AEAD_NONCE_LEN, AEAD_NONCE_LEN,
+								       pt, raw + AEAD_NONCE_LEN + AEAD_NONCE_LEN) == 0) {
+							const char *ch = "RTLP-LOGIN-1";
+							for (i = 0; i < AEAD_NONCE_LEN; i++)
+								if (pt[i] != (uint8_t)ch[i]) { ok = 0; break; }
+						} else {
+							ok = 0;
+						}
+						if (ok) {
+							printf("PSK login accepted!\n");
+							response = "HTTP/1.1 302 Found\r\n"
+								   "Location: index.html\r\n"
+								   "Set-Cookie: session=" SESSION_ID "; Path=/; SameSite=Strict\r\n"
+								   "\r\n";
+						} else {
+							printf("PSK login rejected\n");
+							response = "HTTP/1.1 302 Found\r\n"
+								   "Location: login.html\r\n\r\n";
+						}
 					} else {
-						response = "HTTP/1.1 302 Found\r\n"
-							   "Location: login.html\r\n\r\n";
+						p += 4; // Skip "pwd="
+						if (is_word(p, PASSWORD)) {
+							printf("Password accepted!\n");
+							response = "HTTP/1.1 302 Found\r\n"
+								   "Location: index.html\r\n"
+								   "Set-Cookie: session=" SESSION_ID "; Path=/; SameSite=Strict\r\n"
+								   "\r\n";
+						} else {
+							response = "HTTP/1.1 302 Found\r\n"
+								   "Location: login.html\r\n\r\n";
+						}
 					}
 					write(new_socket, response, strlen(response));
 					goto done;

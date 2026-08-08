@@ -115,6 +115,17 @@
     });
   </script>
   <script>
+    /* A stored PSK means the switch runs in PSK mode: the main.js issues
+     * the session through the encrypted /enc endpoint, so the login page
+     * can go straight to the dashboard. */
+    document.addEventListener('DOMContentLoaded', function() {
+      var stored = localStorage.getItem('rtlpsk');
+      if (stored && /^[0-9a-f]{64}$/.test(stored)) {
+        window.location.href = '/index.html';
+      }
+    });
+  </script>
+  <script>
     document.addEventListener('DOMContentLoaded', function() {
       document.getElementById('loginForm').addEventListener('submit', function(e) {
         e.preventDefault();
@@ -136,9 +147,14 @@
           x.open('POST', '/login', true);
           x.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
           x.onload = function() {
-            if (x.status === 200 || x.status === 302) window.location.href = '/index.html';
-            else {
-              document.getElementById('incorrect').innerHTML = 'Login failed';
+            /* On a PSK-configured switch the password login is refused and
+             * the server redirects back to login.html; detect that via the
+             * final URL instead of following it to the dashboard. */
+            var landed = x.responseURL || '';
+            if ((x.status === 200 || x.status === 302) && landed.indexOf('login.html') < 0) {
+              window.location.href = '/index.html';
+            } else {
+              document.getElementById('incorrect').innerHTML = 'Password login rejected (PSK mode?) or wrong password';
               document.getElementById('incorrect').style.display = 'block';
             }
           };

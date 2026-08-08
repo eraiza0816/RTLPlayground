@@ -28,6 +28,17 @@ and even send out reports, it is currently not understood
 how this works, and instead IGMP is handled entirely in software, which also allows
 to fully support IGMPv3 packet which are the standard in present-day networks.
 
+In addition to software IGMP snooping, the firmware also uses the ASIC's hardware
+engines for the management plane:
+
+- **IGMP querier** (RTL8373): the ASIC itself sends General Queries at a 60 s
+  interval, driven by `IGMP_CTRL` (0x5290) — bit 0 `IGMP_MLD_EN`, bits 5-7
+  `LEAVE_TIMER`, and the query interval register 0x5294.
+- **MLD snooping**: the ASIC's IPv6 multicast engine (`RTL837X_IPV6_PORT_MC_LM_ACT`
+  0x4f7c and the MLD control bits of `RTL837X_IGMP_CTRL`) manages IPv6 multicast
+  listener groups in hardware, trapping MLD reports to the CPU which updates the
+  L3/L2 tables, the same way IPv4 works.
+
 ## IP-MC control
 The relevant registers for controlling IP-MC switching are:
 ```
@@ -85,18 +96,46 @@ of IP-MC packets to be limited to only subscribed ports.
 `igmp_show()` prints out the IGMP configuration on the CLI.
 
 
-## IGMP configuration on the Serial Console
-For testing the following commands are provided on the serial console:
-```
-> igmp [on/off]
-  Enables or disables IGMP
+## IGMP configuration on the CLI / WebUI
 
-> igmp show
-  Shows information on IGMP
+Commands on the serial/telnet console and via rtlpctl:
+
+```
+igmp [on|off|show]
+igmp querier [on|off|show]
+igmp mld [on|off|show]
 ```
 
-## LAG configuration via the Web Interface
-Not implemented, yet!
+- `igmp on` / `igmp off` — enable/disable IGMP snooping
+- `igmp querier on` — start the ASIC's IGMP querier (60 s query interval);
+  `off` stops it; `show` prints the state
+- `igmp mld on` / `off` — enable/disable MLD (IPv6) snooping in the ASIC
+- `igmp show` — show the IGMP/MLD configuration and the learned groups
+
+The WebUI exposes the same toggles on the L2 Configuration panel
+(IGMP snooping, IGMP querier, MLD snooping) and shows the learned
+multicast groups.
+
+## JSON endpoint
+
+`GET /igmp.json` returns the live multicast state:
+
+```json
+{"mld_en":0,"querier":0,"ops":[0,0,0,0,0,0],"groups":[]}
+```
+
+- `mld_en` — the ASIC's IGMP/MLD engine enable bit
+- `querier` — whether the hardware querier is running
+- `ops` — per-port MLDv1/MLDv2 operation bits
+- `groups` — the learned multicast groups (index + port mask)
+
+## rtlpctl
+
+```
+rtlpctl igmp on|off|show
+rtlpctl igmp querier on|off|show
+rtlpctl igmp mld on|off|show
+```
 
 ## A Test with IP-MC streaming using vlc
 The following is a simple test verifying the IGMP and IP-MC switching capabilities.

@@ -61,6 +61,12 @@ commands are never blocked. To send a command that fails validation anyway
 rtlpctl cmd "hostname my-switch.old-firmware" --force
 ```
 
+`config upload <file>` applies the same validation to **every non-empty
+line** of the configuration file before anything is sent: the firmware
+replays the file through its command parser without validating the
+numbers itself (VLAN/MTU/PVID ranges etc.), so a bad line is rejected
+locally with a `config line N: ...` error. Empty lines are skipped.
+
 ### Commands
 
 #### Read
@@ -90,7 +96,7 @@ rtlpctl cmd "hostname my-switch.old-firmware" --force
 | `cmd <text>` | POST /cmd | Execute a CLI command |
 | `l2 delete <idx>` | GET /l2_del.json?idx=<idx> | Delete L2 entry (decimal 0-4095) |
 | `cmd-log clear` | GET /cmd_log_clear | Clear command history |
-| `config upload <file>` | POST /config (multipart) | Upload configuration file |
+| `config upload <file>` | POST /config (multipart) | Upload configuration file (validated line by line) |
 | `upload firmware <file>` | POST /upload (multipart) | Firmware update |
 | `reset` | GET /reset | Reboot the switch |
 

@@ -19,7 +19,7 @@ capped at 16 KB:
 | BANK1 | 47,894 B | 48 KB (`CODE_BANK_SIZE`) | ~98 % of window (Tier 3 + WebUI) |
 | BANK2 | 48,095 B | 48 KB | ~98 % of window |
 | BANK3 | 51,949 B (FULL) | 48 KB | over budget before BANK4 — see below |
-| BANK4 | 3,331 B | 44 KB (`0x64000..0x6EFFF`) | WebUI JSON endpoints (api_status.c) |
+| BANK4 | 28,233 B | 48 KB | network stack (uip), crypto (chacha20/poly1305/aead), WebUI JSON endpoints (api_status.c) |
 
 Upcoming features (SFP work, LLDP, new CLI commands) will not fit into
 BANK3 and the remaining bank headroom, so a fourth bank is needed.
@@ -116,8 +116,14 @@ nothing else uses 0x6E000.
 - New/relocated bank code: `#pragma codeseg BANK4` + `#pragma constseg BANK4`
   and `__banked` functions, following the pattern of the existing banks.
 - **Usable size: 48 KB** (the `.bin` slot 0x28000-0x33FFF).
-- First resident: `httpd/api_status.c` (WebUI JSON status endpoints for
-  ping/arp/lldp/igmp/storm-control/qos/acl, moved out of BANK1/3).
+- Residents: `httpd/api_status.c` (WebUI JSON status endpoints), the whole
+  uip network stack (`uip/*.c` + `udp_apps.c`) and the crypto
+  (`crypto/*.c`).  Moving uip and crypto out of BANK1/BANK3 freed ~13 KB
+  of contiguous space in each for future HTTP/protocol work (BANK1 free
+  14.0 KB, BANK3 free 24.3 KB in the lite build).  The appcall entry
+  points (`httpd_appcall`, `udp_callbacks`) must stay `__banked` because
+  the network stack now lives in a different bank than the HTTP code —
+  a missing `__banked` silently corrupts the call (found on hardware).
 
 ### Step 2: verify
 

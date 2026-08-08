@@ -11,9 +11,11 @@ DEFAULT_CONFIG_LOCATION = 454656
 CONFIG_LOCATION = 458752
 HTML_LOCATION = 262144
 
+ifeq ($(origin CC),default)
 CC = sdcc
-CC_FLAGS = -mmcs51 -I. -Ihttpd -Iuip
-ASM = sdas8051
+endif
+CC_FLAGS = -mmcs51 -DNO_CHACHA_HELPERS -DNO_AEAD_TEST -I. -Ihttpd -Iuip
+ASM ?= sdas8051
 AFLAGS= -plosgff
 
 SUBDIRS := tools
@@ -54,11 +56,11 @@ FILENAME_EXTENSION = $(VERSION_EXTENSION)-$(MACHINE)
 all: create_build_dir $(VERSION_HEADER) $(SUBDIRS) $(BUILDDIR)/rtlplayground-$(FILENAME_EXTENSION).bin
 
 create_build_dir:
-	mkdir -p $(BUILDDIR)
-	mkdir -p $(BUILDDIR)/uip
-	mkdir -p $(BUILDDIR)/httpd
-	mkdir -p $(BUILDDIR)/telnetd
-	mkdir -p $(BUILDDIR)/crypto
+	mkdir -p "$(BUILDDIR)"
+	mkdir -p "$(BUILDDIR)/uip"
+	mkdir -p "$(BUILDDIR)/httpd"
+	mkdir -p "$(BUILDDIR)/telnetd"
+	mkdir -p "$(BUILDDIR)/crypto"
 
 SRCS = rtlplayground.c crc16.c rtl837x_flash.c rtl837x_leds.c rtl837x_phy.c rtl837x_port.c cmd_parser.c html_data.c rtl837x_igmp.c
 SRCS += rtl837x_stp.c rtl837x_pins.c dhcp.c machine.c cmd_editor.c rtl837x_bandwidth.c rtl837x_init.c

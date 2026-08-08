@@ -30,15 +30,7 @@ only the following features are provided:
 - Firmware updates via the web
 - Installation as a firmware upgrade from the original web-interface
 
-<img width="1420" height="623" alt="GUI" src="doc/images/gui.png" />
-
-While the firmware provides already considerable improvements over the original managed firmware,
-the firmware still lacks production-ready STP/RSTP and LACP (only basic stubs or static LAG are
-available) as well as the proprietary loop prevention protocols. If you need these features, do
-not install the playground on your managed devices. In any case, installation is strongly
-discouraged unless you can at least make a backup of the original flash content via a SOIC clamp
-such as also used for BIOS backups and can re-install that firmware in case something is wrong.
-For this no soldering skills are necessary.
+<img width="1420" height="900" alt="GUI" src="doc/images/gui.png" />
 
 The firmware supports all hardware featues of devices with
 - 4 2.5GBit ports + 2 SFP+ ports

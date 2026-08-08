@@ -64,7 +64,7 @@ __xdata char session_id[SESSION_ID_LENGTH + 1];
 __xdata uint8_t authenticated;
 __xdata uint8_t preshared_key[AEAD_KEY_LEN];
 __xdata uint32_t now;
-__xdata uint8_t *timeptr;
+__xdata uint8_t * __xdata timeptr;
 __xdata uint32_t last_session_use;
 /* Content-Length of the current POST request (0 = header absent). Used to
  * detect bodies that arrive split across TCP segments: uIP delivers one
@@ -264,8 +264,19 @@ __xdata uint8_t *scan_header(__xdata uint8_t *p)
 			break;
 		if (is_word(p, "\nContent-Type:"))
 			content_type = p + 15;
-		else if (is_word(p, "\nCookie:"))
-			session = p + 17;
+		else if (is_word(p, "\nCookie:")) {
+			/* The header may hold several cookies in any order; match
+			 * the "session" key by name (is_word() rejects a longer
+			 * key like "sessionx" because '=' terminates the match). */
+			__xdata uint8_t *c = p + 8;	/* past "\nCookie:" */
+			while (*c && *c != '\r' && *c != '\n') {
+				if (is_word(c, "session")) {
+					session = c + 8;	/* past "session=" */
+					break;
+				}
+				c++;
+			}
+		}
 		else if (is_word(p, "\nContent-Length:")) {
 			/* Header format: "\nContent-Length: <digits>" — skip the
 			 * separator space (may be absent, e.g. "Content-Length:12"). */
@@ -280,7 +291,8 @@ __xdata uint8_t *scan_header(__xdata uint8_t *p)
 		dbg_string("\nFound multipart\n");
 		content_type += 30;
 		uint8_t i = 0;
-		while (content_type[i] != '\r' && content_type[i] != '\n') {
+		while (i < (sizeof(boundary) - 5) &&
+				content_type[i] != '\r' && content_type[i] != '\n') {
 			boundary[i + 4] = content_type[i];
 			i++;
 		}
@@ -790,7 +802,7 @@ extern void telnetd_appcall(void) __banked;
 extern __xdata uint8_t telnet_enabled;
 extern __xdata uint8_t web_enabled;
 
-void httpd_appcall(void)
+void httpd_appcall(void) __banked
 {
 	if (uip_conn->lport == HTONS(23)) {
 		if (telnet_enabled)

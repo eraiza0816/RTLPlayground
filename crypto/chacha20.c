@@ -1,4 +1,4 @@
-#pragma codeseg BANK3
+#pragma codeseg BANK4
 
 #include <stdint.h>
 #include "chacha.h"
@@ -49,6 +49,11 @@ static void chacha20_block(__xdata struct chacha20_t *ctx, __xdata uint32_t *key
         keystream[i] = state[i] + chacha_s_block[i];
 }
 
+/* chacha20_init / chacha20_set_counter are used only by the host-side
+ * test vectors (tools/aead_test.c, RFC 7539 section 2.4.2); the firmware
+ * AEAD inlines the equivalent setup (crypto/aead.c) to keep the code and
+ * the IRAM footprint small.  Compile them only for the host test. */
+#ifndef NO_CHACHA_HELPERS
 void chacha20_init(__xdata struct chacha20_t *ctx,
                    __xdata uint8_t *key, uint16_t key_len,
                    __xdata uint8_t *nonce, uint16_t nonce_len) __reentrant
@@ -65,6 +70,7 @@ void chacha20_set_counter(__xdata struct chacha20_t *ctx, uint32_t counter) __re
 {
     ctx->cnt = counter;
 }
+#endif
 
 static __xdata uint32_t chacha_keystream[16];
 

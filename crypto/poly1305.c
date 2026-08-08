@@ -1,4 +1,4 @@
-#pragma codeseg BANK3
+#pragma codeseg BANK4
 
 #include <stdint.h>
 #include "poly1305.h"
@@ -8,9 +8,19 @@
 
 #define P1305_MASK 0x3ffffff
 
+static __xdata uint32_t p1305_hibit;
+static __xdata uint16_t p1305_want;
+static __xdata uint8_t p1305_i;
+
 /* h = h * r mod (2^130 - 5), all in 32-bit arithmetic.
  * Each 26-bit product is split exactly into a (low, high) 26-bit pair
  * using 13-bit operand halves, so no 64-bit multiply is required. */
+/* r[] pre-split into 13-bit halves once (r is constant after init) so the
+ * multiply loop never recomputes the 32-bit shifts. */
+static __xdata uint16_t poly1305_rlo[5];
+static __xdata uint16_t poly1305_rhi[5];
+static __xdata uint16_t p1305_alo, p1305_ahi;
+
 static void poly1305_mul(__xdata struct poly1305_t *ctx) __reentrant
 {
 	/* Hot computation uses static scratch (single-threaded firmware) to keep
@@ -32,11 +42,14 @@ static void poly1305_mul(__xdata struct poly1305_t *ctx) __reentrant
 
 	for (i = 0; i < 5; i++) {
 		a = ctx->h[i];
+		p1305_alo = (uint16_t)(a & 0x1fff);
+		p1305_ahi = (uint16_t)(a >> 13);
 		for (j = 0; j < 5; j++) {
 			b = ctx->r[j];
-			m0 = (a & 0x1fff) * (b & 0x1fff);
-			m1 = ((a & 0x1fff) * (b >> 13)) + ((a >> 13) * (b & 0x1fff));
-			m2 = (a >> 13) * (b >> 13);
+			m0 = (uint32_t)p1305_alo * poly1305_rlo[j];
+			m1 = ((uint32_t)p1305_alo * poly1305_rhi[j]) +
+			     ((uint32_t)p1305_ahi * poly1305_rlo[j]);
+			m2 = (uint32_t)p1305_ahi * poly1305_rhi[j];
 			t = m0 + ((m1 & 0x1fff) << 13);
 			plo = t & P1305_MASK;
 			phi = m2 + (m1 >> 13) + (t >> 26);
@@ -76,34 +89,36 @@ static void poly1305_mul(__xdata struct poly1305_t *ctx) __reentrant
 static void poly1305_blocks(__xdata struct poly1305_t *ctx,
                             __xdata uint8_t *m, uint16_t bytes, uint8_t final) __reentrant
 {
-	uint32_t hibit = final ? 0 : (1UL << 24);
+	p1305_hibit = final ? 0 : (1UL << 24);
 
 	while (bytes >= 16) {
-		ctx->h[0] += (U8TO32(m + 0)      ) & P1305_MASK;
-		ctx->h[1] += (U8TO32(m + 3) >>  2) & P1305_MASK;
-		ctx->h[2] += (U8TO32(m + 6) >>  4) & P1305_MASK;
-		ctx->h[3] += (U8TO32(m + 9) >>  6) & P1305_MASK;
-		ctx->h[4] += (U8TO32(m + 12) >>  8) | hibit;
+		/* 26-bit limb loads: the i-th limb starts at m + i*3 and is
+		 * shifted right by i*2 (h[4] keeps the 2^130 bit via hibit) */
+		for (p1305_i = 0; p1305_i < 4; p1305_i++)
+			ctx->h[p1305_i] += (U8TO32(m + p1305_i * 3) >> (p1305_i * 2)) & P1305_MASK;
+		ctx->h[4] += (U8TO32(m + 12) >> 8) | p1305_hibit;
 		poly1305_mul(ctx);
 		m += 16;
 		bytes -= 16;
 	}
 }
 
+/* r[] masks and shifts are uniform apart from the bit width: the table
+ * keeps init a loop instead of nine unrolled U8TO32/mask sequences. */
+static __code uint32_t poly1305_rmask[5] = {
+	0x3ffffff, 0x3ffff03, 0x3ffc0ff, 0x3f03fff, 0x00fffff };
+
 void poly1305_init(__xdata struct poly1305_t *ctx, __xdata uint8_t *key) __reentrant
 {
 	uint8_t i;
 
-	ctx->r[0] = (U8TO32(key + 0)      ) & 0x3ffffff;
-	ctx->r[1] = (U8TO32(key + 3) >>  2) & 0x3ffff03;
-	ctx->r[2] = (U8TO32(key + 6) >>  4) & 0x3ffc0ff;
-	ctx->r[3] = (U8TO32(key + 9) >>  6) & 0x3f03fff;
-	ctx->r[4] = (U8TO32(key + 12) >>  8) & 0x00fffff;
-
-	ctx->pad[0] = U8TO32(key + 16);
-	ctx->pad[1] = U8TO32(key + 20);
-	ctx->pad[2] = U8TO32(key + 24);
-	ctx->pad[3] = U8TO32(key + 28);
+	for (i = 0; i < 5; i++) {
+		ctx->r[i] = (U8TO32(key + i * 3) >> (i * 2)) & poly1305_rmask[i];
+		poly1305_rlo[i] = (uint16_t)(ctx->r[i] & 0x1fff);
+		poly1305_rhi[i] = (uint16_t)(ctx->r[i] >> 13);
+	}
+	for (i = 0; i < 4; i++)
+		ctx->pad[i] = U8TO32(key + 16 + i * 4);
 
 	for (i = 0; i < 5; i++)
 		ctx->h[i] = 0;
@@ -113,18 +128,15 @@ void poly1305_init(__xdata struct poly1305_t *ctx, __xdata uint8_t *key) __reent
 void poly1305_update(__xdata struct poly1305_t *ctx,
                      __xdata uint8_t *m, uint16_t bytes) __reentrant
 {
-	uint16_t want;
-
 	while (ctx->leftover) {
-		want = 16 - ctx->leftover;
-		if (want > bytes)
-			want = (uint8_t)bytes;
-		uint8_t i;
-		for (i = 0; i < want; i++)
-			ctx->buf[ctx->leftover + i] = m[i];
-		bytes -= want;
-		m += want;
-		ctx->leftover += want;
+		p1305_want = 16 - ctx->leftover;
+		if (p1305_want > bytes)
+			p1305_want = (uint8_t)bytes;
+		for (p1305_i = 0; p1305_i < p1305_want; p1305_i++)
+			ctx->buf[ctx->leftover + p1305_i] = m[p1305_i];
+		bytes -= p1305_want;
+		m += p1305_want;
+		ctx->leftover += p1305_want;
 		if (ctx->leftover < 16)
 			return;
 		poly1305_blocks(ctx, ctx->buf, 16, 0);
@@ -132,16 +144,15 @@ void poly1305_update(__xdata struct poly1305_t *ctx,
 	}
 
 	if (bytes >= 16) {
-		want = (bytes & ~15);
-		poly1305_blocks(ctx, m, want, 0);
-		m += want;
-		bytes -= want;
+		p1305_want = (bytes & ~15);
+		poly1305_blocks(ctx, m, p1305_want, 0);
+		m += p1305_want;
+		bytes -= p1305_want;
 	}
 
 	if (bytes) {
-		uint8_t i;
-		for (i = 0; i < bytes; i++)
-			ctx->buf[i] = m[i];
+		for (p1305_i = 0; p1305_i < bytes; p1305_i++)
+			ctx->buf[p1305_i] = m[p1305_i];
 		ctx->leftover = bytes;
 	}
 }
@@ -153,9 +164,9 @@ void poly1305_finish(__xdata struct poly1305_t *ctx, __xdata uint8_t *mac) __ree
 	static __xdata uint32_t h0, h1, h2, h3, h4, c;
 	static __xdata uint32_t g0, g1, g2, g3, g4;
 	static __xdata uint32_t mask;
-	static __xdata uint32_t h0p, h1p, h2p, h3p, s;
+	static __xdata uint32_t hxp[4], s;
 	static __xdata uint8_t cin, co;
-	uint8_t i;
+	static __xdata uint8_t i;
 
 	if (ctx->leftover) {
 		i = ctx->leftover;
@@ -189,41 +200,24 @@ void poly1305_finish(__xdata struct poly1305_t *ctx, __xdata uint8_t *mac) __ree
 	h3 = (h3 & mask) | g3;
 	h4 = (h4 & mask) | g4;
 
-	h0p = h0 | (h1 << 26);
-	h1p = (h1 >> 6) | (h2 << 20);
-	h2p = (h2 >> 12) | (h3 << 14);
-	h3p = (h3 >> 18) | (h4 << 8);
+	hxp[0] = h0 | (h1 << 26);
+	hxp[1] = (h1 >> 6) | (h2 << 20);
+	hxp[2] = (h2 >> 12) | (h3 << 14);
+	hxp[3] = (h3 >> 18) | (h4 << 8);
 
-	s = h0p + ctx->pad[0];
-	mac[0] = (uint8_t)s; mac[1] = (uint8_t)(s >> 8);
-	mac[2] = (uint8_t)(s >> 16); mac[3] = (uint8_t)(s >> 24);
-	cin = (s < h0p) ? 1 : 0;
-
-	s = h1p + ctx->pad[1];
-	co = (s < h1p) ? 1 : 0;
-	s += cin;
-	if (s < cin)
-		co = 1;
-	mac[4] = (uint8_t)s; mac[5] = (uint8_t)(s >> 8);
-	mac[6] = (uint8_t)(s >> 16); mac[7] = (uint8_t)(s >> 24);
-	cin = co;
-
-	s = h2p + ctx->pad[2];
-	co = (s < h2p) ? 1 : 0;
-	s += cin;
-	if (s < cin)
-		co = 1;
-	mac[8] = (uint8_t)s; mac[9] = (uint8_t)(s >> 8);
-	mac[10] = (uint8_t)(s >> 16); mac[11] = (uint8_t)(s >> 24);
-	cin = co;
-
-	s = h3p + ctx->pad[3];
-	co = (s < h3p) ? 1 : 0;
-	s += cin;
-	if (s < cin)
-		co = 1;
-	mac[12] = (uint8_t)s; mac[13] = (uint8_t)(s >> 8);
-	mac[14] = (uint8_t)(s >> 16); mac[15] = (uint8_t)(s >> 24);
+	/* tag = h + pad with the 32-bit carry propagated across the 4 words;
+	 * one loop instead of four unrolled blocks keeps the code small */
+	cin = 0;
+	for (i = 0; i < 4; i++) {
+		s = hxp[i] + ctx->pad[i];
+		co = (s < hxp[i]) ? 1 : 0;
+		s += cin;
+		if (s < cin)
+			co = 1;
+		mac[i*4] = (uint8_t)s; mac[i*4+1] = (uint8_t)(s >> 8);
+		mac[i*4+2] = (uint8_t)(s >> 16); mac[i*4+3] = (uint8_t)(s >> 24);
+		cin = co;
+	}
 
 	for (i = 0; i < 5; i++) {
 		ctx->h[i] = 0;

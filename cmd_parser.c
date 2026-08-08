@@ -175,8 +175,7 @@ uint8_t cmd_compare(uint8_t start, __code uint8_t * cmd)
 */
 uint8_t atoi_hex(uint8_t idx)
 {
-	uint8_t h_idx = 0;
-	uint8_t val = 0;
+	uint8_t h_idx = 0;	uint8_t val = 0;
 	uint8_t c;
 
 	while(1) {
@@ -2328,6 +2327,59 @@ static uint8_t cmd_mode_allowed(uint8_t start)
 }
 
 // Identify command
+/* Simple commands whose handler is a single same-module call.  The table
+ * replaces the long if/else chain: all handlers below live in this module
+ * (BANK2), so the 2-byte function pointers resolve to same-bank addresses
+ * and the call via DPTR needs no bank switch.  Cross-bank handlers
+ * (parse_commit, parse_xmodem) stay as direct __banked calls in cmd_parser(). */
+struct cmd_dispatch_entry {
+	__code char *name;
+	void (*fn)(void);
+};
+static __code struct cmd_dispatch_entry cmd_dispatch[] = {
+	{"sfp", parse_sfp},
+	{"regget", parse_regget},
+	{"regset", parse_regset},
+	{"sdsget", parse_sdsget},
+	{"sdsset", parse_sdsset},
+	{"phyget", parse_phyget},
+	{"physet", parse_physet},
+	{"rnd", parse_rnd},
+	{"passwd", parse_passwd},
+	{"preshared_key", parse_preshared_key},
+	{"eee", parse_eee},
+	{"bw", parse_bw},
+	{"storm-control", parse_storm_control},
+	{"hostname", parse_hostname},
+	{"port", parse_port},
+	{"mtu", parse_mtu},
+	{"vlan", parse_vlan},
+	{"isolate", parse_isolate},
+	{"mirror", parse_mirror},
+	{"lag", parse_lag},
+	{"laghash", parse_lag_hash},
+	{"ingress", parse_ingress},
+	{"acl", parse_acl},
+	{"qos", parse_qos},
+	{"ping", parse_ping},
+	{"lldp", parse_lldp},
+	{"telnet", parse_telnet},
+	{"web", parse_web},
+	{"show", parse_show},
+	{0, 0}
+};
+
+static void cmd_dispatch_table(void)
+{
+	uint8_t i;
+	for (i = 0; cmd_dispatch[i].name; i++)
+		if (cmd_compare(0, cmd_dispatch[i].name)) {
+			cmd_dispatch[i].fn();
+			return;
+		}
+	print_string("Unknown command\n");
+}
+
 void cmd_parser(void) __banked
 {
 #ifdef DEBUG
@@ -2374,10 +2426,6 @@ void cmd_parser(void) __banked
 #endif
 			print_string("\nRESET\n\n");
 			reset_chip();
-		} else if (cmd_compare(0, "sfp")) {
-			parse_sfp();
-		} else if (cmd_compare(0, "stat")) {
-			port_stats_print();
 		} else if (cmd_compare(0, "flash") && cmd_words_len == 2) {
 			uint8_t c = cmd_buffer[cmd_words_b[1]];
 			if (c == 's') {
@@ -2402,10 +2450,6 @@ void cmd_parser(void) __banked
 				print_string("\nUNIQUE ID\n");
 				flash_read_uid();
 			}
-		} else if (cmd_compare(0, "port")) {
-			parse_port();
-		} else if (cmd_compare(0, "mtu")) {
-			parse_mtu();
 		} else if (cmd_compare(0, "ip")) {
 			if (cmd_compare(1, "dhcp")) {
 				dhcp_start();
@@ -2513,65 +2557,15 @@ void cmd_parser(void) __banked
 			port = machine.phys_to_log_port[port];
 			if (!atoi_short(&pvid, cmd_words_b[2]))
 				port_pvid_set(port, pvid);
-		} else if (cmd_compare(0, "vlan")) {
-			parse_vlan();
-		} else if (cmd_compare(0, "isolate")) {
-			parse_isolate();
-		} else if (cmd_compare(0, "mirror")) {
-			parse_mirror();
-		} else if (cmd_compare(0, "lag")) {
-			parse_lag();
-		} else if (cmd_compare(0, "laghash")) {
-			parse_lag_hash();
 		} else if (cmd_compare(0, "sds")) {
 			print_reg(RTL837X_REG_SDS_MODES);
 			write_char('\n');
 		} else if (cmd_compare(0, "gpio")) {
 			print_gpio_status();
-		} else if (cmd_compare(0, "regget")) {
-			parse_regget();
-		} else if (cmd_compare(0, "regset")) {
-			parse_regset();
-		} else if (cmd_compare(0, "sdsget")) {
-			parse_sdsget();
-		} else if (cmd_compare(0, "sdsset")) {
-			parse_sdsset();
-		} else if (cmd_compare(0, "phyget")) {
-			parse_phyget();
-		} else if (cmd_compare(0, "physet")) {
-			parse_physet();
-		} else if (cmd_compare(0, "rnd")) {
-			parse_rnd();
-		} else if (cmd_compare(0, "passwd")) {
-			parse_passwd();
-		} else if (cmd_compare(0, "preshared_key")) {
-			parse_preshared_key();
-		} else if (cmd_compare(0, "eee")) {
-			parse_eee();
-		} else if (cmd_compare(0, "bw")) {
-			parse_bw();
-		} else if (cmd_compare(0, "storm-control")) {
-			parse_storm_control();
-		} else if (cmd_compare(0, "qos")) {
-			parse_qos();
-		} else if (cmd_compare(0, "acl")) {
-			parse_acl();
-		} else if (cmd_compare(0, "telnet")) {
-			parse_telnet();
-		} else if (cmd_compare(0, "web")) {
-			parse_web();
 		} else if (cmd_compare(0, "commit")) {
 			parse_commit();
 		} else if (cmd_compare(0, "xmodem")) {
 			parse_xmodem();
-		} else if (cmd_compare(0, "show")) {
-			parse_show();
-		} else if (cmd_compare(0, "ping")) {
-			parse_ping();
-		} else if (cmd_compare(0, "lldp")) {
-			parse_lldp();
-		} else if (cmd_compare(0, "hostname")) {
-			parse_hostname();
 		} else if (cmd_compare(0, "version")) {
 			print_sw_version();
 		} else if (cmd_compare(0, "time")) {
@@ -2592,11 +2586,10 @@ void cmd_parser(void) __banked
 					write_char(cmd_history[p]);
 				p = (p + 1) & CMD_HISTORY_MASK;
 			}
-		} else if (cmd_compare(0, "ingress")) {
-			parse_ingress();
-		}
-		else {
-			print_string("Unknown command\n");
+		} else if (cmd_compare(0, "stat")) {
+			port_stats_print();
+		} else {
+			cmd_dispatch_table();
 		}
 
 

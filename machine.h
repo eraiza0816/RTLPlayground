@@ -29,6 +29,7 @@
 // #define MACHINE_FNS1200P
 // #define MACHINE_PCB_SWTG024AS_A_2_0_1
 // #define MACHINE_SWTG024AS_V2_0
+// #define MACHINE_FG_4GT_2SX_V2_0
 
 typedef struct {
 	// GPIO pins for SDA/SCL

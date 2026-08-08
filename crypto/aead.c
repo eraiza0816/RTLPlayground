@@ -1,4 +1,4 @@
-#pragma codeseg BANK3
+#pragma codeseg BANK4
 
 #include <stdint.h>
 #include "rtl837x_common.h"
@@ -140,7 +140,11 @@ uint8_t aead_decrypt(__xdata uint8_t *key, __xdata uint8_t *nonce,
 	return 0;
 }
 
-/* Test AEAD using the example from RFC8439 section 2.8.2 */
+/* Test AEAD using the example from RFC8439 section 2.8.2.
+ * Firmware-only test hook: compiled only when NOT building the device
+ * firmware (the host tools/aead_test.c and the Go aead_test.go verify
+ * the vectors); the device build never calls it. */
+#ifndef NO_AEAD_TEST
 void aead_test(void) __banked
 {
 	static __code uint8_t key[32] = {
@@ -205,3 +209,4 @@ void aead_test(void) __banked
 	}
 	print_string("aead_test: PASS\n");
 }
+#endif

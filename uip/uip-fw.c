@@ -59,7 +59,7 @@
 #include "uip_arch.h"
 #include "uip-fw.h"
 
-#pragma codeseg BANK1
+#pragma codeseg BANK4
 #pragma constseg BANK1
 
 #include "../rtl837x_common.h"
@@ -286,11 +286,10 @@ time_exceeded(void)
 static void
 fwcache_register(void)
 {
-  __xdata struct fwcache_entry *fw;
-  __xdata uint16_t i, oldest;
+  __xdata struct fwcache_entry * __xdata fw = NULL;
+  __xdata uint16_t oldest = FW_TIME;
 
-  oldest = FW_TIME;
-  fw = NULL;
+  __xdata uint16_t i;
   
   /* Find the oldest entry in the cache. */
   for(i = 0; i < FWCACHE_SIZE; ++i) {
@@ -432,7 +431,8 @@ uip_fw_forward(void)
   /* Check if the packet is in the forwarding cache already, and if so
      we drop it. */
 
-  for(fw = fwcache; fw < &fwcache[FWCACHE_SIZE]; ++fw) {
+  for(uint8_t i = 0; i < FWCACHE_SIZE; i++) {
+    fw = &fwcache[i];
     if(fw->timer != 0 &&
 #if UIP_REASSEMBLY > 0
        fw->len == BUF->len &&

@@ -790,7 +790,7 @@ extern void telnetd_appcall(void) __banked;
 extern __xdata uint8_t telnet_enabled;
 extern __xdata uint8_t web_enabled;
 
-void httpd_appcall(void)
+void httpd_appcall(void) __banked
 {
 	if (uip_conn->lport == HTONS(23)) {
 		if (telnet_enabled)

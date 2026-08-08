@@ -3,7 +3,7 @@
 
 #include "dhcp.h"
 
-void udp_callbacks(void);
+void udp_callbacks(void) __banked;
 
 #ifndef UIP_UDP_APPCALL
 #define UIP_UDP_APPCALL udp_callbacks

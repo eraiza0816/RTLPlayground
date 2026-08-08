@@ -1,4 +1,4 @@
-#pragma codeseg BANK3
+#pragma codeseg BANK4
 
 #include <stdint.h>
 #include "poly1305.h"

@@ -63,7 +63,7 @@
 
 #include "../rtl837x_common.h"
 
-#pragma codeseg BANK1
+#pragma codeseg BANK4
 #pragma constseg BANK1
 
 struct arp_hdr_i {

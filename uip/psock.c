@@ -47,7 +47,7 @@
 #define STATE_BLOCKED_SEND 5
 #define STATE_DATA_SENT 6
 
-#pragma codeseg BANK1
+#pragma codeseg BANK4
 #pragma constseg BANK1
 
 /*

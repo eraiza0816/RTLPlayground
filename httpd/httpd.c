@@ -264,8 +264,19 @@ __xdata uint8_t *scan_header(__xdata uint8_t *p)
 			break;
 		if (is_word(p, "\nContent-Type:"))
 			content_type = p + 15;
-		else if (is_word(p, "\nCookie:"))
-			session = p + 17;
+		else if (is_word(p, "\nCookie:")) {
+			/* The header may hold several cookies in any order; match
+			 * the "session" key by name (is_word() rejects a longer
+			 * key like "sessionx" because '=' terminates the match). */
+			__xdata uint8_t *c = p + 8;	/* past "\nCookie:" */
+			while (*c && *c != '\r' && *c != '\n') {
+				if (is_word(c, "session")) {
+					session = c + 8;	/* past "session=" */
+					break;
+				}
+				c++;
+			}
+		}
 		else if (is_word(p, "\nContent-Length:")) {
 			/* Header format: "\nContent-Length: <digits>" — skip the
 			 * separator space (may be absent, e.g. "Content-Length:12"). */
@@ -280,7 +291,8 @@ __xdata uint8_t *scan_header(__xdata uint8_t *p)
 		dbg_string("\nFound multipart\n");
 		content_type += 30;
 		uint8_t i = 0;
-		while (content_type[i] != '\r' && content_type[i] != '\n') {
+		while (i < (sizeof(boundary) - 5) &&
+				content_type[i] != '\r' && content_type[i] != '\n') {
 			boundary[i + 4] = content_type[i];
 			i++;
 		}

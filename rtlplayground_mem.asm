@@ -28,6 +28,11 @@
 	.globl	_memset_PARM_3
 	.globl	_strtox_PARM_2
 	.globl	_strcmp_PARM_2
+	.globl	_memcmp
+	.globl	_is_mem_zero
+	.globl	_memcmp_PARM_2
+	.globl	_memcmp_PARM_3
+	.globl	_is_mem_zero_PARM_2
 
 	.equ	MPAGE, 0x92	; DW8051 page register for MOVX @Ri
 
@@ -55,6 +60,12 @@ _memcpy_PARM_3::
 _memcpy_PARM_2::
 	.ds 2
 _memset_PARM_2::
+	.ds 1
+_memcmp_PARM_2::
+	.ds 2
+_memcmp_PARM_3::
+	.ds 1
+_is_mem_zero_PARM_2::
 	.ds 1
 
 	.area	CSEG	(CODE)
@@ -290,5 +301,85 @@ strcmp_equal:
 	ret
 strcmp_less:
 	mov	dpl, #0xff		; a[i] < b[i] -> -1
+	pop	MPAGE
+	ret
+
+;-------------------------------------------------------------------------
+; bool memcmp(__xdata uint8_t *dst, __xdata uint8_t *src, uint8_t len)
+; "equals" helper: returns 1 if dst[0..len) == src[0..len) (the uip ARP
+; table checks use this instead of 16-bit loads).
+; dst in DPTR, src in _memcmp_PARM_2 (XDATA), len in _memcmp_PARM_3 (XDATA)
+;-------------------------------------------------------------------------
+_memcmp:
+	push	MPAGE
+	mov	a, dph
+	mov	MPAGE, a		; MPAGE:R1 = dst
+	mov	r1, dpl
+	mov	dptr, #_memcmp_PARM_2
+	movx	a, @dptr
+	mov	r4, a
+	inc	dptr
+	movx	a, @dptr
+	mov	r5, a			; r4:r5 = src
+	mov	dptr, #_memcmp_PARM_3
+	movx	a, @dptr
+	mov	r6, a			; r6 = len
+	mov	dpl, r4
+	mov	dph, r5			; DPTR = src
+memcmp_loop:
+	mov	a, r6
+	jz	memcmp_eq
+	movx	a, @dptr
+	inc	dptr
+	mov	r7, a
+	movx	a, @r1
+	inc	r1
+	cjne	r1, #0x00, memcmp_page_ok
+	inc	MPAGE
+memcmp_page_ok:
+	xrl	a, r7
+	jnz	memcmp_ne
+	dec	r6
+	sjmp	memcmp_loop
+memcmp_ne:
+	clr	a
+	sjmp	memcmp_ret
+memcmp_eq:
+	mov	a, #1
+memcmp_ret:
+	pop	MPAGE
+	ret
+
+;-------------------------------------------------------------------------
+; bool is_mem_zero(__xdata uint8_t *src, uint8_t len)
+; Returns 1 if all bytes in src[0..len) are zero (ARP table entry free
+; check).
+; src in DPTR, len in _is_mem_zero_PARM_2 (XDATA)
+;-------------------------------------------------------------------------
+_is_mem_zero:
+	push	MPAGE
+	mov	a, dph
+	mov	MPAGE, a		; MPAGE:R1 = src
+	mov	r1, dpl
+	mov	dptr, #_is_mem_zero_PARM_2
+	movx	a, @dptr
+	mov	r6, a			; r6 = len
+is_zero_loop:
+	mov	a, r6
+	jz	is_zero_all
+	movx	a, @r1
+	inc	r1
+	cjne	r1, #0x00, is_zero_page_ok
+	inc	MPAGE
+is_zero_page_ok:
+	jnz	is_zero_not
+	dec	r6
+	sjmp	is_zero_loop
+is_zero_not:
+	clr	a
+	sjmp	is_zero_ret
+is_zero_all:
+	mov	a, #1
+is_zero_ret:
 	pop	MPAGE
 	ret

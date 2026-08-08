@@ -64,7 +64,7 @@ __xdata char session_id[SESSION_ID_LENGTH + 1];
 __xdata uint8_t authenticated;
 __xdata uint8_t preshared_key[AEAD_KEY_LEN];
 __xdata uint32_t now;
-__xdata uint8_t *timeptr;
+__xdata uint8_t * __xdata timeptr;
 __xdata uint32_t last_session_use;
 /* Content-Length of the current POST request (0 = header absent). Used to
  * detect bodies that arrive split across TCP segments: uIP delivers one

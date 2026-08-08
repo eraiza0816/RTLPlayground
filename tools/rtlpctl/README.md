@@ -35,6 +35,19 @@ it leaves the client", which is the safest way to change settings and
 run diagnostics on a firmware that deliberately skips its own input
 validation.
 
+Because the validation lives on the client, it can be extended or
+tightened at any time **without updating the switch firmware**: safer
+checks are a client-side change only.  The same applies to new commands
+and to configuration files — nothing about the device itself has to
+change to operate it safely.
+
+For configuration changes in particular, the pre-shared key provides
+an extra layer: setting a PSK (`psk <hex64>` on the device, `--psk` on
+the client) switches the privileged operations (e.g. `commit`) to the
+encrypted `/enc` endpoint, so the commands travel over the wire
+encrypted and the settings changes cannot be read or tampered with in
+transit.
+
 ## Build
 
 ```bash

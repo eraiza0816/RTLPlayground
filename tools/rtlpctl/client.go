@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -229,6 +230,13 @@ func (c *Client) UploadFile(path, fieldName, filePath string) error {
 	req.Header.Set("Content-Type", w.FormDataContentType())
 	resp, err := c.http.Do(req)
 	if err != nil {
+		// The firmware signals a completed configuration upload by closing
+		// the connection (httpd.c: "ugly hack to signal connection finished
+		// after config upload"), so an EOF here means the config was
+		// accepted, not that the transfer failed.
+		if path == "/config" && (errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)) {
+			return nil
+		}
 		return err
 	}
 	defer resp.Body.Close()

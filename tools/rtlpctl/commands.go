@@ -217,6 +217,9 @@ func cmdConfig(client *Client, args []string, asJSON bool) error {
 		if err := validateFile(args[1]); err != nil {
 			return err
 		}
+		if err := validateConfigFile(args[1]); err != nil {
+			return err
+		}
 		return client.UploadFile("/config", "configuration", args[1])
 	}
 	text, err := client.GetText("/config")

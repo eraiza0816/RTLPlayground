@@ -747,6 +747,53 @@ func TestBinaryEndToEnd(t *testing.T) {
 
 	host := strings.TrimPrefix(ts.URL, "http://")
 
+	t.Run("config_upload_valid", func(t *testing.T) {
+		cfg := t.TempDir() + "/valid.conf"
+		content := "hostname sw-01\nip 192.168.10.50\ngw 192.168.10.1\nnetmask 255.255.255.0\nport 1 name uplink\npvid 3 100\nmtu 5 9000\ncommit\n"
+		if err := os.WriteFile(cfg, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		out, err := exec.Command(bin, "--host", h, "--password", "test123",
+			"config", "upload", cfg).CombinedOutput()
+		if err != nil {
+			t.Fatalf("config upload (valid) failed: %v\noutput: %s", err, out)
+		}
+	})
+
+	t.Run("config_upload_invalid", func(t *testing.T) {
+		cfg := t.TempDir() + "/bad.conf"
+		content := "hostname sw-01\npvid 2 9999\n"
+		if err := os.WriteFile(cfg, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		out, err := exec.Command(bin, "--host", h, "--password", "test123",
+			"config", "upload", cfg).CombinedOutput()
+		if err == nil || !strings.Contains(string(out), "config line 2") {
+			t.Errorf("expected 'config line 2' validation error, got err=%v out=%s", err, out)
+		}
+	})
+
+	t.Run("config_upload_bad_line_empty", func(t *testing.T) {
+		cfg := t.TempDir() + "/empty.conf"
+		if err := os.WriteFile(cfg, []byte("hostname sw-01\n\nmtu 1 10\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		out, err := exec.Command(bin, "--host", h, "--password", "test123",
+			"config", "upload", cfg).CombinedOutput()
+		if err == nil || !strings.Contains(string(out), "config line 3") {
+			t.Errorf("expected 'config line 3' validation error, got err=%v out=%s", err, out)
+		}
+	})
+
 	t.Run("help", func(t *testing.T) {
 		out, err := exec.Command(bin, "--help").Output()
 		if err != nil {

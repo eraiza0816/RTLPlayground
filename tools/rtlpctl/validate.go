@@ -29,6 +29,29 @@ func validateFile(path string) error {
 	return nil
 }
 
+// validateConfigFile checks every non-empty line of a configuration file
+// with the same command validation the interactive commands get.  The
+// firmware replays the file through its command parser without validating
+// the numbers itself (e.g. VLAN/MTU ranges), so a bad line is rejected
+// here before it reaches the switch.
+func validateConfigFile(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("cannot read %q: %w", path, err)
+	}
+	lines := strings.Split(string(data), "\n")
+	for i, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if err := validateCmdText(line); err != nil {
+			return fmt.Errorf("config line %d: %w", i+1, err)
+		}
+	}
+	return nil
+}
+
 func validateHost(host string) error {	if host == "" {
 		return fmt.Errorf("empty host")
 	}

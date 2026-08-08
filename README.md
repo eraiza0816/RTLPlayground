@@ -30,7 +30,7 @@ only the following features are provided:
 - Firmware updates via the web
 - Installation as a firmware upgrade from the original web-interface
 
-<img width="1420" height="623" alt="GUI" src="doc/images/gui.png" />
+<img width="1420" height="900" alt="GUI" src="doc/images/gui.png" />
 
 The firmware supports all hardware featues of devices with
 - 4 2.5GBit ports + 2 SFP+ ports

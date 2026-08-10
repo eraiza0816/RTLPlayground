@@ -101,7 +101,7 @@ html_min: $(HTML)
 
 ifeq ($(WEB),1)
 html_data.c html_data.h: $(HTML) tools/output/fileadder html_min
-	tools/output/fileadder -a $(HTML_LOCATION) -s $(IMAGESIZE) -b BANK1 -d $(HTML_MIN) -p html_data
+	tools/output/fileadder -a $(HTML_LOCATION) -s $(IMAGESIZE) -b BANK1 -z -d $(HTML_MIN) -p html_data
 # httpd.c includes html_data.h; declare it explicitly so a parallel
 # build (-j) does not compile httpd before the header is generated.
 $(BUILDDIR)/httpd/httpd.rel: html_data.h
@@ -158,7 +158,7 @@ $(BUILDDIR)/rtlplayground-$(FILENAME_EXTENSION).bin: $(BUILDDIR)/rtlplayground.i
 	tools/output/fileadder -a $(DEFAULT_CONFIG_LOCATION) -s $(IMAGESIZE) -d config.txt $@
 	tools/output/fileadder -a $(CONFIG_LOCATION) -s $(IMAGESIZE) -d config.txt $@
 ifeq ($(WEB),1)
-	tools/output/fileadder -a $(HTML_LOCATION) -s $(IMAGESIZE) -d $(HTML_MIN) -p html_data -b BANK1 $@
+	tools/output/fileadder -a $(HTML_LOCATION) -s $(IMAGESIZE) -z -d $(HTML_MIN) -p html_data -b BANK1 $@
 endif
 	tools/output/crc_calculator -u $@
 	ln -sf $(MACHINE)/rtlplayground-$(FILENAME_EXTENSION).bin output/rtlplayground.bin

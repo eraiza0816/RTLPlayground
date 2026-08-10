@@ -118,6 +118,7 @@ See [tools/webuitest](tools/webuitest).
 - [Building without the Web UI](doc/no-web.md)
 - [Multi-language support](doc/support-multi-language.md)
 - [WebUI performance](doc/webui-performance.md)
+- [WebUI asset compression (minify + gzip)](doc/webui-compression.md)
 
 ### Reference
 - [CLI command reference](doc/commands.md)

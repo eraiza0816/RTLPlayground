@@ -1035,7 +1035,10 @@ void httpd_appcall(void) __banked
 
 			slen = strtox(outbuf, "HTTP/1.1 200 OK\r\nContent-Type: ");
 			slen += strtox(outbuf + slen, mime_strings[f_data[entry].mime]);
-			slen += strtox(outbuf + slen, "; charset=UTF-8\r\nCache-Control: no-cache, no-store, must-revalidate\r\nAccess-Control-Allow-Origin: *\r\nContent-Security-Policy: style-src 'self' 'unsafe-inline'\r\n\r\n");
+			slen += strtox(outbuf + slen, "; charset=UTF-8\r\n");
+			if (f_data[entry].gzip)
+				slen += strtox(outbuf + slen, "Content-Encoding: gzip\r\n");
+			slen += strtox(outbuf + slen, "Cache-Control: no-cache, no-store, must-revalidate\r\nAccess-Control-Allow-Origin: *\r\nContent-Security-Policy: style-src 'self' 'unsafe-inline'\r\n\r\n");
 
 			len_left = f_data[entry].len;
 			if (len_left > (TCP_OUTBUF_SIZE - slen)) {

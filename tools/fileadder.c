@@ -310,7 +310,10 @@ int main(int argc, char **argv)
 			size_t data_read = addfile(pathbuffer, addr);
 			if (data_read) {
 				if (arguments.add_zero) {
-					buffer[addr + data_read + 1] = '\0';
+					/* NUL-terminate the data so the file table and the
+					 * strlen()-based size computation are deterministic
+					 * (the buffer past the file is otherwise uninitialised) */
+					buffer[addr + data_read] = '\0';
 					data_read++;
 				}
 				printf("Data inserted from %s at 0x%x, size: %ld\n", pathbuffer, addr, data_read);
@@ -327,7 +330,7 @@ int main(int argc, char **argv)
 
 		if (data_read) {
 			if (arguments.add_zero) {
-				buffer[arguments.address + data_read + 1] = '\0';
+				buffer[arguments.address + data_read] = '\0';
 				data_read++;
 			}
 			printf("Data inserted at 0x%x, size: %ld\n", arguments.address, data_read);

@@ -87,11 +87,22 @@ endif
 
 OBJS = ${SRCS:%.c=$(BUILDDIR)/%.rel}
 DEPS := ${SRCS:%.c=$(BUILDDIR)/%.d}
-HTML := $(shell find $(html) -name '*.js' -or -name '*.html' -or -name '*.svg')
+HTML := $(shell find html -name '*.js' -or -name '*.html' -or -name '*.svg')
+
+# Minified copy of the web UI sources, used as the fileadder input.
+# The raw html/ sources stay untouched for development.
+.PHONY: html_min
+html_min: $(HTML)
+	rm -rf html_min
+	mkdir -p html_min
+	@for f in $(HTML); do python3 tools/minify.py $$f html_min/$$(basename $$f) || exit 1; done
 
 ifeq ($(WEB),1)
-html_data.c html_data.h: $(HTML) tools/output/fileadder
-	tools/output/fileadder -a $(HTML_LOCATION) -s $(IMAGESIZE) -b BANK1 -d html -p html_data
+html_data.c html_data.h: $(HTML) tools/output/fileadder html_min
+	tools/output/fileadder -a $(HTML_LOCATION) -s $(IMAGESIZE) -b BANK1 -d html_min -p html_data
+# httpd.c includes html_data.h; declare it explicitly so a parallel
+# build (-j) does not compile httpd before the header is generated.
+$(BUILDDIR)/httpd/httpd.rel: html_data.h
 endif
 
 $(VERSION_HEADER):
@@ -144,7 +155,7 @@ $(BUILDDIR)/rtlplayground-$(FILENAME_EXTENSION).bin: $(BUILDDIR)/rtlplayground.i
 	tools/output/fileadder -a $(DEFAULT_CONFIG_LOCATION) -s $(IMAGESIZE) -d config.txt $@
 	tools/output/fileadder -a $(CONFIG_LOCATION) -s $(IMAGESIZE) -d config.txt $@
 ifeq ($(WEB),1)
-	tools/output/fileadder -a $(HTML_LOCATION) -s $(IMAGESIZE) -d html -p html_data -b BANK1 $@
+	tools/output/fileadder -a $(HTML_LOCATION) -s $(IMAGESIZE) -d html_min -p html_data -b BANK1 $@
 endif
 	tools/output/crc_calculator -u $@
 	ln -sf $(MACHINE)/rtlplayground-$(FILENAME_EXTENSION).bin output/rtlplayground.bin

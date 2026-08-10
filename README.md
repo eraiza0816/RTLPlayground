@@ -386,9 +386,15 @@ Enjoy playing!
 
 The following documents give further documentation on specific features of the RTL837x SoCs:
 - [RTL8372/3 Feature support](doc/hardware.md)
+- [Authentication (password vs. PSK mode)](doc/authentication.md)
+- [Ping (ICMP echo)](doc/ping.md)
+- [LLDP (IEEE 802.1AB)](doc/lldp.md)
+- [IGMP (IP-MC streaming)](doc/igmp.md)
+- [Storm control](doc/storm-control.md)
+- [QoS (802.1p priority)](doc/qos.md)
+- [Ingress ACL](doc/acl.md)
 - [CPU Port](doc/CpuPort.md)
 - [L2 learning](doc/l2.md) 
-- [IGMP (IP-MC streaming)](doc/igmp.md)
 - [SFP+ ports](doc/sfp.md) 
 - [Telnet access](doc/telnet.md)
 - [Trunking aka. port aggregation](doc/trunking.md)

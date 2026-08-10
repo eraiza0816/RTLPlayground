@@ -110,6 +110,25 @@ char is_word(char *c, char *d)
 }
 
 
+/* /enc "api <path>" mode captures the JSON responses of the send_*
+ * functions instead of writing them to the socket, so the encrypted
+ * endpoint can return the API body like the firmware does. */
+static char enc_resp[4096];
+static int enc_resp_len;
+static int enc_capture;
+
+static void emit(int s, const void *data, size_t len)
+{
+	if (enc_capture) {
+		if (enc_resp_len + (int)len < (int)sizeof(enc_resp)) {
+			memcpy(enc_resp + enc_resp_len, data, len);
+			enc_resp_len += len;
+		}
+	} else {
+		emit(s, data, len);
+	}
+}
+
 int hasSuffix(const char *str, const char *suffix)
 {
     if (!str || !suffix)
@@ -163,9 +182,9 @@ void send_basic_info(int socket)
 	json_object_object_add(v, "hostname", json_object_new_string("rtlplayground"));
 	json_object_object_add(v, "sfp_slot_0", json_object_new_string("OEM/10G-SFP+/12345678"));
 
-	write(socket, header, strlen(header));
+	emit(socket, header, strlen(header));
 	jstring = json_object_to_json_string_ext(v, JSON_C_TO_STRING_PLAIN);
-	write(socket, jstring, strlen(jstring));
+	emit(socket, jstring, strlen(jstring));
 	json_object_put(v);
 }
 
@@ -184,10 +203,10 @@ void send_vlan(int s, int vlan)
 	json_object_object_add(v, "pvid", json_object_new_string(num_buff));
 	json_object_object_add(v, "name", json_object_new_string(vlan == 1 ? "Default" : "VLAN"));
 
-        write(s, header, strlen(header));
+        emit(s, header, strlen(header));
 
 	jstring = json_object_to_json_string_ext(v, JSON_C_TO_STRING_PLAIN);
-        write(s, jstring, strlen(jstring));
+        emit(s, jstring, strlen(jstring));
 	json_object_put(v);
 }
 
@@ -250,10 +269,10 @@ void send_status(int s)
 	}
 	last_called = now;
 
-        write(s, header, strlen(header));
+        emit(s, header, strlen(header));
 	
 	jstring = json_object_to_json_string_ext(ports, JSON_C_TO_STRING_PLAIN);
-        write(s, jstring, strlen(jstring));
+        emit(s, jstring, strlen(jstring));
 	json_object_put(v);
 }
 
@@ -273,9 +292,9 @@ void send_counters(int s, int port)
 		sprintf(counter_buf, "0x%016lx", 0x1234UL + i);
 		json_object_array_add(counters, json_object_new_string(counter_buf));
 	}
-        write(s, header, strlen(header));
+        emit(s, header, strlen(header));
 	jstring = json_object_to_json_string_ext(counters, JSON_C_TO_STRING_PLAIN);
-        write(s, jstring, strlen(jstring));
+        emit(s, jstring, strlen(jstring));
 	json_object_put(counters);
 }
 
@@ -305,10 +324,10 @@ void send_eee(int s)
 		json_object_array_add(ports, v);
 	}
 
-        write(s, header, strlen(header));
+        emit(s, header, strlen(header));
 	
 	jstring = json_object_to_json_string_ext(ports, JSON_C_TO_STRING_PLAIN);
-        write(s, jstring, strlen(jstring));
+        emit(s, jstring, strlen(jstring));
 	json_object_put(ports);
 }
 
@@ -355,10 +374,10 @@ void send_bandwidth(int s)
 		json_object_array_add(ports, v);
 	}
 
-        write(s, header, strlen(header));
+        emit(s, header, strlen(header));
 	
 	jstring = json_object_to_json_string_ext(ports, JSON_C_TO_STRING_PLAIN);
-        write(s, jstring, strlen(jstring));
+        emit(s, jstring, strlen(jstring));
 	json_object_put(ports);
 }
 
@@ -384,10 +403,10 @@ void send_mirror(int s)
 	json_object_object_add(mirror, "mirror_tx", json_object_new_string(mirror_tx_buf));
 	json_object_object_add(mirror, "mirror_rx", json_object_new_string(mirror_rx_buf));
 
-        write(s, header, strlen(header));
+        emit(s, header, strlen(header));
 
 	jstring = json_object_to_json_string_ext(mirror, JSON_C_TO_STRING_PLAIN);
-        write(s, jstring, strlen(jstring));
+        emit(s, jstring, strlen(jstring));
 	json_object_put(mirror);
 }
 
@@ -433,9 +452,9 @@ void send_l2(int s, int idx)
 		printf("j %d, transferred %d\n", j, transferred);
 	}
 
-        write(s, header, strlen(header));
+        emit(s, header, strlen(header));
 	jstring = json_object_to_json_string_ext(entries, JSON_C_TO_STRING_PLAIN);
-        write(s, jstring, strlen(jstring));
+        emit(s, jstring, strlen(jstring));
 	json_object_put(entries);
 }
 
@@ -457,10 +476,10 @@ void send_lag(int s)
 		json_object_object_add(v, "hash", json_object_new_string("0x7e"));
 		json_object_array_add(lags, v);
 	}
-        write(s, header, strlen(header));
+        emit(s, header, strlen(header));
 	
 	jstring = json_object_to_json_string_ext(lags, JSON_C_TO_STRING_PLAIN);
-        write(s, jstring, strlen(jstring));
+        emit(s, jstring, strlen(jstring));
 	json_object_put(lags);
 }
 
@@ -481,10 +500,10 @@ void send_mtu(int s)
 		json_object_object_add(v, "mtu", json_object_new_string(mtu));
 		json_object_array_add(mtus, v);
 	}
-        write(s, header, strlen(header));
+        emit(s, header, strlen(header));
 
 	jstring = json_object_to_json_string_ext(mtus, JSON_C_TO_STRING_PLAIN);
-        write(s, jstring, strlen(jstring));
+        emit(s, jstring, strlen(jstring));
 	json_object_put(mtus);
 }
 
@@ -493,10 +512,10 @@ void send_cmd_log(int s)
 {
         char *header = "HTTP/1.1 200 OK\r\n"
                          "Content-Type: text/plain; charset=UTF-8\r\n\r\n";
-        write(s, header, strlen(header));
+        emit(s, header, strlen(header));
 
 	for (int i = 0; i < cmd_ptr; i++) {
-		write(s, cmd_history[i], strlen(cmd_history[i]));
+		emit(s, cmd_history[i], strlen(cmd_history[i]));
 		printf("%d: %s\n", i, cmd_history[i]);
 	}
 }
@@ -506,16 +525,16 @@ void send_config(int s)
 {
         char *header = "HTTP/1.1 200 OK\r\n"
                          "Content-Type: text/plain; charset=UTF-8\r\n\r\n";
-        write(s, header, strlen(header));
+        emit(s, header, strlen(header));
 
 	if (uploaded_config && uploaded_config_len) {
 		printf("Sending uploaded config\n");
 		printf("Uploaded config len: %d\n", uploaded_config_len);
 		printf(">%s<", uploaded_config);
-		write(s, uploaded_config, uploaded_config_len);
+		emit(s, uploaded_config, uploaded_config_len);
 	} else {
 		char *default_cfg = "ip 192.168.10.247\ngw 192.168.10.1\nnetmask 255.255.255.0\n";
-		write(s, default_cfg, strlen(default_cfg));
+		emit(s, default_cfg, strlen(default_cfg));
 	}
 }
 
@@ -540,9 +559,9 @@ void send_vlanlist(int s)
 	json_object_object_add(v, "members", json_object_new_string("0x00000601"));
 	json_object_array_add(arr, v);
 
-        write(s, header, strlen(header));
+        emit(s, header, strlen(header));
 	jstring = json_object_to_json_string_ext(arr, JSON_C_TO_STRING_PLAIN);
-        write(s, jstring, strlen(jstring));
+        emit(s, jstring, strlen(jstring));
 	json_object_put(arr);
 }
 
@@ -551,7 +570,7 @@ void send_l2_delete(int s, int idx)
         char *response = "HTTP/1.1 200 OK\r\n"
                        "Content-Type: application/json; charset=UTF-8\r\n\r\n"
                        "{\"result\":0}";
-        write(s, response, strlen(response));
+        emit(s, response, strlen(response));
 }
 
 void send_sfp_eeprom(int s, int slot)
@@ -569,9 +588,9 @@ void send_sfp_eeprom(int s, int slot)
 	data[512] = '\0';
 	json_object_object_add(v, "data", json_object_new_string(data));
 
-        write(s, header, strlen(header));
+        emit(s, header, strlen(header));
 	jstring = json_object_to_json_string_ext(v, JSON_C_TO_STRING_PLAIN);
-        write(s, jstring, strlen(jstring));
+        emit(s, jstring, strlen(jstring));
 	json_object_put(v);
 }
 
@@ -605,9 +624,9 @@ void send_sfp_diag(int s)
 		json_object_array_add(arr, v);
 	}
 
-	write(s, header, strlen(header));
+	emit(s, header, strlen(header));
 	jstring = json_object_to_json_string_ext(arr, JSON_C_TO_STRING_PLAIN);
-	write(s, jstring, strlen(jstring));
+	emit(s, jstring, strlen(jstring));
 	json_object_put(arr);
 }
 
@@ -662,9 +681,9 @@ void send_ping(int s)
 	json_object_object_add(v, "min_rtt", json_object_new_int(1));
 	json_object_object_add(v, "max_rtt", json_object_new_int(9));
 	json_object_object_add(v, "sum_rtt", json_object_new_int(18));
-	write(s, header, strlen(header));
+	emit(s, header, strlen(header));
 	jstring = json_object_to_json_string_ext(v, JSON_C_TO_STRING_PLAIN);
-	write(s, jstring, strlen(jstring));
+	emit(s, jstring, strlen(jstring));
 	json_object_put(v);
 }
 
@@ -685,9 +704,9 @@ void send_arp(int s)
 	json_object_object_add(v, "mac", json_object_new_string("18:ec:e7:95:a9:87"));
 	json_object_object_add(v, "age", json_object_new_int(0));
 	json_object_array_add(arr, v);
-	write(s, header, strlen(header));
+	emit(s, header, strlen(header));
 	jstring = json_object_to_json_string_ext(arr, JSON_C_TO_STRING_PLAIN);
-	write(s, jstring, strlen(jstring));
+	emit(s, jstring, strlen(jstring));
 	json_object_put(arr);
 }
 
@@ -695,8 +714,8 @@ void send_lldp(int s)
 {
 	char *header = "HTTP/1.1 200 OK\r\n"
 		"Content-Type: application/json; charset=UTF-8\r\n\r\n";
-	write(s, header, strlen(header));
-	write(s, "[]", 2);
+	emit(s, header, strlen(header));
+	emit(s, "[]", 2);
 }
 
 void send_igmp(int s)
@@ -714,9 +733,9 @@ void send_igmp(int s)
 	json_object_object_add(v, "ops", ops);
 	groups = json_object_new_array_ext(0);
 	json_object_object_add(v, "groups", groups);
-	write(s, header, strlen(header));
+	emit(s, header, strlen(header));
 	jstring = json_object_to_json_string_ext(v, JSON_C_TO_STRING_PLAIN);
-	write(s, jstring, strlen(jstring));
+	emit(s, jstring, strlen(jstring));
 	json_object_put(v);
 }
 
@@ -736,9 +755,9 @@ void send_storm(int s)
 		json_object_object_add(v, "pps", json_object_new_int(0));
 		json_object_array_add(arr, v);
 	}
-	write(s, header, strlen(header));
+	emit(s, header, strlen(header));
 	jstring = json_object_to_json_string_ext(arr, JSON_C_TO_STRING_PLAIN);
-	write(s, jstring, strlen(jstring));
+	emit(s, jstring, strlen(jstring));
 	json_object_put(arr);
 }
 
@@ -762,9 +781,9 @@ void send_qos(int s)
 	for (int i = 0; i < PORTS; i++)
 		json_object_array_add(sched, json_object_new_string("S1S1S1S1S1S1S1S1"));
 	json_object_object_add(v, "sched", sched);
-	write(s, header, strlen(header));
+	emit(s, header, strlen(header));
 	jstring = json_object_to_json_string_ext(v, JSON_C_TO_STRING_PLAIN);
-	write(s, jstring, strlen(jstring));
+	emit(s, jstring, strlen(jstring));
 	json_object_put(v);
 }
 
@@ -772,8 +791,8 @@ void send_acl(int s)
 {
 	char *header = "HTTP/1.1 200 OK\r\n"
 		"Content-Type: application/json; charset=UTF-8\r\n\r\n";
-	write(s, header, strlen(header));
-	write(s, "[]", 2);
+	emit(s, header, strlen(header));
+	emit(s, "[]", 2);
 }
 
 void send_running_config(int s)
@@ -786,8 +805,8 @@ void send_running_config(int s)
 		"igmp off\r\n"
 		"qos off\r\n"
 		"storm-control off\r\n";
-	write(s, header, strlen(header));
-	write(s, body, strlen(body));
+	emit(s, header, strlen(header));
+	emit(s, body, strlen(body));
 }
 
 void send_not_found(int socket) {
@@ -795,7 +814,7 @@ void send_not_found(int socket) {
 			"Content-Type: text/html\r\n\r\n"
 			"<!DOCTYPE html> <html><head><title>Not Found</title></head>"
 			"<body><h1>Not found!</h1></html>";
-	write(socket, response, strlen(response));
+	emit(socket, response, strlen(response));
 }
 
 
@@ -804,20 +823,20 @@ void send_bad_request(int socket) {
 			"Content-Type: text/html\r\n\r\n"
 			"<!DOCTYPE html> <html><head><title>Bad Request</title></head>"
 			"<body><h1>Bad Request!</h1></html>";
-	write(socket, response, strlen(response));
+	emit(socket, response, strlen(response));
 }
 
 
 void send_to_login(int socket) {
 	char *response = "HTTP/1.1 302 Found\r\n"
 			 "Location: login.html\r\n\r\n";
-	write(socket, response, strlen(response));
+	emit(socket, response, strlen(response));
 }
 
 
 void send_unauthorized(int socket) {
 	char *response = "HTTP/1.1 401 Unauthorized\r\n\r\n";
-	write(socket, response, strlen(response));
+	emit(socket, response, strlen(response));
 }
 
 
@@ -1262,6 +1281,57 @@ void launch(struct Server *server)
 					strcpy(cmd_history[cmd_ptr], body + AEAD_NONCE_LEN);
 					cmd_ptr++;
 					print_cmd_history();
+
+					if (is_word(body + AEAD_NONCE_LEN, "api")) {
+						/* "api <path>": capture the JSON response of the matching
+						 * send_* handler and return it encrypted, like the
+						 * firmware's /enc does. */
+						char *path = (char *)(body + AEAD_NONCE_LEN + 4);
+						enc_resp_len = 0;
+						enc_capture = 1;
+						if (!strncmp(path, "/status.json", 12)) send_status(new_socket);
+						else if (!strncmp(path, "/information.json", 17)) send_basic_info(new_socket);
+						else if (!strncmp(path, "/sfp_diag.json", 14)) send_sfp_diag(new_socket);
+						else if (!strncmp(path, "/eee.json", 9)) send_eee(new_socket);
+						else if (!strncmp(path, "/bandwidth.json", 15)) send_bandwidth(new_socket);
+						else if (!strncmp(path, "/mirror.json", 12)) send_mirror(new_socket);
+						else if (!strncmp(path, "/lag.json", 9)) send_lag(new_socket);
+						else if (!strncmp(path, "/mtu.json", 9)) send_mtu(new_socket);
+						else if (!strncmp(path, "/vlanlist", 9)) send_vlanlist(new_socket);
+						else if (!strncmp(path, "/counters.json", 14)) send_counters(new_socket, atoi(path + 20));
+						else if (!strncmp(path, "/l2.json", 8)) send_l2(new_socket, atoi(path + 15));
+						else if (!strncmp(path, "/vlan.json", 10)) send_vlan(new_socket, atoi(path + 17));
+						else if (!strncmp(path, "/ping.json", 10)) send_ping(new_socket);
+						else if (!strncmp(path, "/arp.json", 9)) send_arp(new_socket);
+						else if (!strncmp(path, "/lldp.json", 10)) send_lldp(new_socket);
+						else if (!strncmp(path, "/igmp.json", 10)) send_igmp(new_socket);
+						else if (!strncmp(path, "/storm-control.json", 19)) send_storm(new_socket);
+						else if (!strncmp(path, "/qos.json", 9)) send_qos(new_socket);
+						else if (!strncmp(path, "/acl.json", 9)) send_acl(new_socket);
+						else if (!strncmp(path, "/running-config", 15)) send_running_config(new_socket);
+						else if (!strncmp(path, "/config", 7)) send_config(new_socket);
+						else { snprintf(enc_resp, sizeof(enc_resp), "HTTP/1.1 404 Not found\r\n\r\n"); enc_resp_len = strlen(enc_resp); }
+						enc_capture = 0;
+
+						/* strip the HTTP header, keep the JSON body */
+						char *hdr_end = strstr(enc_resp, "\r\n\r\n");
+						int body_at = hdr_end ? (int)(hdr_end + 4 - enc_resp) : 0;
+						int body_len = enc_resp_len - body_at;
+
+						olen = snprintf(out, sizeof(out),
+								"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n\r\n");
+						for (i = 0; i < AEAD_NONCE_LEN; i++)
+							resp_nonce[i] = (uint8_t)(rand() & 0xff);
+						for (i = 0; i < AEAD_NONCE_LEN; i++)
+							out[olen++] = (char)resp_nonce[i];
+						aead_encrypt((uint8_t *)psk, resp_nonce, NULL, 0,
+							     (uint8_t *)enc_resp + body_at, body_len,
+							     (uint8_t *)out + olen,
+							     (uint8_t *)out + olen + body_len);
+						olen += body_len + 16;
+						write(new_socket, out, olen);
+						goto done;
+					}
 
 					/* encrypted response: nonce || {"result":"ok"} || tag */
 					olen = snprintf(out, sizeof(out),

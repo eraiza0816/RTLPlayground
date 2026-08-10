@@ -674,7 +674,24 @@ func (e *Exporter) countL2Entries() int {
 }
 
 func (e *Exporter) login() error {
-	form := url.Values{"pwd": {e.password}}
+	var form url.Values
+	if e.psk != nil {
+		// PSK mode: the firmware rejects password logins while a pre-shared
+		// key is set, so authenticate with the encrypted challenge
+		// (hex(nonce[12] || ct || tag) of the fixed 12-byte string
+		// "RTLP-LOGIN-1").  The PSK itself never leaves the client.
+		nonce := make([]byte, aeadNonceLen)
+		if _, err := rand.Read(nonce); err != nil {
+			return fmt.Errorf("login nonce: %w", err)
+		}
+		pkt, err := aeadEncrypt(e.psk, nonce, []byte("RTLP-LOGIN-1"))
+		if err != nil {
+			return fmt.Errorf("login challenge: %w", err)
+		}
+		form = url.Values{"enc": {hex.EncodeToString(pkt)}}
+	} else {
+		form = url.Values{"pwd": {e.password}}
+	}
 	resp, err := e.client.PostForm(e.target+"/login", form)
 	if err != nil {
 		return fmt.Errorf("POST login: %w", err)

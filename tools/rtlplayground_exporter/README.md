@@ -4,7 +4,7 @@ A [Prometheus](https://prometheus.io/) exporter for RTLPlayground-managed networ
 
 No firmware modifications are required — the exporter speaks the same JSON API that the Web UI uses.
 
-With a pre-shared key (`--psk`, 64 hex chars) the exporter accesses the switch through the **encrypted `/enc` API** (ChaCha20-Poly1305 AEAD, RFC 8439) introduced in firmware **v0.2.23**. Every request and response is encrypted and no password login is needed. Without `--psk` it falls back to the plaintext password + session cookie authentication.
+With a pre-shared key (`--psk`, 64 hex chars) the exporter accesses the switch through the **encrypted `/enc` API** (ChaCha20-Poly1305 AEAD, RFC 8439) introduced in firmware **v0.2.23**. Every request and response is encrypted and no password login is needed: the exporter authenticates with the encrypted login challenge, so it also works when the firmware is in **PSK mode** (where password logins are rejected, see [doc/authentication.md](../../doc/authentication.md)). Without `--psk` it falls back to the plaintext password + session cookie authentication.
 
 ## Supported versions
 

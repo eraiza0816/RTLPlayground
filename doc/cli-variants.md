@@ -1,5 +1,7 @@
 # CLI Variants: Lite and Full
 
+Type: reference · Feature: the Lite and Full console CLI variants
+
 The firmware ships with **two console CLI variants** selected at build time by
 the `FULL` make variable (the same mechanism as the `WEB` WebUI switch).
 The default build is **Lite**; CI builds all four combinations

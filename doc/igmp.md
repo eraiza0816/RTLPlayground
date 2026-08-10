@@ -1,4 +1,6 @@
 # IGMP (Internet Group Management Protocol) and MLD (Multicast Listener Discovery)
+
+Type: reference · Feature: IP multicast snooping, the hardware querier and MLD
 IGMP (for IPv4) and MLD (for IPv6) are protocols that control the distribution
 of Layer-3 Multicast packets on the LAN, which otherwise would be flooded across the
 entire network. For this to work, IGMP/MLD messages are sent, in particular
@@ -137,38 +139,5 @@ rtlpctl igmp querier on|off|show
 rtlpctl igmp mld on|off|show
 ```
 
-## A Test with IP-MC streaming using vlc
-The following is a simple test verifying the IGMP and IP-MC switching capabilities.
-
-You will need 2 Linux/Windows devices with a GUI plus a switch.
-
-Connect the switch to an MC-aware router (e.g. to your home network). Connect the 2 Linux/Windows
-devices to the switch. The connection to the router makes sure that Linux/Windows will send
-out IGMP messages on the ports connected to the switch, which they will only do if they are aware
-that there is a MC-aware router in the network. Make sure the 2 GUI devices are in the home network
-(e.g. via DHCP).
-
-Start streaming on one of the Linux/Windows machines:
-```
-$ vlc your_video.mp4 --sout="#std{access=udp, mux=ts, dst=239.255.0.1:8090}"
-```
-At this point you should see all switch ports flickering heavily as the MC stream is switched to all
-switch ports, including flooding your home network. If you do not see any packets arriving at the switch,
-you can force the output interface of vlc by using `--miface=<ifname>`
-
-Enable IGMP on the switch-CLI:
-```
-> igmp on
-```
-The flickering should now stop on all ports except the port where the streaming device is connected:
-the switch drops all IP-MC packets as there are no listeners.
-
-Now, on the second Linux/Windows device start listening to the stream:
-```
-$ vlc udp://@239.255.0.1:8090
-```
-You should see the port-led of the port the displaying machine is connected to, to start flickering
-and after some synchronization, the video should start playing.
-
-Stopping vlc should also switching of the IP-MC frames to the listening device, i.e. the port-leds
-should stop flickering.
+To verify IGMP snooping with a real multicast stream, see
+[How-to: Test IGMP with IP-MC streaming using VLC](how-to/igmp-streaming-test.md).

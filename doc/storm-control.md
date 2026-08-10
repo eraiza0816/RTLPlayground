@@ -1,5 +1,7 @@
 # Storm Control
 
+Type: reference · Feature: per-type storm rate limits
+
 Storm control limits the rate of broadcast, multicast and unknown
 unicast frames on the ingress side, protecting the switch and the
 connected devices from frame storms (e.g. a misbehaving device flooding

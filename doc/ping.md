@@ -1,5 +1,7 @@
 # Ping (ICMP echo)
 
+Type: reference · Feature: the switch's ICMP echo sender
+
 The switch itself can send ICMP echo requests to a user-specified IP
 address and report round-trip time statistics.  This is useful for
 diagnosing the network from the switch's point of view (e.g. "can the

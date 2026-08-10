@@ -1,5 +1,7 @@
 # Automation
 
+Type: how-to · Task: automate the switch over telnet/HTTP
+
 ## CLI via Telnet
 
 If Telnet is enabled (`telnet on`), CLI commands can be automated via Telnet:

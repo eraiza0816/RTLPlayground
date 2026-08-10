@@ -1,5 +1,7 @@
 # The CPU Port
 
+Type: reference · Feature: the CPU port of the RTL837x SoCs
+
 The RTL827x provide a CPU Port for a NIC on the 8051 side of the SoC.
 
 ## Receiving packets

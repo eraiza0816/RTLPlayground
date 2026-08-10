@@ -1,5 +1,7 @@
 # WebUI 型安全性導入の方針 (TypeScript / JSDoc 検討)
 
+Type: explanation · Topic: the WebUI TypeScript conversion
+
 ## 概要
 
 `html/main.js` (~55KB) と `html/i18n.js` (~13KB) は型情報を持たず、保守性の不安がある。

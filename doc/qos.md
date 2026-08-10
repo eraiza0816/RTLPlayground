@@ -1,5 +1,7 @@
 # QoS (802.1p priority handling)
 
+Type: reference · Feature: 802.1p priority handling (PCP/DSCP, scheduling)
+
 Quality of Service lets the switch prioritise traffic based on the
 802.1p PCP field (VLAN tag priority) and/or the IP DSCP field, and
 selects the egress scheduling per port.

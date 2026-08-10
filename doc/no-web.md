@@ -1,5 +1,7 @@
 # Building without the Web UI
 
+Type: how-to · Task: build the firmware without the Web UI
+
 The `WEB` build option controls whether the Web UI (HTML, JS, CSS) is embedded
 in the firmware. The HTTP server and JSON API endpoints are always included;
 only the static web assets are excluded.

@@ -1,5 +1,7 @@
 # Ingress ACL
 
+Type: reference · Feature: ingress ACL rules (MAC/VLAN/IP)
+
 Access Control Lists filter incoming frames based on their destination
 MAC address, VLAN tag or IP address.  A rule either **permits** or
 **denies** matching frames on a port.

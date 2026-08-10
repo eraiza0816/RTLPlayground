@@ -1,5 +1,7 @@
 # メモリ/文字列関数のアセンブラ化計画
 
+Type: explanation · Topic: the assembler memfuncs plan
+
 ## Overview
 
 C で書かれたメモリ/文字列関数 (`memcpy` 等) と 10 進数変換コードをアセンブラ (sdas8051) で再実装し、

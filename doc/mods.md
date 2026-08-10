@@ -1,5 +1,7 @@
 # Modifications
 
+Type: how-to · Task: hardware modifications and flash replacement
+
 ## SPI-Flash Memory
 
 SPI-Flash memory can be replaced with an other type. Because the chip is defect, like #69 & #70 or you have an unmanaged-switch with a small flash size, and want to convert it to a managed-variant to run `RTLPlayground` software on it. Currently `RTLPlayground`-firmware expects `8 MBit / 1 MiB`.

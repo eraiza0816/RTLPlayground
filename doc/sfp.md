@@ -1,5 +1,7 @@
 # SFP+ Slots
 
+Type: reference · Feature: SFP+ module support, I2C access and EEPROM editing
+
 The RTL8372/3 provide support for 1 or 2 SFP+ slots, which support fiber and Ethernet
 module with speeds of 1GBit, 2.5GBit and 10GBit. 5GBit could be possible but is not
 implemented due to the lack of suitable modules.
@@ -249,26 +251,8 @@ read/write operations:
 - Some modules (e.g. Finisar/Coherent) lock up when given a wrong password until
   they are power-cycled; most modules are writable without any password.
 
-### Example - recode a Fibre Channel module to Ethernet
-
-```
-> sfp 1 describe
-  Identifier: 0x03 (SFP)
-  Connector: 0x03 (LC)
-  Vendor: FINISAR
-  PN: FTLF8536P4BCV
-  Rate: 96 x100MBd
-  Compliance:
-  CC_BASE: 0x35 (BAD)
-  CC_EXT: 0xce (OK)
-
-> sfp 1 patch
-  Patch OK
-
-> sfp 1 describe
-  Compliance: 10GBase-LR 1000Base-LX
-  CC_BASE: 0x31 (OK)
-```
+For a concrete example of recoding a Fibre Channel module to Ethernet,
+see [How-to: Recode an FC module to Ethernet](how-to/sfp-recode.md).
 
 ## SFP EEPROM Editor (Web Interface)
 

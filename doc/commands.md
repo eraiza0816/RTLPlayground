@@ -264,3 +264,88 @@ summary and a reference to the detailed description.
 > sfp <slot> save|restore|fix|write|bulk
   SFP EEPROM write operations. See doc/sfp.md for details.
 ```
+
+## Configuration file (config.txt)
+
+Before compiling you may write configuration parameters into `config.txt`
+so the switch gets its settings at first boot.  The file contains the
+same commands as the console, one per line:
+
+```
+ip xxx.xxx.xxx.xxx      = IP adress of the switch
+gw yyy.yyy.yyy.yyy      = IP adress of the gateway
+netmask zzz.zzz.zzz.zzz = Network mask of the switch
+hostname name           = Hostname of the switch (defaults to machine name)
+port x name xxx         = Name xxx the port number x
+port z 1g               = Set 1g speed for port z
+igmp on/off             = Turn IGMP on or off
+```
+
+After the flash is done, the same settings can be edited in the
+"Advanced Settings" tab of the web interface (System Settings), which
+shows and edits the running configuration directly.
+
+## Example console session
+
+The console is a minimal prompt; a boot and an example session look like
+this:
+
+```
+Detecting CPU
+RTL8373 detected
+Starting up...
+  Flash controller
+
+NIC reset
+rtl8372_init called
+
+RTL837X_REG_SDS_MODES: 0x00000bed
+
+phy_config_8224 called
+
+phy_config_8224 done
+
+rtl8224_phy_enable called
+
+rtl8224_phy_enable done
+
+rtl8372_init done
+
+A minimal prompt to explore the RTL8372:
+
+CPU detected: RTL8373
+Clock register: 0x00001101
+Register 0x7b20/RTL837X_REG_SDS_MODES: 0x00000bed
+Verifying PHY settings:
+
+ Port   State   Link    TxGood          TxBad           RxGood          RxBad
+1       On      Down    0x00000000      0x00000000      0x00000000      0x00000000
+2       On      Down    0x00000000      0x00000000      0x00000000      0x00000000
+3       On      Down    0x00000000      0x00000000      0x00000000      0x00000000
+4       On      Down    0x00000000      0x00000000      0x00000000      0x00000000
+5       On      2.5G    0x00000008      0x00000000      0x00000000      0x00000000
+6       On      Down    0x00000000      0x00000000      0x00000000      0x00000000
+7       On      Down    0x00000000      0x00000000      0x00000000      0x00000000
+8       On      Down    0x00000000      0x00000000      0x00000000      0x00000000
+9       NO SFP  Down    0x00000000      0x00000000      0x00000000      0x00000000
+
+> port 5 1g
+  CMD: port 5 1g
+PORT 04 1G
+
+> stat
+  CMD: stat
+ Port   State   Link    TxGood          TxBad           RxGood          RxBad
+1       On      Down    0x00000000      0x00000000      0x00000000      0x00000000
+2       On      Down    0x00000000      0x00000000      0x00000000      0x00000000
+3       On      Down    0x00000000      0x00000000      0x00000000      0x00000000
+4       On      Down    0x00000000      0x00000000      0x00000000      0x00000000
+5       On      1000M   0x00000035      0x00000000      0x00000017      0x00000000
+6       On      Down    0x00000000      0x00000000      0x00000000      0x00000000
+7       On      Down    0x00000000      0x00000000      0x00000000      0x00000000
+8       On      Down    0x00000000      0x00000000      0x00000000      0x00000000
+9       NO SFP  Down    0x00000000      0x00000000      0x00000000      0x00000000
+```
+
+All CLI commands are available via the serial console (UART, 115200 8N1)
+or Telnet (port 23, disabled by default; enable with `telnet on`).

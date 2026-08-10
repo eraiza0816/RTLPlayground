@@ -597,9 +597,16 @@ func cmdSfp(client *Client, args []string, asJSON bool) error {
 // cmdPsk sets the device-side preshared key for the encrypted /enc
 // endpoint (console command preshared_key).  Use --psk/--env-file to
 // configure the local key for enc-cmd instead.
+// cmdPsk sets or clears the device-side preshared key for the encrypted
+// /enc endpoint (console command preshared_key).  "psk off" sends the
+// bare console command, which the firmware treats as "clear the key" -
+// no need to type 64 zeros.
 func cmdPsk(client *Client, args []string, asJSON bool) error {
 	if len(args) != 1 {
-		return fmt.Errorf("usage: psk <64-hex-chars>")
+		return fmt.Errorf("usage: psk <64-hex-chars> | psk off")
+	}
+	if args[0] == "off" {
+		return sendConsoleCmd(client, "preshared_key")
 	}
 	if err := validatePSK(args[0]); err != nil {
 		return err
@@ -770,7 +777,8 @@ Commands (default mode):
   telnet on|off              Enable/disable the telnet console
   web on|off                 Enable/disable the web UI
   commit                     Save the running config to flash
-  psk <hex64>                Set the device preshared key (encrypted /enc)
+  psk <hex64>|off            Set or clear the device preshared key (encrypted /enc);
+                             use 'psk off' with --psk while the key is set
   sfp ...                    SFP module control (see below)
   regget <addr>              Read an RTL8370 register (hex)
   regset <addr> <hex>        Write an RTL8370 register

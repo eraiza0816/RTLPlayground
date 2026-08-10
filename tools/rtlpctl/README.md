@@ -179,7 +179,7 @@ first, see Command Validation):
 | `telnet on\|off` | Enable/disable the telnet console |
 | `web on\|off` | Enable/disable the web UI |
 | `commit` | Save the running config to flash |
-| `psk <hex64>` | Set the device preshared key (encrypted `/enc`) |
+| `psk <hex64>` \| `psk off` | Set or clear the device preshared key (encrypted `/enc`). While a key is set, run `psk off` with `--psk <current-key>` (password logins are rejected in PSK mode) |
 | `sfp ...` | SFP module control: speed, `describe`, `dump`, `save`, `restore`, `checksum [--fix]`, `fix`, `patch`, `clone`, `write <off> <val>`, `bulk <hex>` (all take `--pw <hex8>` where applicable) |
 | `regget <addr>` | Read an RTL8370 register (hex) |
 | `regset <addr> <hex>` | Write an RTL8370 register |
@@ -342,7 +342,7 @@ Use `--mode arista` or the environment variable `MODE=arista` for Arista EOS-com
 | `laghash <hash> [fields...]` | console `laghash ...` |
 | `sfp ...` | console `sfp ...` |
 | `regget` / `regset` / `sdsget` / `sdsset` / `phyget` / `physet` | console passthrough |
-| `preshared-key <hex64>` (or `psk <hex64>`) | console `preshared_key <hex64>` |
+| `preshared-key <hex64>` (or `psk <hex64>`) \| `psk off` | console `preshared_key <hex64>` / `preshared_key` (clear) |
 | `configure [terminal]` | Enter config mode |
 | `copy running-config startup-config` | Save configuration |
 | `write memory` | Save configuration |

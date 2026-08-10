@@ -1173,6 +1173,7 @@ func TestBinaryEndToEnd(t *testing.T) {
 			{[]string{"web", "off"}, "web off"},
 			{[]string{"commit"}, "commit"},
 			{[]string{"psk", strings.Repeat("a", 64)}, "preshared_key " + strings.Repeat("a", 64)},
+			{[]string{"psk", "off"}, "preshared_key"},
 			{[]string{"sfp", "1", "10g"}, "sfp 1 10g"},
 			{[]string{"sfp", "1", "describe"}, "sfp 1 describe"},
 			{[]string{"sfp", "2", "write", "33", "35", "--pw", "deadbeef"}, "sfp 2 write 33 35 --pw deadbeef"},

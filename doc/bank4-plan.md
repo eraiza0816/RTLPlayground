@@ -1,6 +1,6 @@
 # BANK4 Creation Plan
 
-Status: **implemented in v0.2.24+** (Tier 3 WebUI JSON endpoints are the
+Status: **implemented in v0.2.24+** (the WebUI JSON endpoints are the
 first BANK4 resident)
 
 This document describes how to add a fourth code bank (BANK4) to the
@@ -16,7 +16,7 @@ capped at 16 KB:
 | Region | Used (v0.2.24) | Capacity | Note |
 |---|---|---|---|
 | HOME / CSEG | ~15 KB | 16 KB (`CODE0_SIZE`) | hard cap, prefetched into code RAM at boot |
-| BANK1 | 47,894 B | 48 KB (`CODE_BANK_SIZE`) | ~98 % of window (Tier 3 + WebUI) |
+| BANK1 | 47,894 B | 48 KB (`CODE_BANK_SIZE`) | ~98 % of window (features + WebUI) |
 | BANK2 | 48,095 B | 48 KB | ~98 % of window |
 | BANK3 | 51,949 B (FULL) | 48 KB | over budget before BANK4 — see below |
 | BANK4 | 28,233 B | 48 KB | network stack (uip), crypto (chacha20/poly1305/aead), WebUI JSON endpoints (api_status.c) |

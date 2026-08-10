@@ -8,6 +8,53 @@ It supports both interactive mode and one-shot command mode, with optional JSON 
 
 `rtlpctl` is developed and tested against firmware **v0.2.23** (the `VERSION` variable in the top-level `Makefile`).
 
+## Why a host-side CLI?
+
+Ideally, strict input validation would live in the switch firmware.
+However, the RTL837x firmware runs on a constrained 8051 core: its code
+space is organised into 48 KB bank windows and its internal RAM is a
+hard 128-byte limit.  A comprehensive validation layer in the firmware
+would cost exactly the code space and computation budget that the
+feature set is already consuming (internal RAM in particular — the
+compiler's overlay segment is full, so even small parser helpers can
+fail to link).
+
+This tool therefore hosts the validation checks on the **client side**:
+
+- every command is checked locally (argument counts, port numbers,
+  VLAN IDs, MTU ranges, speeds, rates, MAC addresses, IP prefixes, hex
+  values, ...) before it is sent to the switch
+- `config upload` applies the same checks to every line of a
+  configuration file before anything reaches the flash
+- the firmware only has to acknowledge and execute, keeping its
+  footprint small
+
+Operating the switch **only through this tool** is recommended: it turns
+"garbage reaches the registers" into "invalid input is refused before
+it leaves the client", which is the safest way to change settings and
+run diagnostics on a firmware that deliberately skips its own input
+validation.
+
+Because the validation lives on the client, it can be extended or
+tightened at any time **without updating the switch firmware**: safer
+checks are a client-side change only.  The same applies to new commands
+and to configuration files — nothing about the device itself has to
+change to operate it safely.
+
+For configuration changes in particular, the pre-shared key provides
+an extra layer: setting a PSK (`psk <hex64>` on the device, `--psk` on
+the client) switches the switch into **PSK mode** (see
+[doc/authentication.md](../../doc/authentication.md)):
+
+- password logins are **rejected** on the switch while a PSK is set
+- rtlpctl logs in with an **encrypted challenge** (`enc=<hex>`), so the
+  PSK itself never leaves the client
+- privileged operations (e.g. `commit`) use the encrypted `/enc`
+  endpoint, so the commands travel over the wire encrypted and the
+  settings changes cannot be read or tampered with in transit
+- the telnet console keeps working with the password; it is recommended
+  to disable it (`telnet off`) in PSK mode
+
 ## Build
 
 ```bash
@@ -61,6 +108,12 @@ commands are never blocked. To send a command that fails validation anyway
 rtlpctl cmd "hostname my-switch.old-firmware" --force
 ```
 
+`config upload <file>` applies the same validation to **every non-empty
+line** of the configuration file before anything is sent: the firmware
+replays the file through its command parser without validating the
+numbers itself (VLAN/MTU/PVID ranges etc.), so a bad line is rejected
+locally with a `config line N: ...` error. Empty lines are skipped.
+
 ### Commands
 
 #### Read
@@ -90,7 +143,7 @@ rtlpctl cmd "hostname my-switch.old-firmware" --force
 | `cmd <text>` | POST /cmd | Execute a CLI command |
 | `l2 delete <idx>` | GET /l2_del.json?idx=<idx> | Delete L2 entry (decimal 0-4095) |
 | `cmd-log clear` | GET /cmd_log_clear | Clear command history |
-| `config upload <file>` | POST /config (multipart) | Upload configuration file |
+| `config upload <file>` | POST /config (multipart) | Upload configuration file (validated line by line) |
 | `upload firmware <file>` | POST /upload (multipart) | Firmware update |
 | `reset` | GET /reset | Reboot the switch |
 

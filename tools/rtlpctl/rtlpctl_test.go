@@ -794,8 +794,32 @@ func TestBinaryEndToEnd(t *testing.T) {
 		}
 	})
 
-	t.Run("help", func(t *testing.T) {
-		out, err := exec.Command(bin, "--help").Output()
+	t.Run("psk_login", func(t *testing.T) {
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		out, err := exec.Command(bin, "--host", h, "--password", "test123",
+			"--psk", testPSKHex, "info").CombinedOutput()
+		if err != nil {
+			t.Fatalf("psk login + info failed: %v\noutput: %s", err, out)
+		}
+		if !strings.Contains(string(out), "mock-host") {
+			t.Errorf("expected info output after PSK login, got: %s", out)
+		}
+	})
+
+	t.Run("psk_login_wrong_key", func(t *testing.T) {
+		ts2 := newMockServer(t)
+		defer ts2.Close()
+		h := strings.TrimPrefix(ts2.URL, "http://")
+		out, err := exec.Command(bin, "--host", h, "--password", "test123",
+			"--psk", strings.Repeat("ab", 32), "info").CombinedOutput()
+		if err == nil {
+			t.Errorf("expected PSK login failure with wrong key, got success: %s", out)
+		}
+	})
+
+	t.Run("help", func(t *testing.T) {		out, err := exec.Command(bin, "--help").Output()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1693,6 +1717,20 @@ func newMockServer(t *testing.T) *httptest.Server {
 	psk, _ := hex.DecodeString(testPSKHex)
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/login" {
+			if enc := r.FormValue("enc"); enc != "" {
+				// PSK login: hex(nonce[12] || ct || tag) of the challenge
+				raw, err := hex.DecodeString(enc)
+				if err == nil && len(raw) == 12+12+16 {
+					pt, derr := aeadDecrypt(psk, raw[:12], raw[12:24], raw[24:])
+					if derr == nil && string(pt) == "RTLP-LOGIN-1" {
+						w.Header().Set("Set-Cookie", "session=abc123def456; SameSite=Strict")
+						http.Redirect(w, r, "/index.html", http.StatusFound)
+						return
+					}
+				}
+				http.Redirect(w, r, "/login.html", http.StatusFound)
+				return
+			}
 			pwd := r.FormValue("pwd")
 			if pwd == "test123" {
 				w.Header().Set("Set-Cookie", "session=abc123def456; SameSite=Strict")

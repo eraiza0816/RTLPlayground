@@ -525,6 +525,66 @@ static uint8_t handle_api_path(__xdata uint8_t *q)
 }
 
 
+/* Encrypted login challenge: the client encrypts this fixed string with
+ * the pre-shared key and posts hex(nonce[12] || ct || tag) as enc=...
+ * A wrong key/tag or a replayed nonce fails the login. */
+static __code uint8_t login_challenge[12] = "RTLP-LOGIN-1"; /* exactly 12 bytes */
+
+static uint8_t login_hexval(uint8_t c)
+{
+	if (c >= '0' && c <= '9') return c - '0';
+	if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+	if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+	return 0xff;
+}
+
+/* Verify the encrypted login challenge pointed to by hexp (64 hex chars:
+ * nonce[12] || ct[12] || tag[16]).  Returns 1 on success and records the
+ * nonce so a replayed login is rejected. */
+static uint8_t login_psk(__xdata uint8_t *hexp)
+{
+	static __xdata uint8_t nonce[AEAD_NONCE_LEN];
+	static __xdata uint8_t enc[AEAD_NONCE_LEN + AEAD_TAG_LEN];
+	static __xdata uint8_t pt[AEAD_NONCE_LEN];
+	static __xdata uint8_t last_nonce[AEAD_NONCE_LEN];
+	static __xdata uint8_t last_set;
+	static __xdata uint8_t i;
+	uint8_t hi, lo;
+
+	for (i = 0; i < AEAD_NONCE_LEN; i++) {
+		hi = login_hexval(hexp[i * 2]);
+		lo = login_hexval(hexp[i * 2 + 1]);
+		if (hi == 0xff || lo == 0xff)
+			return 0;
+		nonce[i] = (hi << 4) | lo;
+	}
+	if (last_set) {
+		/* replay guard: the nonce must differ from the last accepted one */
+		for (i = 0; i < AEAD_NONCE_LEN; i++)
+			if (nonce[i] != last_nonce[i])
+				break;
+		if (i == AEAD_NONCE_LEN)
+			return 0;
+	}
+	for (i = 0; i < AEAD_NONCE_LEN + AEAD_TAG_LEN; i++) {
+		hi = login_hexval(hexp[AEAD_NONCE_LEN * 2 + i * 2]);
+		lo = login_hexval(hexp[AEAD_NONCE_LEN * 2 + i * 2 + 1]);
+		if (hi == 0xff || lo == 0xff)
+			return 0;
+		enc[i] = (hi << 4) | lo;
+	}
+	if (aead_decrypt(preshared_key, nonce, 0, 0, enc, AEAD_NONCE_LEN, pt,
+			 enc + AEAD_NONCE_LEN))
+		return 0; /* wrong key or tampered */
+	for (i = 0; i < AEAD_NONCE_LEN; i++)
+		if (pt[i] != login_challenge[i])
+			return 0;
+	for (i = 0; i < AEAD_NONCE_LEN; i++)
+		last_nonce[i] = nonce[i];
+	last_set = 1;
+	return 1;
+}
+
 /* POST /enc: body is nonce[12] || ciphertext || tag[16].
  * The plaintext is command text, verified against the pre-shared key.
  * The response body is nonce[12] || ciphertext || tag[16] of a JSON string. */
@@ -641,6 +701,8 @@ void handle_enc(__xdata uint8_t *body)
 
 void handle_post(void)
 {
+	static __xdata uint8_t login_psk_set;
+	static __xdata uint8_t login_i;
 	__xdata struct httpd_state * __xdata s = &(uip_conn->appstate);
 	__xdata uint8_t *p = uip_appdata;
 	__xdata uint8_t *request_path = p + 5;
@@ -731,6 +793,30 @@ void handle_post(void)
 		if (!content_type || !is_word(content_type, "application/x-www-form-urlencoded")) {
 			dbg_string("Bad request!\n");
 			send_bad_request();
+			return;
+		}
+
+		/* When a pre-shared key is configured, password authentication is
+		 * disabled: the web UI and rtlpctl log in with the encrypted
+		 * challenge (enc=<hex>) so the PSK itself never leaves the client. */
+		login_psk_set = 0;
+		for (login_i = 0; login_i < AEAD_KEY_LEN; login_i++)
+			login_psk_set |= preshared_key[login_i];
+		if (login_psk_set) {
+			if (is_word(p + 4, "enc") && login_psk(p + 8)) {
+				dbg_string("PSK login accepted\n");
+				read_reg_timer(&last_session_use);
+				gen_random_bytes(session_id, SESSION_ID_LENGTH);
+				session_id[SESSION_ID_LENGTH] = '\0';
+				slen = strtox(outbuf, "HTTP/1.1 302 Found\r\nLocation: index.html\r\n" \
+						  "Set-Cookie: session=");
+				for (register uint8_t si = 0; si < SESSION_ID_LENGTH; si++)
+					outbuf[slen++] = session_id[si];
+				slen += strtox(outbuf + slen, "; Path=/; SameSite=Strict\r\n\r\n");
+			} else {
+				dbg_string("PSK mode: password rejected\n");
+				slen = strtox(outbuf, "HTTP/1.1 302 Found\r\nLocation: login.html\r\n\r\n");
+			}
 			return;
 		}
 

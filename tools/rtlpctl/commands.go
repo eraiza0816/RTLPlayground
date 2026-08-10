@@ -738,7 +738,7 @@ Commands (default mode):
   l2 [idx]                   Show L2 forwarding table (decimal 0-4095)
   l2 delete <idx>            Delete an L2 table entry (decimal 0-4095)
   config                     Show running configuration
-  config upload <file>       Upload configuration file
+  config upload <file>       Upload configuration file (validated line by line)
   cmd <text>                 Execute CLI command
   enc-cmd <text>             Execute CLI command via encrypted /enc (PSK)
   cmd-log                    Show command history log

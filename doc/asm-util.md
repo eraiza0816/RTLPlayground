@@ -1,5 +1,7 @@
 # 数値パース・出力フォーマットのアセンブラ化計画
 
+Type: explanation · Topic: the assembler util plan
+
 ## Overview
 
 既存の `rtlplayground_mem.asm` (メモリ/文字列関数) に続き、数値パース系と出力フォーマット系の関数を

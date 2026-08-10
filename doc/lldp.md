@@ -1,5 +1,7 @@
 # LLDP (IEEE 802.1AB)
 
+Type: reference · Feature: LLDP (IEEE 802.1AB) neighbor discovery
+
 Link Layer Discovery Protocol lets the switch advertise itself to
 neighboring switches/endpoints and learn the neighbors it is connected
 to.  The firmware sends an LLDPDU from every user port and stores the

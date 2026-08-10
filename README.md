@@ -109,6 +109,9 @@ See [tools/webuitest](tools/webuitest).
 - [Compiling the firmware](doc/how-to/compiling.md)
 - [Installing the firmware](doc/how-to/installation.md)
 - [Serial console and first power-up](doc/how-to/serial.md)
+- [Setting up PSK mode](doc/how-to/psk-setup.md)
+- [Test IGMP with IP-MC streaming using VLC](doc/how-to/igmp-streaming-test.md)
+- [Recode a Fibre Channel SFP module to Ethernet](doc/how-to/sfp-recode.md)
 - [Automation](doc/automation.md)
 - [Understanding the image with Ghidra](doc/ghidra.md)
 - [Modifications and Flash replacement](doc/mods.md)
@@ -140,6 +143,7 @@ See [tools/webuitest](tools/webuitest).
 
 ### Explanation
 - [Authentication model](doc/authentication.md)
+- [Documentation guide](doc/documentation-guide.md)
 - [BANK4 creation plan](doc/bank4-plan.md)
 - [CLI design (Arista EOS compatibility)](doc/cli-design.md)
 - [Assembly memfuncs plan](doc/asm-memfuncs.md)

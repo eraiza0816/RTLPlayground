@@ -1,4 +1,6 @@
 # Egress and Ingress Bandwidth Control
+
+Type: reference · Feature: per-port ingress/egress bandwidth control
 The RTL8372/3 allows to control the bandwidth of data transmitted (egress) and/or
 admitted (ingress) at any given port. Once admitted, packets are internally switched
 at wire-speed, since the backplane of the devices has a bandwidth of 60GBit/s.

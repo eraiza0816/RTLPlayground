@@ -1,5 +1,7 @@
 # Supporting Multiple Languages in the Web UI
 
+Type: how-to · Task: add a language to the Web UI
+
 The firmware uses a client-side i18n approach
 all translations are stored in a single JavaScript dictionary embedded in the firmware.
 No server-side changes are needed.

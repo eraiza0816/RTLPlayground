@@ -1,5 +1,7 @@
 # Telnet Access
 
+Type: reference · Feature: telnet access
+
 The RTLPlayground firmware provides a Telnet server on port 23, allowing remote CLI access
 over the network. This is useful for configuring the switch without a serial console connection.
 

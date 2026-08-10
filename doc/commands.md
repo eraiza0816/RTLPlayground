@@ -1,5 +1,7 @@
 # CLI Command Reference
 
+Type: reference · Feature: CLI commands for the serial/telnet console
+
 This document describes all commands available on the serial console.
 Commands that have a dedicated document are listed with a brief syntax
 summary and a reference to the detailed description.

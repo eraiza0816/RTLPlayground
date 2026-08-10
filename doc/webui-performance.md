@@ -1,5 +1,7 @@
 # WebUI Performance Investigation
 
+Type: how-to · Task: improve the Web UI performance
+
 ## Overview
 
 WebUIの描画速度低下の原因調査レポート。

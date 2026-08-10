@@ -1,5 +1,7 @@
 #RTL8272/3 features
 
+Type: reference · supported RTL8372/3 hardware features
+
 The following hardware features of the RTL8372/3 is supported:
 - Clock generation, including different divider settings
 - Interrupt control for timer, serial, external irqs 0, 1

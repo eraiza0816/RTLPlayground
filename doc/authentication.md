@@ -1,5 +1,7 @@
 # Authentication model
 
+Type: explanation · Topic: why and how password and PSK authentication work
+
 The switch supports two independent authentication mechanisms.  Which
 one is used depends on whether a **pre-shared key (PSK)** is configured.
 
@@ -43,28 +45,8 @@ section).  The PSK additionally protects the management traffic:
 - the web UI switches all API calls to `/enc` automatically when a PSK
   is stored in the browser's localStorage
 
-### Setting up PSK mode
-
-```
-# on the serial console (recommended so the key never crosses the network)
-preshared_key <64-hex>
-commit
-
-# or via rtlpctl (note: this transmits the key once, in plaintext)
-rtlpctl psk <64-hex>
-rtlpctl commit
-```
-
-Then use the PSK everywhere:
-
-```
-rtlpctl --psk <64-hex> status          # login + all calls via /enc
-rtlpctl --psk <64-hex> commit
-```
-
-The web UI login page accepts the PSK (64 hex chars); it is stored in
-the browser's localStorage and used for the encrypted session and API
-calls.
+To configure PSK mode, see
+[How-to: Set up PSK mode](how-to/psk-setup.md).
 
 ### PSK leak scenarios (accepted)
 

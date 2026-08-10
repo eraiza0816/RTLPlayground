@@ -1,4 +1,6 @@
 # Supported Hardware
+
+Type: reference · Feature: the list of tested devices
 The following devices have been tested and are fully working:
 
 | Brand    | Type            | Managed | PCB                                                                                                              | Flash | Ports |

@@ -1,6 +1,8 @@
 
 # GPIO Pin, Function and MUX registers.
 
+Type: reference · Feature: GPIO pins, functions and MUX registers
+
 These functions should bevalid for `RTL8372`, `RTL8372N`, `RTL8373`, and `RTL8373N`.
 
 `N`-version doesn't seems to have all the GPIO pins available on the outside of the package.

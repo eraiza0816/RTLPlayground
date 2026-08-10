@@ -1,5 +1,7 @@
 # BANK4 Creation Plan
 
+Type: explanation · Topic: the fourth code bank and the compacted image layout
+
 Status: **implemented in v0.2.24+** (the WebUI JSON endpoints are the
 first BANK4 resident)
 

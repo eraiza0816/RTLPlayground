@@ -1,5 +1,7 @@
 # Arista EOS CLI 互換性
 
+Type: explanation · Topic: the Arista EOS CLI compatibility design
+
 ## 総合評価
 
 | カテゴリ | 件数 | 割合 |

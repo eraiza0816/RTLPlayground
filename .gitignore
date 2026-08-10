@@ -10,6 +10,5 @@ tools/injector
 tools/fileadder
 tools/rtlpctl/rtlpctl
 tools/webuitest/node_modules/
-html_min/
 # Feature design docs (tracked separately, must never be committed)
 新機能追加検証/

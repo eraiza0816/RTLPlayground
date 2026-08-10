@@ -125,7 +125,7 @@ static void emit(int s, const void *data, size_t len)
 			enc_resp_len += len;
 		}
 	} else {
-		emit(s, data, len);
+		write(s, data, len);
 	}
 }
 

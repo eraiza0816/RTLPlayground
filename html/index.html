@@ -571,7 +571,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (onload) s.onload = onload;
     document.head.appendChild(s);
   }
-  loadScript('/chacha20poly1305.js', function() { loadScript('/i18n.js', function() { loadScript('/main.js', function() { loadScript('/features.js'); }); }); });
+  loadScript('/chacha20poly1305.js', function() { loadScript('/i18n.js', function() { loadScript('/main.js'); }); });
 });
 </script>
 </body>

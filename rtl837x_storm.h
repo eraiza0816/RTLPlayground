@@ -13,6 +13,7 @@
 /* Software state, read by the config serializer (cmd_commit.c) */
 extern __xdata uint8_t storm_type_en[4];
 extern __xdata uint32_t storm_type_rate[4];
+extern __xdata uint8_t storm_type_pps[4];
 
 void storm_control_setup(void) __banked;
 void storm_control_on(__xdata uint8_t type, __xdata uint32_t rate, __xdata uint8_t pps) __banked;

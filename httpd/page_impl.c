@@ -51,6 +51,7 @@ extern __xdata struct flash_region_t flash_region;
 
 extern __xdata uint8_t flash_buf[FLASH_BUF_SIZE];
 extern uint16_t running_config_serialize(void) __banked;
+extern __xdata uint8_t commit_buf[1024];
 
 extern __xdata char sfp_module_vendor[2][17];
 extern __xdata char sfp_module_model[2][17];
@@ -908,7 +909,7 @@ void send_running_config(void)
 	if (len > TCP_OUTBUF_SIZE - slen)
 		len = TCP_OUTBUF_SIZE - slen;
 	for (i = 0; i < len; i++)
-		outbuf[slen++] = flash_buf[i];
+		outbuf[slen++] = commit_buf[i];
 }
 
 void send_cmd_log(void)

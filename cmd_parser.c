@@ -338,6 +338,10 @@ void parse_lag_hash(void)
 
 	// TODO: validate group range (0-3) before port_lag_hash_set call
 	group = cmd_buffer[cmd_words_b[1]] - '0';
+	if (!isnumber(cmd_buffer[cmd_words_b[1]]) || group > 3) {
+		print_string("Link aggregation group must be 0-3!\n");
+		return;
+	}
 
 	uint8_t w = 2;
 	while (w < cmd_words_len) {
@@ -1766,10 +1770,29 @@ void parse_bw(void)
 	if (hex_size == 0 || hex_size > 4) {
 		goto err;
 	}
+	/* The rate must be given in full bytes (even digit count,
+	 * doc/bandwidth.md) and fit the 20-bit rate register. */
+	{
+		uint8_t d = cmd_words_b[3];
+		uint8_t digits = 0;
+		while ((cmd_buffer[d] >= '0' && cmd_buffer[d] <= '9') ||
+		       ((cmd_buffer[d] | 0x20) >= 'a' && (cmd_buffer[d] | 0x20) <= 'f')) {
+			d++;
+			digits++;
+		}
+		if (digits & 1) {
+			print_string("Bandwidth: even number of hex digits required\n");
+			goto err;
+		}
+	}
 	uint8_t i = 0;
 	while (hex_size) {
 		hex_size--;
 		*(((uint8_t *) &bw) + hex_size) = hexvalue[i++];
+	}
+	if (bw > 0xFFFFF) {
+		print_string("Bandwidth max 0xfffff (20 bit)\n");
+		goto err;
 	}
 
 	if (cmd_compare(1, "in")) {
@@ -1948,8 +1971,12 @@ void parse_qos(void)
 			print_string("Usage: qos dscp <0-63> <queue>\n");
 			return;
 		}
-		qc_v1 = cmd_buffer[cmd_words_b[2]] - '0';
-		qc_v2 = cmd_buffer[cmd_words_b[3]] - '0';
+		atoi_byte(&qc_v1, cmd_words_b[2]);
+		atoi_byte(&qc_v2, cmd_words_b[3]);
+		if (qc_v1 > 63 || qc_v2 > 7) {
+			print_string("Usage: qos dscp <0-63> <queue 0-7>\n");
+			return;
+		}
 		qos_dscp_set(qc_v1, qc_v2);
 		return;
 	}
@@ -1970,7 +1997,7 @@ void parse_qos(void)
 		}
 		if (cmd_compare(3, "wfq")) {
 			if (cmd_words_len >= 5 && isnumber(cmd_buffer[cmd_words_b[4]]))
-				qc_v1 = cmd_buffer[cmd_words_b[4]] - '0';
+				atoi_byte(&qc_v1, cmd_words_b[4]);
 			if (qc_v1 == 0 || qc_v1 > 127) {
 				print_string("WFQ weight 1-127\n");
 				return;
@@ -2152,21 +2179,22 @@ void parse_acl(void)
 			print_string("Bad IP: trailing chars\n");
 			return;
 		}
-		// DIP: field[2] = low 16 bits, field[3] = high 16 bits
+		// DIP: field[2] = low 16 bits, field[3] = high 16 bits.  The
+		// care mask must land in the high word for short prefixes.
 		acl_field[2] = ac_ipval & 0xffff;
 		acl_field[3] = (ac_ipval >> 16) & 0xffff;
 		if (ac_prefix == 0) {
 			acl_care[2] = 0;
 			acl_care[3] = 0;
 		} else if (ac_prefix < 16) {
-			acl_care[2] = (uint16_t)(0xffffu << (16 - ac_prefix));
-			acl_care[3] = 0;
+			acl_care[3] = (uint16_t)(0xffffu << (16 - ac_prefix));
+			acl_care[2] = 0;
 		} else if (ac_prefix == 16) {
-			acl_care[2] = 0xffff;
-			acl_care[3] = 0;
+			acl_care[3] = 0xffff;
+			acl_care[2] = 0;
 		} else {
-			acl_care[2] = 0xffff;
-			acl_care[3] = (uint16_t)(0xffffu << (32 - ac_prefix));
+			acl_care[3] = 0xffff;
+			acl_care[2] = (uint16_t)(0xffffu << (32 - ac_prefix));
 		}
 	} else {
 		print_string("Usage: acl add <port> <permit|deny> [mac <aa:bb:cc:dd:ee:ff> | vlan <id> | ip <addr>[/<prefix>]]\n");

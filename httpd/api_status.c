@@ -234,7 +234,8 @@ void send_storm(void) __banked
 			char_to_html(',');
 		first = 0;
 		reg_read_m(RTL837X_SHARED_METER_MODE(t));
-		en = (sfr_data[0] >> METER_MODE_PPS_BIT(t)) & 1;
+		// The mode bit lives in the low byte (sfr_mask_data(0, ...)).
+		en = (sfr_data[3] >> METER_MODE_PPS_BIT(t)) & 1;
 		char_to_html('{');
 		json_str("\"type\":");
 		itoa_html(t);

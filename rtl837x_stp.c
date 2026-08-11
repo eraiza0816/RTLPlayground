@@ -107,11 +107,16 @@ signed char cmpMAC(__xdata uint8_t *m1, __xdata uint8_t *m2)
 
 void stp_in(void) __banked
 {
+	// A short frame cannot hold a BPDU; refuse to read past it.
+	if (uip_len < sizeof(struct stp_pkt_in))
+		return;
+
 	// By default we do not send anything out
 	uip_len = 0;
+
+#ifdef DEBUG
 	// MSTPSTP_I_STATES 0x5310
 	// reg_read_m(RTL837X_MSTP_STATES);
-
 	print_string("Check BPDU... \n");
 	for (uint8_t i = 0; i < 80; i++) {
 		print_byte(uip_buf[i]);
@@ -121,8 +126,9 @@ void stp_in(void) __banked
 	print_byte(STP_I->dsap);
 	print_byte(STP_I->ssap);
 	print_byte(STP_I->ctrl);
-	
+
 	write_char('\n');
+#endif
 	// Make sure this is the type of RSTP packet we are interested in:
 	if (!(STP_I->dsap == 0x42 && STP_I->ssap == 0x42 && STP_I->ctrl == 0x03))
 		return;
@@ -155,7 +161,7 @@ void stp_cnf_send(uint8_t port)
 	STP_O->rtl_tag.tag = HTONS(RTL_FRAME_TAG_ID);
 	STP_O->rtl_tag.version = RTL_FRAME_TAG_VERSION;
 	STP_O->rtl_tag.reason = 0x00;
-	STP_O->rtl_tag.flags = 0x0020; // Disable L2 learning
+	STP_O->rtl_tag.flags = HTONS(RTL_TAG_LEARN_DIS); // Disable L2 learning
 	STP_O->rtl_tag.pmask = HTONS(((uint16_t)1) << port);
 
 	STP_O->msg_len = HTONS(0x27);
@@ -180,10 +186,10 @@ void stp_cnf_send(uint8_t port)
 
 	STP_O->port_prio = 0x80;
 	STP_O->port_id = port;
-	STP_O->age = 0x00;  // FIXME: This only works because we do not use HTONS and the values are in 1/256 seconds
-	STP_O->age_max = 20;
-	STP_O->hello = 2;
-	STP_O->fwd_delay = 0x0f;
+	STP_O->age = 0x0000;
+	STP_O->age_max = HTONS(20 * 256);	/* 20 s in 1/256 s units */
+	STP_O->hello = HTONS(2 * 256);		/* 2 s */
+	STP_O->fwd_delay = HTONS(15 * 256);	/* 15 s */
 
 //	uip_len = 0x27 + sizeof(struct rtl_tag);
 	uip_len = sizeof(struct stp_pkt);
@@ -217,7 +223,7 @@ void stp_setup(void) __banked
 		port_hello[i] = TIME_HELLO;
 		port_timers[i] = 0xa00;	// 10 sec in blocking state
 	}
-	sfr_data[1] |= 0x0f; // Do not block CPU-Port
+	sfr_data[1] |= 0x0c; // Do not block the CPU port (port 9, bits 2-3) only
 	reg_write_m(RTL837X_MSTP_STATES); // R5310-000d555f 
 
 	print_reg(RTL837X_MSTP_STATES); write_char('\n');
@@ -237,6 +243,6 @@ void stp_off(void) __banked
 		uint8_t bit_mask = 0b11 << ( (i << 1) & 0x7);
 		sfr_data[3 - (i >> 2)] |= bit_mask;
 	}
-	sfr_data[1] |= 0x0f; // Do not block CPU-Port
+	sfr_data[1] |= 0x0c; // Do not block the CPU port (port 9, bits 2-3) only
 	reg_write_m(RTL837X_MSTP_STATES);
 }

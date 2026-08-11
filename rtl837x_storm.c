@@ -38,6 +38,7 @@ extern __xdata uint8_t sfr_data[4];
 /* Software state for `show running-config` serialization */
 __xdata uint8_t storm_type_en[4];
 __xdata uint32_t storm_type_rate[4];
+__xdata uint8_t storm_type_pps[4];
 
 static __xdata uint8_t storm_type;
 static __xdata uint32_t storm_rate;
@@ -106,6 +107,7 @@ void storm_control_on(__xdata uint8_t type, __xdata uint32_t rate, __xdata uint8
 
 	storm_type_en[type] = 1;
 	storm_type_rate[type] = rate;
+	storm_type_pps[type] = pps;
 	print_string("Storm control enabled, type: ");
 	storm_print_type(type);
 	write_char('\n');
@@ -118,12 +120,14 @@ void storm_control_off(__xdata uint8_t type) __banked
 	if (type == 4) {
 		sfr_mask_data(0, 0x0f, 0);
 		storm_type_en[0] = storm_type_en[1] = storm_type_en[2] = storm_type_en[3] = 0;
+		storm_type_pps[0] = storm_type_pps[1] = storm_type_pps[2] = storm_type_pps[3] = 0;
 	} else if (type > 3) {
 		print_string("Invalid storm type\n");
 		return;
 	} else {
 		sfr_mask_data(0, 1 << type, 0);
 		storm_type_en[type] = 0;
+		storm_type_pps[type] = 0;
 	}
 	reg_write_m(RTL837X_CFG_STORM_EXT);
 	if (type == 4)
@@ -152,7 +156,8 @@ void storm_control_status(void) __banked
 		reg_read_m(RTL837X_SHARED_METER_RATE_CTRL(storm_type));
 		print_sfr_data();
 		reg_read_m(RTL837X_SHARED_METER_MODE(storm_type));
-		storm_byte = (sfr_data[0] >> METER_MODE_PPS_BIT(storm_type)) & 1;
+		// The mode bit lives in the low byte (sfr_mask_data(0, ...)).
+		storm_byte = (sfr_data[3] >> METER_MODE_PPS_BIT(storm_type)) & 1;
 		print_string(storm_byte ? " pps\n" : " kbps\n");
 	}
 }

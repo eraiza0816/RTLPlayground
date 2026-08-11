@@ -1059,8 +1059,13 @@ function loadEeeConfig() {
           tr.cells[5].textContent = lp & 2 ? 'ON' : 'OFF';
           tr.cells[6].textContent = lp & 1 ? 'ON' : 'OFF';
           tr.cells[7].textContent = p.active;
+        } else {
+          tr.cells[1].textContent = tr.cells[2].textContent = tr.cells[3].textContent = '—';
+          tr.cells[4].textContent = tr.cells[5].textContent = tr.cells[6].textContent = '—';
+          tr.cells[7].textContent = '';
         }
         tr.style.opacity = p.isSFP ? '0.4' : '1';
+        tr.title = p.isSFP ? (t('eee_sfp_note') || 'SFP ports do not support EEE') : '';
       }
     } catch (e) {}
   });

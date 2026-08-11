@@ -7,7 +7,16 @@
 #include "rtl837x_sfr.h"
 #include "rtl837x_storm.h"
 #include "rtl837x_qos.h"
+#include "rtl837x_port.h"
+#include "machine.h"
 #include "uip/uip.h"
+
+/* Dedicated buffer for the serialized startup config: the shared
+ * flash_buf is only 512 bytes (FLASH_BUF_SIZE is load-bearing in the
+ * firmware update path), and the VLAN/PVID/MTU/LAG/mirror lines do not
+ * fit otherwise. */
+#define COMMIT_BUF_SIZE 1024
+__xdata uint8_t commit_buf[COMMIT_BUF_SIZE];
 
 extern __xdata uint8_t flash_buf[FLASH_BUF_SIZE];
 extern __xdata struct flash_region_t flash_region;
@@ -26,6 +35,8 @@ extern __xdata uint8_t cmd_words_b[15];
 
 extern void reg_read_m(uint16_t reg_addr);
 extern void reg_write_m(uint16_t reg_addr);
+extern __code const struct machine machine;
+extern __xdata uint8_t vlan_names[VLAN_NAMES_SIZE];
 
 static __xdata uint16_t commit_pos;
 static __xdata uint8_t cfg_psk_set;
@@ -39,31 +50,31 @@ static __xdata uint8_t cfg_d;
 static __xdata uint8_t cfg_z;
 
 #define COMMIT_PUTC(c) do { \
-	if (commit_pos < FLASH_BUF_SIZE) \
-		flash_buf[commit_pos++] = (c); \
+	if (commit_pos < COMMIT_BUF_SIZE) \
+		commit_buf[commit_pos++] = (c); \
 } while(0)
 
 #define COMMIT_PUTS(s) do { \
 	__code char *__p = (s); \
 	while (*__p) { \
-		if (commit_pos >= FLASH_BUF_SIZE) break; \
-		flash_buf[commit_pos++] = *__p++; \
+		if (commit_pos >= COMMIT_BUF_SIZE) break; \
+		commit_buf[commit_pos++] = *__p++; \
 	} \
 } while(0)
 
 #define COMMIT_PUTSX(s) do { \
 	__xdata char *__p = (s); \
 	while (*__p) { \
-		if (commit_pos >= FLASH_BUF_SIZE) break; \
-		flash_buf[commit_pos++] = *__p++; \
+		if (commit_pos >= COMMIT_BUF_SIZE) break; \
+		commit_buf[commit_pos++] = *__p++; \
 	} \
 } while(0)
 
 #define COMMIT_BYTE(v) do { \
-	uint8_t __v = (v); \
-	if (__v >= 100) { COMMIT_PUTC('0' + (__v / 100)); } \
-	if (__v >= 10) { COMMIT_PUTC('0' + ((__v / 10) % 10)); } \
-	COMMIT_PUTC('0' + (__v % 10)); \
+	cfg_d = (v); \
+	if (cfg_d >= 100) { COMMIT_PUTC('0' + (cfg_d / 100)); } \
+	if (cfg_d >= 10) { COMMIT_PUTC('0' + ((cfg_d / 10) % 10)); } \
+	COMMIT_PUTC('0' + (cfg_d % 10)); \
 } while(0)
 
 /* 16 bit decimal output via repeated subtraction, so no 16 bit division
@@ -110,14 +121,14 @@ static __xdata uint8_t cfg_z;
 } while(0)
 
 #define COMMIT_HEX_DIGIT(n) do { \
-	uint8_t __n = (n) & 0x0f; \
-	COMMIT_PUTC(__n < 10 ? '0' + __n : 'a' + __n - 10); \
+	cfg_d = (n) & 0x0f; \
+	COMMIT_PUTC(cfg_d < 10 ? '0' + cfg_d : 'a' + cfg_d - 10); \
 } while(0)
 
 #define COMMIT_HEX8(v) do { \
-	uint8_t __v = (v); \
-	COMMIT_HEX_DIGIT(__v >> 4); \
-	COMMIT_HEX_DIGIT(__v); \
+	cfg_d = (v); \
+	COMMIT_HEX_DIGIT(cfg_d >> 4); \
+	COMMIT_HEX_DIGIT(cfg_d); \
 } while(0)
 
 static void commit_write_flash(void)
@@ -129,13 +140,13 @@ static void commit_write_flash(void)
 			chunk = FLASH_PAGE_SIZE;
 		flash_region.addr = CONFIG_START + written;
 		flash_region.len = chunk;
-		flash_write_bytes(flash_buf + written);
+		flash_write_bytes(commit_buf + written);
 		written += chunk;
 	}
-	flash_buf[0] = 0;
+	commit_buf[0] = 0;
 	flash_region.addr = CONFIG_START + commit_pos;
 	flash_region.len = 1;
-	flash_write_bytes(flash_buf);
+	flash_write_bytes(commit_buf);
 }
 
 /* Storm type names (BANK3 const; rtl837x_storm.c's table is BANK2 const
@@ -150,10 +161,127 @@ static __code char * __code qos_mode_names[4] = {
 };
 
 /*
- * Serialize the current in-memory configuration into flash_buf as a
+ * Serialize the current in-memory configuration into commit_buf as a
  * NUL-terminated text blob.  Used both by parse_commit() (flash write)
  * and show_running_config() (console output).
  */
+static void cfg_serialize_ports(void)
+{
+	/* PVID: one line per non-default PVID (default is 1). */
+	for (cfg_i = machine.min_port; cfg_i <= machine.max_port; cfg_i++) {
+		__xdata uint16_t pvid = port_pvid_get(cfg_i);
+		if (pvid == 1)
+			continue;
+		COMMIT_PUTS("pvid ");
+		COMMIT_BYTE(machine.log_to_phys_port[cfg_i]);
+		COMMIT_PUTC(' ');
+		COMMIT_DEC16(pvid);
+		COMMIT_PUTC('\n');
+	}
+
+	/* MTU: one line per port. */
+	for (cfg_i = machine.min_port; cfg_i <= machine.max_port; cfg_i++) {
+		reg_read_m(RTL8373_REG_MAC_L2_PORT_MAX_LEN + ((uint16_t) cfg_i << 8));
+		__xdata uint16_t mtu = SFR_DATA_U16 & 0x3fff;
+		COMMIT_PUTS("mtu ");
+		COMMIT_BYTE(machine.log_to_phys_port[cfg_i]);
+		COMMIT_PUTC(' ');
+		COMMIT_DEC16(mtu);
+		COMMIT_PUTC('\n');
+	}
+
+}
+
+static void cfg_serialize_lag_mirror(void)
+{
+	/* LAG groups: one line per non-empty group (members are logical
+	 * port bits, serialized as physical port numbers). */
+	for (cfg_i = 0; cfg_i < 4; cfg_i++) {
+		reg_read_m(RTL837X_TRK_MBR_CTRL_BASE + (cfg_i << 2));
+		__xdata uint16_t members = (sfr_data[2] << 8) | sfr_data[3];
+		if (!members)
+			continue;
+		COMMIT_PUTS("lag ");
+		COMMIT_BYTE(cfg_i);
+		for (__xdata uint8_t lp = machine.min_port; lp <= machine.max_port; lp++) {
+			if (members & ((uint16_t)1 << lp)) {
+				COMMIT_PUTC(' ');
+				COMMIT_BYTE(machine.log_to_phys_port[lp]);
+			}
+		}
+		COMMIT_PUTC('\n');
+	}
+
+	/* Mirror: one line when a mirror session is active.  The masks are
+	 * logical port bits; ports with only one direction get the r/t
+	 * suffix (both directions: no suffix). */
+	reg_read_m(RTL837x_MIRROR_CTRL);
+	if (sfr_data[3] & 0x01) {
+		__xdata uint8_t mport = (sfr_data[3] >> 1) & 0x0f;
+		reg_read_m(RTL837x_MIRROR_CONF);
+		__xdata uint16_t rx = (sfr_data[0] << 8) | sfr_data[1];
+		__xdata uint16_t tx = (sfr_data[2] << 8) | sfr_data[3];
+		if (mport <= machine.max_port) {
+			COMMIT_PUTS("mirror ");
+			COMMIT_BYTE(machine.log_to_phys_port[mport]);
+			for (__xdata uint8_t lp = machine.min_port; lp <= machine.max_port; lp++) {
+				if ((rx & ((uint16_t)1 << lp)) || (tx & ((uint16_t)1 << lp))) {
+					COMMIT_PUTC(' ');
+					COMMIT_BYTE(machine.log_to_phys_port[lp]);
+					if (!(rx & ((uint16_t)1 << lp)))
+						COMMIT_PUTC('t');
+					else if (!(tx & ((uint16_t)1 << lp)))
+						COMMIT_PUTC('r');
+				}
+			}
+			COMMIT_PUTC('\n');
+		}
+	}
+
+}
+
+static void cfg_serialize_vlans(void)
+{
+	/* VLANs: one line per valid entry, in the CLI form
+	 * "vlan <vid> [<name>] <port>[t] ..." where 't' marks tagged
+	 * members (untagged is the default). */
+	{
+		__xdata uint16_t vid;
+		for (vid = 1; vid < 4095; vid++) {
+			if (vlan_get(vid) < 0)
+				continue;
+			if (!(sfr_data[0] & 0x02))	/* bit 1: entry valid */
+				continue;
+			/* Entry layout: bits 0-9 member ports, bits 10-19 untagged
+			 * ports (sfr_data[3] is the low byte). */
+			__xdata uint16_t vmembers = ((uint16_t)(sfr_data[2] & 0x03) << 8) | sfr_data[3];
+			__xdata uint16_t vuntag = ((uint16_t)(sfr_data[1] & 0x0f) << 6) | (sfr_data[2] >> 2);
+			if (!vmembers)
+				continue;
+			COMMIT_PUTS("vlan ");
+			COMMIT_DEC16(vid);
+			__xdata uint16_t vn = vlan_name(vid);
+			if (vn != 0xffff) {
+				COMMIT_PUTC(' ');
+				while (vlan_names[vn] && vlan_names[vn] != ' ')
+					COMMIT_PUTC(vlan_names[vn++]);
+			}
+			for (__xdata uint8_t lp = machine.min_port; lp <= machine.max_port; lp++) {
+				if (vmembers & ((uint16_t)1 << lp)) {
+					COMMIT_PUTC(' ');
+					COMMIT_BYTE(machine.log_to_phys_port[lp]);
+					if (!(vuntag & ((uint16_t)1 << lp)))
+						COMMIT_PUTC('t');
+				}
+			}
+			COMMIT_PUTC('\n');
+			if (commit_pos >= COMMIT_BUF_SIZE - 32)
+				break;	/* leave room for the terminator */
+		}
+	}
+
+}
+
 static uint16_t config_serialize(void)
 {
 	commit_pos = 0;
@@ -203,19 +331,21 @@ static uint16_t config_serialize(void)
 	COMMIT_PUTS("web ");
 	if (web_enabled) COMMIT_PUTS("on\n"); else COMMIT_PUTS("off\n");
 
-	/* Storm control: one line per enabled type (replay: all ports) */
+	/* Storm control: one line per enabled type (replay: all ports).
+	 * The 'p'/'k' suffix records the meter mode (pps vs kbps). */
 	for (cfg_i = 0; cfg_i < 4; cfg_i++) {
 		if (storm_type_en[cfg_i]) {
 			COMMIT_PUTS("storm-control on ");
 			COMMIT_PUTS(storm_type_names[cfg_i]);
 			COMMIT_PUTC(' ');
 			COMMIT_DEC24(storm_type_rate[cfg_i]);
+			COMMIT_PUTC(storm_type_pps[cfg_i] ? 'p' : 'k');
 			COMMIT_PUTC('\n');
 		}
 	}
 
 	/* QoS mode (the PCP/DSCP maps themselves are not persisted yet:
-	 * 64 entries do not fit the 512 byte config buffer; they reset to
+	 * 64 entries do not fit the config buffer; they reset to
 	 * the identity/zero maps on boot.  ACL rules live in the ASIC only. */
 	if (qos_mode != QOS_MODE_OFF) {
 		COMMIT_PUTS("qos mode ");
@@ -226,7 +356,11 @@ static uint16_t config_serialize(void)
 		COMMIT_PUTC('\n');
 	}
 
-	flash_buf[commit_pos] = 0;
+
+	cfg_serialize_ports();
+	cfg_serialize_lag_mirror();
+	cfg_serialize_vlans();
+	commit_buf[commit_pos] = 0;
 	return commit_pos;
 }
 
@@ -247,7 +381,7 @@ void parse_commit(void) __banked
  */
 static __xdata uint16_t cfg_len;
 
-/* Serialize the running configuration into flash_buf and return its
+/* Serialize the running configuration into commit_buf and return its
  * length, without printing.  Used by the HTTP /running-config endpoint
  * (page_impl.c); show_running_config prints the same buffer to the
  * console. */
@@ -260,7 +394,7 @@ void show_running_config(void) __banked
 {
 	cfg_len = config_serialize();
 	for (cfg_i = 0; cfg_i < cfg_len; cfg_i++)
-		write_char(flash_buf[cfg_i]);
+		write_char(commit_buf[cfg_i]);
 }
 
 /*

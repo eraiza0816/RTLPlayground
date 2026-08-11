@@ -264,7 +264,8 @@ void vlan_setup(void) __banked
 		write_char(' '); write_char('A'); write_char('>'); print_sfr_data();
 #endif
 
-		// EGRESS filtering for port: removal of additional VLAN tag (mode 0x3 for each port)
+		// Egress tag mode 0 (VLAN_EGRESS_TAG_MODE_ORIGINAL per the SDK):
+		// keep the original tag as-is on egress.
 		reg_bit_clear(RTL837X_VLAN_PORT_EGR_TAG, i << 1);
 		reg_bit_clear(RTL837X_VLAN_PORT_EGR_TAG, (i << 1) + 1);
 		// Enable INGRESS filtering for port: discard packets not belonging to member VLAN on that port
@@ -687,9 +688,9 @@ void port_eee_status(uint8_t port) __banked
 void port_eee_enable_all(__xdata uint8_t speed) __banked
 {
 	for (uint8_t i = machine.min_port; i <= machine.max_port; i++) {
-		if (i == 3 && machine.n_10g) {
-			port_eee_enable(i, speed);
-		} else if (i == 8 && machine.n_10g == 2) {
+		// SFP ports on a 10G-capable machine are the 10G ports
+		// (previously hardcoded as logical ports 3 and 8).
+		if (machine.is_sfp[i] && machine.n_10g) {
 			port_eee_enable(i, speed);
 		} else {
 			if (speed & EEE_10G)
@@ -741,8 +742,12 @@ void port_lag_members_set(__xdata uint8_t lag, __xdata uint16_t members) __banke
 {
 	print_string("port_lag_members_set, lag: "); print_byte(lag); print_string(", members: "); print_short(members);
 	write_char('\n');
-	if (lag > 3)
+	if (lag > 3) {
+		// Must not continue: the register offset would land in the
+		// next group's hash registers.
 		print_string("Link aggregation group must be 0-3!\n");
+		return;
+	}
 	reg_read_m(RTL837X_TRK_HASH_CTRL_BASE + (lag << 2));
 	if (!(sfr_data[0] | sfr_data [1] | sfr_data [2] | sfr_data [3]))
 		REG_SET(RTL837X_TRK_HASH_CTRL_BASE, LAG_HASH_DEFAULT);
@@ -758,8 +763,10 @@ void port_lag_hash_set(__xdata uint8_t lag, __xdata uint8_t hash_bits) __banked
 {
 	print_string("port_lag_hash_set, lag: "); print_byte(lag); print_string(", hash: "); print_byte(hash_bits);
 	write_char('\n');
-	if (lag > 3)
+	if (lag > 3) {
 		print_string("Link aggregation group must be 0-3!\n");
+		return;
+	}
 	REG_WRITE(RTL837X_TRK_HASH_CTRL_BASE + (lag << 2), 0, 0, 0, hash_bits);
 }
 

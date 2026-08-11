@@ -262,7 +262,7 @@ __xdata uint8_t *skip_boundary(__xdata uint8_t *p)
 }
 
 
-__xdata uint8_t *scan_header(__xdata uint8_t *p)
+__xdata uint8_t *scan_header(__xdata uint8_t * __xdata p)
 {
 	content_type = 0;
 	session = 0;
@@ -291,12 +291,12 @@ __xdata uint8_t *scan_header(__xdata uint8_t *p)
 		else if (is_word(p, "\nContent-Length:")) {
 			/* Header format: "\nContent-Length: <digits>" — skip the
 			 * separator space (may be absent, e.g. "Content-Length:12"). */
-			__xdata uint8_t *cl = p + 16;
+			__xdata uint8_t * __xdata cl = p + 16;
 			if (*cl == ' ')
 				cl++;
 			/* Bounded to 6 digits: more would wrap the uint16 accumulator
 			 * (e.g. 65536 -> 0) and bypass the incomplete-body checks. */
-			uint8_t digits = 0;
+			__xdata uint8_t digits = 0;
 			while (*cl >= '0' && *cl <= '9') {
 				digits++;
 				if (digits > 6) {

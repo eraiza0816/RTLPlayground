@@ -12,3 +12,6 @@ tools/rtlpctl/rtlpctl
 tools/webuitest/node_modules/
 # Feature design docs (tracked separately, must never be committed)
 新機能追加検証/
+
+# Python bytecode from tools/perftest
+__pycache__/

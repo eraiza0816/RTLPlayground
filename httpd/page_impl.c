@@ -337,6 +337,7 @@ void send_l2(uint16_t idx)
 	dbg_string("sending L2\n");
 	dbg_short(idx);
 	__xdata uint8_t entries_left = L2_MAX_TRANSFER;
+	__xdata uint8_t first = 1;
 
 	do {
 		reg_read_m(RTL837X_TBL_CTRL);
@@ -370,6 +371,11 @@ void send_l2(uint16_t idx)
 
 		reg_read_m(RTL837x_L2_DATA_OUT_B);
 		if ((sfr_data[0] & 0x20)) {	// Check entry is valid
+			// Only valid entries are separated by a comma; empty slots in
+			// the hash table must not produce one (it would break the JSON).
+			if (!first)
+				char_to_html(',');
+			first = 0;
 			// MAC
 			slen += strtox(outbuf + slen, "{\"mac\":\"");
 			byte_to_html(sfr_data[2]); char_to_html(':');
@@ -410,16 +416,11 @@ void send_l2(uint16_t idx)
 			reg_read_m(RTL837x_TBL_DATA_0);
 			entry = (((uint16_t)sfr_data[2] & 0x0f) << 8) | sfr_data[3] + 1;
 		}
-		if (first_entry == 0xffff) {
-			char_to_html(',');
+		if (first_entry == 0xffff)
 			first_entry = entry;
-		} else {
-			if (first_entry == entry || !entries_left) {
-				char_to_html(']');
-				break;
-			} else {
-				char_to_html(',');
-			}
+		if (first_entry == entry || !entries_left) {
+			char_to_html(']');
+			break;
 		}
 	}
 }

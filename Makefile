@@ -92,6 +92,7 @@ html_data.c html_data.h: $(HTML) tools/output/fileadder html_min
 # httpd.c includes html_data.h; declare it explicitly so a parallel
 # build (-j) does not compile httpd before the header is generated.
 $(BUILDDIR)/httpd/httpd.rel: html_data.h
+$(BUILDDIR)/httpd/page_impl.rel: html_data.h
 
 $(VERSION_HEADER):
 	@echo "#ifndef VERSION_H" > $(VERSION_HEADER)

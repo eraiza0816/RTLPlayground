@@ -15,7 +15,7 @@
 // #define DEBUG
 #include "debug.h"
 
-#define SESSION_ID_LENGTH 12
+#define SESSION_ID_LENGTH 24
 #define SESSION_TIMEOUT 200
 
 #define CMARK_S 6
@@ -67,6 +67,13 @@ __xdata uint8_t preshared_key[AEAD_KEY_LEN];
 __xdata uint32_t now;
 __xdata uint8_t * __xdata timeptr;
 __xdata uint32_t last_session_use;
+/* Login rate limiting: 5 failed attempts lock /login for 30 s. */
+__xdata uint8_t login_failures;
+__xdata uint32_t login_now;
+__xdata uint32_t login_locked_until;
+/* /enc nonce replay guard (last accepted nonce). */
+__xdata uint8_t enc_last_set;
+__xdata uint8_t enc_last_nonce[AEAD_NONCE_LEN];
 /* Content-Length of the current POST request (0 = header absent). Used to
  * detect bodies that arrive split across TCP segments: uIP delivers one
  * segment per appcall, so a split body would otherwise silently execute
@@ -287,8 +294,17 @@ __xdata uint8_t *scan_header(__xdata uint8_t *p)
 			__xdata uint8_t *cl = p + 16;
 			if (*cl == ' ')
 				cl++;
-			while (*cl >= '0' && *cl <= '9')
+			/* Bounded to 6 digits: more would wrap the uint16 accumulator
+			 * (e.g. 65536 -> 0) and bypass the incomplete-body checks. */
+			uint8_t digits = 0;
+			while (*cl >= '0' && *cl <= '9') {
+				digits++;
+				if (digits > 6) {
+					content_length = 0xffff;
+					break;
+				}
 				content_length = content_length * 10 + (*cl++ - '0');
+			}
 		}
 	}
 	if (content_type && is_word(content_type, "multipart/form-data; boundary")) {
@@ -334,6 +350,20 @@ void gen_random_bytes(__xdata uint8_t *b, uint8_t bytes)
 		if (!bytes) { break; }
 		b[--bytes] = itohex(sfr_data[i] >> 4 | sfr_data[i] << 4);
 		i = (i + 1) & 0x3;
+	}
+}
+
+/* Fill b with bytes random raw bytes (gen_random_bytes() writes hex
+ * digits, which would halve the entropy of binary nonces). */
+void gen_random_raw(__xdata uint8_t *b, uint8_t bytes)
+{
+	__xdata uint8_t i = 0;
+	while (bytes) {
+		if (!i)
+			get_random_32();
+		*b++ = sfr_data[i];
+		i = (i + 1) & 0x3;
+		bytes--;
 	}
 }
 
@@ -596,6 +626,10 @@ static uint8_t handle_api_path(__xdata uint8_t *q)
 		pending_reset = 1;
 		slen = strtox(outbuf, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK\n");
 		return 1;
+	} else if (!strcmp(q, "/logout")) {
+		session_id[0] = 0;	/* invalidate every session */
+		slen = strtox(outbuf, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK\n");
+		return 1;
 	} else if (is_word(q, "/ping.json")) {
 		send_ping();
 		return 1;
@@ -726,6 +760,21 @@ void handle_enc(__xdata uint8_t *body)
 		send_unauthorized();
 		return;
 	}
+	/* Replay protection: a request whose nonce equals the last accepted
+	 * one is a replayed frame and must not re-execute the command.
+	 * Only advance the recorded nonce after a successful decrypt. */
+	if (enc_last_set) {
+		for (i = 0; i < AEAD_NONCE_LEN; i++)
+			if (body[i] != enc_last_nonce[i])
+				break;
+		if (i == AEAD_NONCE_LEN) {
+			send_unauthorized();
+			return;
+		}
+	}
+	for (i = 0; i < AEAD_NONCE_LEN; i++)
+		enc_last_nonce[i] = body[i];
+	enc_last_set = 1;
 	body[AEAD_NONCE_LEN + ct_len] = '\0';
 	if (is_word(body + AEAD_NONCE_LEN, "api")) {
 		/* API mode: "api <path>" renders a JSON API response and returns it
@@ -752,7 +801,7 @@ void handle_enc(__xdata uint8_t *body)
 		}
 		for (i = 0; i < ct_len; i++)
 			enc_scratch[i] = outbuf[body_len + i];
-		gen_random_bytes(resp_nonce, AEAD_NONCE_LEN);
+		gen_random_raw(resp_nonce, AEAD_NONCE_LEN);
 		for (i = 0; i < AEAD_NONCE_LEN; i++)
 			outbuf[slen++] = resp_nonce[i];
 		aead_encrypt(preshared_key, resp_nonce, 0, 0,
@@ -770,8 +819,8 @@ void handle_enc(__xdata uint8_t *body)
 		slen = strtox(outbuf, "HTTP/1.1 200 OK\r\nSet-Cookie: session=");
 		for (i = 0; i < SESSION_ID_LENGTH; i++)
 			outbuf[slen++] = session_id[i];
-		slen += strtox(outbuf + slen, "; Path=/; SameSite=Strict\r\nContent-Type: application/octet-stream\r\n\r\n");
-		gen_random_bytes(resp_nonce, AEAD_NONCE_LEN);
+		slen += strtox(outbuf + slen, "; Path=/; HttpOnly; SameSite=Strict\r\nContent-Type: application/octet-stream\r\n\r\n");
+		gen_random_raw(resp_nonce, AEAD_NONCE_LEN);
 		for (i = 0; i < AEAD_NONCE_LEN; i++)
 			outbuf[slen++] = resp_nonce[i];
 		memcpyc(resp_json, resp_ok, 16);
@@ -795,7 +844,7 @@ void handle_enc(__xdata uint8_t *body)
 		return;
 	}
 	slen = strtox(outbuf, "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n\r\n");
-	gen_random_bytes(resp_nonce, AEAD_NONCE_LEN);
+	gen_random_raw(resp_nonce, AEAD_NONCE_LEN);
 	for (i = 0; i < AEAD_NONCE_LEN; i++)
 		outbuf[slen++] = resp_nonce[i];
 	memcpyc(resp_json, resp_ok, 16);
@@ -912,6 +961,18 @@ void handle_post(void)
 			return;
 		}
 
+		/* Rate limit: 5 failed attempts lock the login for 30 s (global,
+		 * not per-IP -- the switch has no per-IP accounting). */
+		read_reg_timer(&login_now);
+		if (login_failures >= 5) {
+			if (login_now < login_locked_until) {
+				dbg_string("Login rate-limited\n");
+				slen = strtox(outbuf, "HTTP/1.1 302 Found\r\nLocation: login.html\r\n\r\n");
+				return;
+			}
+			login_failures = 0;	/* lock expired: re-arm */
+		}
+
 		/* When a pre-shared key is configured, password authentication is
 		 * disabled: the web UI and rtlpctl log in with the encrypted
 		 * challenge (enc=<hex>) so the PSK itself never leaves the client. */
@@ -921,6 +982,7 @@ void handle_post(void)
 		if (login_psk_set) {
 			if (is_word(p + 4, "enc") && login_psk(p + 8)) {
 				dbg_string("PSK login accepted\n");
+				login_failures = 0;
 				read_reg_timer(&last_session_use);
 				gen_random_bytes(session_id, SESSION_ID_LENGTH);
 				session_id[SESSION_ID_LENGTH] = '\0';
@@ -928,7 +990,7 @@ void handle_post(void)
 						  "Set-Cookie: session=");
 				for (register uint8_t si = 0; si < SESSION_ID_LENGTH; si++)
 					outbuf[slen++] = session_id[si];
-				slen += strtox(outbuf + slen, "; Path=/; SameSite=Strict\r\n\r\n");
+				slen += strtox(outbuf + slen, "; Path=/; HttpOnly; SameSite=Strict\r\n\r\n");
 			} else {
 				dbg_string("PSK mode: password rejected\n");
 				slen = strtox(outbuf, "HTTP/1.1 302 Found\r\nLocation: login.html\r\n\r\n");
@@ -939,6 +1001,7 @@ void handle_post(void)
 		p += 8; // Read also over "pwd="
 		if (is_url_word_x(p, passwd)) {
 			dbg_string("Password accepted!\n");
+			login_failures = 0;
 			read_reg_timer(&last_session_use);
 			gen_random_bytes(session_id, SESSION_ID_LENGTH);
 			session_id[SESSION_ID_LENGTH] = '\0';
@@ -946,9 +1009,14 @@ void handle_post(void)
 					      "Set-Cookie: session=");
 			for (register uint8_t i = 0; i < SESSION_ID_LENGTH; i++)
 				outbuf[slen++] = session_id[i];
-			slen += strtox(outbuf + slen, "; Path=/; SameSite=Strict\r\n\r\n");
+			slen += strtox(outbuf + slen, "; Path=/; HttpOnly; SameSite=Strict\r\n\r\n");
 		} else {
 			dbg_string("Password invalid!\n");
+			login_failures++;
+			if (login_failures >= 5) {
+				read_reg_timer(&login_now);
+				login_locked_until = login_now + 30;
+			}
 			slen = strtox(outbuf, "HTTP/1.1 302 Found\r\nLocation: login.html\r\n\r\n");
 		}
 		return;
@@ -1140,6 +1208,12 @@ void httpd_appcall(void) __banked
 				goto do_send;
 			}
 			dbg_string("Not file entry\n");
+			/* API access also refreshes the session timeout: a client
+			 * that only talks to the JSON API (rtlpctl, exporter)
+			 * would otherwise be cut off after 200 s. */
+			reg_read_m(RTL837X_REG_SEC_COUNTER);
+			timeptr = (uint8_t*)&last_session_use;
+			timeptr[0] = sfr_data[3]; timeptr[1] = sfr_data[2]; timeptr[2] = sfr_data[1]; timeptr[3] = sfr_data[0];
 			if (!handle_api_path(q)) {
 				send_not_found();
 			}

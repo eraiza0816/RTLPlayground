@@ -2269,18 +2269,18 @@ struct mode_entry {
 };
 
 __code struct mode_entry mode_allow[] = {
-	{"reset",       (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
-	{"sfp",         (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"reset",       (1<<MODE_PRIVILEGED)},
+	{"sfp",         (1<<MODE_PRIVILEGED)},
 	{"stat",        (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
-	{"flash",       (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
-	{"sds",         (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
-	{"gpio",        (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
-	{"regget",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
-	{"regset",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
-	{"sdsget",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
-	{"sdsset",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
-	{"phyget",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
-	{"physet",      (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
+	{"flash",       (1<<MODE_PRIVILEGED)},
+	{"sds",         (1<<MODE_PRIVILEGED)},
+	{"gpio",        (1<<MODE_PRIVILEGED)},
+	{"regget",      (1<<MODE_PRIVILEGED)},
+	{"regset",      (1<<MODE_PRIVILEGED)},
+	{"sdsget",      (1<<MODE_PRIVILEGED)},
+	{"sdsset",      (1<<MODE_PRIVILEGED)},
+	{"phyget",      (1<<MODE_PRIVILEGED)},
+	{"physet",      (1<<MODE_PRIVILEGED)},
 	{"rnd",         (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
 	{"version",     (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
 	{"time",        (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
@@ -2306,7 +2306,7 @@ __code struct mode_entry mode_allow[] = {
 	{"hostname",    (1<<MODE_CONFIG)},
 	{"eee",         (1<<MODE_CONFIG)},
 	{"bw",          (1<<MODE_CONFIG)},
-	{"passwd",      (1<<MODE_CONFIG)},
+	{"passwd",      (1<<MODE_PRIVILEGED)},
 	{"preshared_key", (1<<MODE_CONFIG)},
 	{"telnet",      (1<<MODE_CONFIG)},
 	{"web",         (1<<MODE_CONFIG)},
@@ -2656,6 +2656,12 @@ void clear_command_history(void) __banked
 #endif
 void execute_config(void) __banked __reentrant
 {
+	/* The startup configuration is trusted input (it can only be
+	 * written through an authenticated session or a privileged commit):
+	 * run it without mode gating so that privileged lines such as
+	 * "passwd" apply at boot. */
+	cmd_console = 1;
+
 	static __xdata uint32_t pos = CONFIG_START;
 	static __xdata uint8_t pages_left = CONFIG_LEN / FLASH_READ_BURST_SIZE;
 

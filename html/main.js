@@ -1158,6 +1158,10 @@ function rebootSwitch() {
   fetchAPI('GET', '/reset', function() { notify('Switch rebooting...', 'info'); });
 }
 
+function logout() {
+  fetchAPI('GET', '/logout', function() { window.location.href = '/login.html'; });
+}
+
 function telnetToggle() {
   var cmd = 'telnet ' + ($in('telnet_toggle').checked ? 'on' : 'off');
   fetchAPI('POST', '/cmd', function() { notify('Telnet toggled.', 'success'); }, cmd + '\n');

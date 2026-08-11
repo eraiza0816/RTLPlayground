@@ -31,6 +31,12 @@ static __xdata uint8_t auth_state;
 
 static __xdata uint8_t telnet_connected;
 static __xdata uint8_t telnet_echo;
+static __xdata struct uip_conn * __xdata active_conn;
+/* Telnet login rate limiting: 5 failed attempts lock auth for 30 s. */
+static __xdata uint8_t auth_failures;
+static __xdata uint16_t auth_locked_t0;
+
+extern volatile __xdata uint32_t ticks;
 
 static uint16_t ring_used(void)
 {
@@ -165,21 +171,14 @@ static void process_input(__xdata uint8_t *data, uint16_t len)
             rx_pos = 0;
 
             if (auth_state == AUTH_WAIT) {
-                uint8_t ok = 1;
-                for (uint8_t pc = 0; pc < 20; pc++) {
-                    if (cmd_buffer[pc] != passwd[pc]) { ok = 0; break; }
-                    if (passwd[pc] == '\0') break;
+                uint8_t locked = 0;
+                if (auth_failures >= 5) {
+                    if ((uint16_t)(ticks - auth_locked_t0) < (uint16_t)(SYS_TICK_HZ * 30))
+                        locked = 1;	/* rate-limited */
+                    else
+                        auth_failures = 0;	/* lock expired */
                 }
-                if (ok) {
-                    telnet_tx_enqueue('\r');
-                    telnet_tx_enqueue('\n');
-                    auth_state = AUTH_OK;
-                    telnet_echo = 1;
-#ifdef FULL_CLI
-                    cli_mode = MODE_EXEC;
-#endif
-                    print_cmd_prompt();
-                } else {
+                if (locked) {
                     telnet_tx_enqueue('\r');
                     telnet_tx_enqueue('\n');
                     telnet_tx_enqueue('P'); telnet_tx_enqueue('a');
@@ -187,6 +186,34 @@ static void process_input(__xdata uint8_t *data, uint16_t len)
                     telnet_tx_enqueue('w'); telnet_tx_enqueue('o');
                     telnet_tx_enqueue('r'); telnet_tx_enqueue('d');
                     telnet_tx_enqueue(':'); telnet_tx_enqueue(' ');
+                } else {
+                    uint8_t ok = 1;
+                    for (uint8_t pc = 0; pc < 20; pc++) {
+                        if (cmd_buffer[pc] != passwd[pc]) { ok = 0; break; }
+                        if (passwd[pc] == '\0') break;
+                    }
+                    if (ok) {
+                        telnet_tx_enqueue('\r');
+                        telnet_tx_enqueue('\n');
+                        auth_state = AUTH_OK;
+                        telnet_echo = 1;
+                        auth_failures = 0;
+#ifdef FULL_CLI
+                        cli_mode = MODE_EXEC;
+#endif
+                        print_cmd_prompt();
+                    } else {
+                        auth_failures++;
+                        if (auth_failures >= 5)
+                            auth_locked_t0 = (uint16_t)ticks;
+                        telnet_tx_enqueue('\r');
+                        telnet_tx_enqueue('\n');
+                        telnet_tx_enqueue('P'); telnet_tx_enqueue('a');
+                        telnet_tx_enqueue('s'); telnet_tx_enqueue('s');
+                        telnet_tx_enqueue('w'); telnet_tx_enqueue('o');
+                        telnet_tx_enqueue('r'); telnet_tx_enqueue('d');
+                        telnet_tx_enqueue(':'); telnet_tx_enqueue(' ');
+                    }
                 }
             } else {
                 telnet_tx_enqueue('\r');
@@ -222,6 +249,7 @@ static void reset_connection_state(void)
 void telnetd_init(void) __banked
 {
     telnet_connected = 0;
+    active_conn = 0;
     reset_connection_state();
     uip_listen(HTONS(23));
 }
@@ -229,7 +257,16 @@ void telnetd_init(void) __banked
 void telnetd_appcall(void) __banked
 {
     if (uip_connected()) {
+        if (telnet_connected && active_conn != uip_conn) {
+            /* All session state (auth, rx line, tx ring) is module
+             * level, so a second connection would share -- and reset --
+             * the first one's buffers and could skip the password
+             * check.  Reject it instead. */
+            uip_close();
+            return;
+        }
         telnet_connected = 1;
+        active_conn = uip_conn;
         reset_connection_state();
 
         send_iac(WILL, SGA);
@@ -242,7 +279,8 @@ void telnetd_appcall(void) __banked
         return;
     }
     if (uip_closed() || uip_aborted() || uip_timedout()) {
-        telnet_connected = 0;
+        if (active_conn == uip_conn)
+            telnet_connected = 0;
         tx_inflight = 0;
         return;
     }

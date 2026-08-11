@@ -163,6 +163,7 @@ var LANG = {
     sys_telnet: 'Telnet:',
     sys_web: 'Web:',
     sys_led: 'LED:',
+    sys_logout: 'Logout',
 
     login_title: 'RTL Switch Login',
     login_heading: 'RTL Switch Login',
@@ -346,6 +347,7 @@ var LANG = {
     sys_telnet: 'Telnet:',
     sys_web: 'Web:',
     sys_led: 'LED:',
+    sys_logout: 'ログアウト',
 
     login_title: 'RTL スイッチ ログイン',
     login_heading: 'RTL スイッチ ログイン',

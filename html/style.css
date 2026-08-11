@@ -170,3 +170,77 @@ option { direction: rtl; font-family: sans-serif}
 .l2sort:hover{text-decoration:underline}
 .l2arrow{opacity:0.55;font-size:0.85em}
 .l2filter{width:100%;box-sizing:border-box;font-weight:normal;font-size:0.9em}
+
+/* Content wrapper of each single-page section (mobile: overridden in
+ * the media query below) */
+.page {
+  margin-left: 16%;
+  padding: 1px 16px;
+  height: 1000px;
+}
+.page-wide {
+  width: 40%;
+}
+#ports {
+  margin-left: 16%;
+  padding: 1px 16px;
+}
+
+/* Narrow screens: sidebar becomes a horizontal bar on top, content
+ * uses the full width and wide tables scroll sideways.  16 px fonts
+ * also prevent the iOS focus zoom on inputs. */
+@media (max-width: 768px) {
+  ul {
+    position: static;
+    width: 100%;
+    height: auto;
+    top: auto;
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  li a {
+    white-space: nowrap;
+    padding: 12px 16px;
+  }
+  .page, .page-wide, #ports {
+    margin-left: 0;
+    padding: 4px 8px;
+    height: auto;
+    width: auto;
+  }
+  table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  th, td {
+    padding: 6px;
+  }
+  .action, button, input[type=submit], input[type=file],
+  input[type=text], input[type=number], select, textarea {
+    min-height: 44px;
+    font-size: 16px;
+  }
+  input[type=file], input[type=submit] {
+    width: 100%;
+  }
+  .l2filter {
+    font-size: 16px;
+  }
+  /* Login page: the fixed-size box shrinks to the screen */
+  .login_page {
+    overflow: auto;
+  }
+  .center {
+    width: calc(100% - 32px);
+    max-width: 500px;
+    height: auto;
+    min-height: 320px;
+  }
+  .center form {
+    padding: 0 24px;
+  }
+}

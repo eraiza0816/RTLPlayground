@@ -3,6 +3,7 @@
   <script src="/main.js"></script>
   <link rel="stylesheet" href="style.css">
   <title data-i18n="index_title">FreeSwitchOS Main Page</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     .popup {
       display: none;
@@ -33,9 +34,9 @@
   </head>
   <body>
     <nav id="sidebar"></nav>
-    <div id="ports" style="margin-left:16%;padding:1px 16px"></div>
+    <div id="ports"></div>
 
-    <div class="page" id="page-overview" style="margin-left:16%;padding:1px 16px;height:1000px;">
+    <div class="page" id="page-overview" class="page">
       <h1 data-i18n="index_heading">Switch Configuration</h1>
       <table id="infoTable">
         <tr>
@@ -46,7 +47,7 @@
       </table>
     </div>
 
-    <div class="page" id="page-ports" style="margin-left:16%;padding:1px 16px;height:1000px;">
+    <div class="page" id="page-ports" class="page">
       <h1 data-i18n="port_heading">Port Configuration</h1>
       <table id="speedtable">
         <tr> <th data-i18n="port_col_port">Port</th> <th data-i18n="port_col_name">Name</th> <th data-i18n="port_col_speed">Current Link Speed</th><th data-i18n="port_col_set_speed">Set Speed</th><th data-i18n="port_col_disabled">Disabled</th><th data-i18n="port_col_apply">Apply</th></tr>
@@ -56,7 +57,7 @@
       </table>
     </div>
 
-    <div class="page" id="page-stat" style="margin-left:16%;padding:1px 16px;height:1000px;">
+    <div class="page" id="page-stat" class="page">
       <div id="popup" class="popup">
         <div class="popup-content">
           <h2 data-i18n="stat_detailed">Detailed Port Statistics</h2>
@@ -70,7 +71,7 @@
       </table>
     </div>
 
-    <div class="page" id="page-vlan" style="margin-left:16%;padding:1px 16px;height:1000px;">
+    <div class="page" id="page-vlan" class="page">
       <h1 data-i18n="vlan_heading">VLAN Configuration</h1>
       <form id="vform">
         <div>
@@ -115,7 +116,7 @@
       </table>
     </div>
 
-    <div class="page" id="page-l2" style="margin-left:16%;padding:1px 16px;height:1000px;">
+    <div class="page" id="page-l2" class="page">
       <h1 data-i18n="l2_heading">L2 Configuration</h1>
       <p><span data-i18n="l2_shown">Shown:</span> <span id="l2count">-</span></p>
       <table id="l2table">
@@ -132,7 +133,7 @@
       </table>
     </div>
 
-    <div class="page" id="page-mirror" style="margin-left:16%;padding:1px 16px;height:1000px;">
+    <div class="page" id="page-mirror" class="page">
       <h1 data-i18n="mirror_heading">Mirror Configuration</h1>
       <label class="tswitch"><span data-i18n="mirror_enabled">Enabled:</span> <input id="me" type="checkbox"></label><br/>
       <label for="mp"><span data-i18n="mirror_port">Mirroring Port:</span></label> <input type="number" id="mp" name="mp" min="1" max="9"/>
@@ -145,7 +146,7 @@
       <input style="width:15%;" class="action" id="mirror_del" onclick="mirrorDel();" type="button" data-i18n="mirror_disable" value="Disable Mirroring">
     </div>
 
-    <div class="page" id="page-lag" style="margin-left:16%;padding:1px 16px;height:1000px;">
+    <div class="page" id="page-lag" class="page">
       <h1 data-i18n="lag_heading">Link Aggregation Groups Configuration</h1>
       <h2>LAG 1 <input style="width:15%;margin-left: 3em;" class="action" id="l_sub0" onclick="lagSub(0);" type="button" data-i18n="lag_update" value="Update / Create"></h2>
       <div id="mLAG0"></div>
@@ -160,7 +161,7 @@
       <div id="mLAG3"></div>
     </div>
 
-    <div class="page" id="page-eee" style="margin-left:16%;padding:1px 16px;height:1000px;">
+    <div class="page" id="page-eee" class="page">
       <h1 data-i18n="eee_heading">EEE Status</h1>
       <table id="eeetable">
         <tr> <th> </th> <th colspan="3" data-i18n="eee_advertising"> Advertising </th> <th colspan="3" data-i18n="eee_partner">Link-Partner advertises</th>  <th></th></tr>
@@ -172,7 +173,7 @@
       </div>
     </div>
 
-    <div class="page" id="page-bandwidth" style="margin-left:16%;padding:1px 16px;height:1000px;">
+    <div class="page" id="page-bandwidth" class="page">
       <h1 data-i18n="bw_heading">Ingress and Egress Bandwidth</h1>
       <table id="bwtable">
         <tr> <th> </th> <th colspan="3" data-i18n="bw_ingress"> Ingress </th> <th colspan="2" data-i18n="bw_egress">Egress</th>  <th></th></tr>
@@ -180,7 +181,7 @@
       </table>
     </div>
 
-    <div class="page" id="page-system" style="margin-left:16%;padding:1px 16px;height:1000px;">
+    <div class="page" id="page-system" class="page">
       <div class="tab-bar">
         <button class="tab-btn active" onclick="openTab(event, 'system-tab')" data-i18n="sys_tab_system">System</button>
         <button class="tab-btn" onclick="openTab(event, 'advanced-tab')" data-i18n="sys_tab_advanced">Advanced</button>
@@ -261,7 +262,7 @@
       </div>
     </div>
 
-    <div class="page" id="page-update" style="margin-left:16%;padding:1px 16px;height:1000px;width:40%;">
+    <div class="page page-wide" id="page-update">
       <h1 data-i18n="update_heading">Firmware Update</h1>
       <form enctype="multipart/form-data" action="/upload" method="POST">
         <input type="hidden" name="MAX_FILE_SIZE" value="1000000" />

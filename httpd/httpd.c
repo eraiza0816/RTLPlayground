@@ -804,6 +804,16 @@ void handle_post(void)
 			return;
 		}
 
+		/* Same incomplete-body guard as /cmd and /enc: uIP delivers one
+		 * segment per appcall, and a client that sends the headers and
+		 * the form body in separate segments would make the password
+		 * comparison below read past the end of the received data. */
+		if (content_length && content_length > (uip_len - (uint16_t)(p - uip_appdata) - 4)) {
+			dbg_string("Incomplete POST body\n");
+			send_bad_request();
+			return;
+		}
+
 		/* When a pre-shared key is configured, password authentication is
 		 * disabled: the web UI and rtlpctl log in with the encrypted
 		 * challenge (enc=<hex>) so the PSK itself never leaves the client. */

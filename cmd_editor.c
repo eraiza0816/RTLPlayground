@@ -16,6 +16,22 @@ __xdata uint16_t history_editptr;
 extern __xdata uint8_t cmd_history[CMD_HISTORY_SIZE];
 extern __xdata uint16_t cmd_history_ptr;
 
+extern volatile __xdata uint32_t ticks;
+
+/* Wait up to ~100 ms until at least n bytes are buffered after l.
+ * Returns 1 when the bytes arrived, 0 on timeout.  Bounds the ESC
+ * sequence handling so a lone or truncated escape cannot hang the
+ * console forever. */
+static uint8_t wait_serial(uint8_t n)
+{
+	__xdata uint16_t t0 = ticks;
+	while (((sbuf_ptr + SBUF_SIZE - l) & SBUF_MASK) < n) {
+		if ((uint16_t)(ticks - t0) > (SYS_TICK_HZ / 10))
+			return 0;
+	}
+	return 1;
+}
+
 void cmd_editor_init(void) __banked
 {
 	l = sbuf_ptr; // We have printed out entered characters until l
@@ -54,8 +70,13 @@ void cmd_edit(void) __banked
 				continue;
 			}
 #endif
-			if (cmd_line_len >= CMD_BUF_SIZE)
+			if (cmd_line_len >= CMD_BUF_SIZE) {
+				// Buffer full: consume the character instead of
+				// spinning on the same byte forever.
+				l++;
+				l &= SBUF_MASK;
 				continue;
+			}
 			write_char(sbuf[l]);
 			// Shift buffer to right
 			for (uint8_t i = cmd_line_len; i > cursor; i--)
@@ -74,11 +95,14 @@ void cmd_edit(void) __banked
 			cmd_complete();
 #endif
 		} else if (sbuf[l] == '\033') { // ESC-Sequence
-			// Wait until we have at least 3 characters including the ESC character in the serial buffer
-			if (((sbuf_ptr + SBUF_SIZE - l) & SBUF_MASK) < 3)
+			// Wait until the full sequence has arrived (up to 4 bytes
+			// including the ESC); a lone ESC must not hang the console.
+			if (!wait_serial(4)) {
+				l++;		// drop the ESC byte
+				l &= SBUF_MASK;
 				continue;
-			if (((sbuf_ptr > l ? sbuf_ptr - l : SBUF_SIZE + sbuf_ptr - l) >= 4)
-				   && sbuf[l] == '\033' && sbuf[(l + 1) & SBUF_MASK] == '[' && sbuf[(l + 2) & SBUF_MASK] == '3' && sbuf[(l + 3) & SBUF_MASK] == '~') { // DEL
+			}
+			if (sbuf[l] == '\033' && sbuf[(l + 1) & SBUF_MASK] == '[' && sbuf[(l + 2) & SBUF_MASK] == '3' && sbuf[(l + 3) & SBUF_MASK] == '~') { // DEL
 				if (cursor < cmd_line_len) {
 					write_char('\033'); write_char('['); write_char('1'); write_char('P'); // Delete to end of line
 					cmd_line_len--;
@@ -184,7 +208,9 @@ void cmd_edit(void) __banked
 				l += 3;
 				l &= SBUF_MASK;
 				continue;
-			} else { // An unknown or not yet complete Escape sequence: wait
+			} else { // An unknown escape sequence: skip the ESC byte
+				l++;
+				l &= SBUF_MASK;
 				continue;
 			}
 		} else if (sbuf[l] == 127 || sbuf[l] == 8) {  // Backspace DEL or BS/^H
@@ -197,8 +223,9 @@ void cmd_edit(void) __banked
 				for (uint8_t i = cursor; i <= cmd_line_len; i++)
 					write_char('\010');
 				cursor--;
-				for (uint8_t i = cursor; i <= cmd_line_len; i++)
+				for (uint8_t i = cursor; i < cmd_line_len; i++)
 					cmd_buffer[i] = cmd_buffer[i+1];
+				cmd_buffer[cmd_line_len] = '\0';
 				cmd_line_len--;
 			}
 		}

@@ -438,8 +438,7 @@ void reg_read(uint16_t reg_addr)
 {
 	SFR_REG_ADDR_U16 = reg_addr;
 	SFR_EXEC_GO = SFR_EXEC_READ_REG;
-	do {
-	} while (SFR_EXEC_STATUS != 0);
+	SFR_BUSY_WAIT();
 	/* The result is now in SFR A4, A5, A6, A7 */
 }
 
@@ -451,8 +450,7 @@ void reg_read_m(uint16_t reg_addr)
 #endif
 	SFR_REG_ADDR_U16 = reg_addr;
 	SFR_EXEC_GO = SFR_EXEC_READ_REG;
-	do {
-	} while (SFR_EXEC_STATUS != 0);
+	SFR_BUSY_WAIT();
 	sfr_data[0] = SFR_DATA_24;
 	sfr_data[1] = SFR_DATA_16;
 	sfr_data[2] = SFR_DATA_8;
@@ -468,8 +466,7 @@ void reg_write(uint16_t reg_addr)
 	/* Data to write must be in SFR A4, A5, A6, A7 */
 	SFR_REG_ADDR_U16 = reg_addr;
 	SFR_EXEC_GO = SFR_EXEC_WRITE_REG;
-	do {
-	} while (SFR_EXEC_STATUS != 0);
+	SFR_BUSY_WAIT();
 }
 
 
@@ -488,8 +485,7 @@ void reg_write_m(uint16_t reg_addr)
 	SFR_DATA_0 = sfr_data[3];
 
 	SFR_EXEC_GO = SFR_EXEC_WRITE_REG;
-	do {
-	} while (SFR_EXEC_STATUS != 0);
+	SFR_BUSY_WAIT();
 }
 
 
@@ -583,7 +579,7 @@ void nic_rx_header(uint16_t ring_ptr)
 	SFR_NIC_DATA_U16LE = buffer;
 	SFR_NIC_RING_U16LE = ring_ptr;
 	SFR_NIC_CTRL = 1;
-	do { } while (SFR_NIC_CTRL != 0);
+	NIC_BUSY_WAIT();
 }
 
 
@@ -592,13 +588,23 @@ void nic_rx_header(uint16_t ring_ptr)
  * the description of the packet must be in the rx_headers data structure
  * data will be returned in the xmem buffer points to
  * ring_ptr is the current position of the RX Ring on the ASIC side
+ * Returns 1 when the payload was transferred, 0 when the frame was
+ * dropped (oversized: it would not fit uip_buf).
  */
-void nic_rx_packet(register uint16_t buffer, register uint16_t ring_ptr)
+uint8_t nic_rx_packet(register uint16_t buffer, register uint16_t ring_ptr)
 {
+	uint16_t len = (((uint16_t)rx_headers[5]) << 8) | rx_headers[4];
+	if (len > UIP_CONF_BUFFER_SIZE) {
+		/* Oversized frame (jumbo): the CPU does not process it, so do
+		 * not transfer it into uip_buf (which would smash XRAM).  The
+		 * RXCMD issued by handle_rx() advances the ASIC ring past the
+		 * descriptor. */
+		return 0;
+	}
+
 	SFR_NIC_DATA_U16LE = buffer;
 	SFR_NIC_RING_U16LE = ring_ptr;
 
-	uint16_t len = (((uint16_t)rx_headers[5]) << 8) | rx_headers[4];
 	len += 7;
 	len >>= 3;
 #ifdef RXTXDBG
@@ -606,7 +612,8 @@ void nic_rx_packet(register uint16_t buffer, register uint16_t ring_ptr)
 	print_short(len);
 #endif
 	SFR_NIC_CTRL = len;
-	do { } while (SFR_NIC_CTRL != 0);
+	NIC_BUSY_WAIT();
+	return 1;
 }
 
 
@@ -647,7 +654,7 @@ void nic_tx_packet(uint16_t ring_ptr)
 	len += 0xf;
 	len >>= 3;
 	SFR_NIC_CTRL = len;
-	do { } while (SFR_NIC_CTRL != 0);
+	NIC_BUSY_WAIT();
 }
 
 
@@ -681,8 +688,7 @@ void sds_read(uint8_t sds_id, uint8_t page, uint8_t reg)
 	SFR_93 = reg;			// 93
 	SFR_94 = page << 1 | sds_id;	// 94
 	SFR_EXEC_GO = SFR_EXEC_READ_SDS;
-	do {
-	} while (SFR_EXEC_STATUS != 0);
+	SFR_BUSY_WAIT();
 
 #ifdef REGDBG
 	write_char(':'); print_byte(SFR_DATA_8); print_byte(SFR_DATA_0); write_char(' ');
@@ -705,8 +711,7 @@ void sds_write_v(uint8_t sds_id, uint8_t page, uint8_t reg, uint16_t v)
 	SFR_93 = reg;
 	SFR_94 = page << 1 | sds_id;
 	SFR_EXEC_GO = SFR_EXEC_WRITE_SDS;
-	do {
-	} while (SFR_EXEC_STATUS != 0);
+	SFR_BUSY_WAIT();
 }
 
 
@@ -771,8 +776,7 @@ void read_reg_timer(__xdata uint32_t * tmr)
 	uint8_t * val = (uint8_t *)tmr;
 	SFR_REG_ADDR_U16 = RTL837X_REG_SEC_COUNTER;
 	SFR_EXEC_GO = SFR_EXEC_READ_REG;
-	do {
-	} while (SFR_EXEC_STATUS != 0);
+	SFR_BUSY_WAIT();
 	*val++ = SFR_DATA_0;
 	*val++ = SFR_DATA_8;
 	*val++ = SFR_DATA_16;
@@ -1081,7 +1085,7 @@ void handle_rx(void)
 			write_char(' ');
 		}
 #endif
-		nic_rx_packet((uint16_t) &uip_buf[0], ring_ptr + 8);
+		__xdata uint8_t rx_transferred = nic_rx_packet((uint16_t) &uip_buf[0], ring_ptr + 8);
 
 #ifdef RXTXDBG
 		print_string("\n<< ");
@@ -1093,6 +1097,12 @@ void handle_rx(void)
 #endif
 		REG_SET(RTL837X_REG_NIC_RXCMD, 1);
 		uip_len = (((uint16_t)rx_headers[5]) << 8) | rx_headers[4];
+		if (!rx_transferred) {
+			// Oversized frame: nic_rx_packet did not transfer it into
+			// uip_buf, so there is nothing to process.
+			uip_len = 0;
+			return;
+		}
 
 		rx_packet_vlan = NTOHS(ETH_IN->vlan_tag.vlan) & 0x0fff;
 
@@ -1563,8 +1573,7 @@ void phy_write_mask(uint16_t phy_mask, uint8_t dev_id, uint16_t reg, uint16_t v)
 	SFR_SMI_REG_U16 = reg;			// SFR_C2, SFR_C3
 	SFR_SMI_DEV = (phy_mask >> 8) | dev_id  << 3 | 2; // SFR_C4: bit 2 can also be set for some option
 	SFR_EXEC_GO = SFR_EXEC_WRITE_SMI;
-	do {
-	} while (SFR_EXEC_STATUS != 0);
+	SFR_BUSY_WAIT();
 }
 
 /*
@@ -1583,8 +1592,7 @@ void phy_write(uint8_t phy_id, uint8_t dev_id, uint16_t reg, uint16_t v)
 	SFR_SMI_REG_U16 = reg;			// SFR_C2, SFR_C3
 	SFR_SMI_DEV = (phy_mask >> 8) | dev_id  << 3 | 2; // SFR_C4: bit 2 can also be set for some option
 	SFR_EXEC_GO = SFR_EXEC_WRITE_SMI;
-	do {
-	} while (SFR_EXEC_STATUS != 0);
+	SFR_BUSY_WAIT();
 }
 
 
@@ -1604,8 +1612,7 @@ void phy_read(uint8_t phy_id, uint8_t dev_id, uint16_t reg)
 	SFR_SMI_DEV = dev_id << 3 | 2;	// c4
 
 	SFR_EXEC_GO = SFR_EXEC_READ_SMI;
-	do {
-	} while (SFR_EXEC_STATUS != 0);
+	SFR_BUSY_WAIT();
 #ifdef REGDBG
 	print_byte(SFR_DATA_8); print_byte(SFR_DATA_0); write_char(' ');
 #endif
@@ -1628,8 +1635,7 @@ void phy_modify(uint8_t phy_id, uint8_t dev_id, uint16_t reg, uint16_t mask, uin
 	SFR_SMI_PHY = phy_id;		// a5
 	SFR_SMI_DEV = smi_phy;		// c4
 	SFR_EXEC_GO = SFR_EXEC_READ_SMI;
-	do {
-	} while (SFR_EXEC_STATUS != 0);
+	SFR_BUSY_WAIT();
 
 	// Modify the reed data.
 	// TODO: Check if we directly can modify SFR register directly.
@@ -1644,8 +1650,7 @@ void phy_modify(uint8_t phy_id, uint8_t dev_id, uint16_t reg, uint16_t mask, uin
 	SFR_SMI_PHYMASK = phy_mask;		// SFR_C5
 	SFR_SMI_DEV = smi_phy | (phy_mask >> 8);
 	SFR_EXEC_GO = SFR_EXEC_WRITE_SMI;
-	do {
-	} while (SFR_EXEC_STATUS != 0);
+	SFR_BUSY_WAIT();
 }
 
 void nic_setup(void)

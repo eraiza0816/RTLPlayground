@@ -593,8 +593,7 @@ void rtl8224_read_reg_u16(uint16_t reg) __banked
 	SFR_SMI_DEV = PHY_MMD30 << 3 | 2;	// c4
 
 	SFR_EXEC_GO = SFR_EXEC_READ_SMI;
-	do {
-	} while (SFR_EXEC_STATUS != 0);
+	SFR_BUSY_WAIT();
 }
 
 // Write RTL8224 register.
@@ -614,8 +613,7 @@ void rtl8224_write_reg_u16(uint16_t reg, uint16_t val) __banked
 	SFR_SMI_PHYMASK = phy_mask;		// SFR_C5
 	SFR_SMI_DEV = (phy_mask >> 8) | PHY_MMD30 << 3 | 2; // SFR_C4: bit 2 can also be set for some option
 	SFR_EXEC_GO = SFR_EXEC_WRITE_SMI;
-	do {
-	} while (SFR_EXEC_STATUS != 0);
+	SFR_BUSY_WAIT();
 }
 
 // // Modify RTL8224 register.

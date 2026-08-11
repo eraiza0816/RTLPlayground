@@ -96,6 +96,28 @@ __sfr16 __at(0xb6b5) SFR_NIC_RING_U16LE;
 __sfr __at(0xb5) SFR_NIC_RING_L;
 __sfr __at(0xb6) SFR_NIC_RING_H;
 
+/*
+ * Bounded waits for SMI/SDS/PHY register accesses and NIC transfers.
+ * Implemented as macros (not functions): a call would force the
+ * callers' parameters out of registers into internal RAM slots, and the
+ * 8051 internal RAM is nearly full.
+ */
+#define SFR_BUSY_WAIT() do { \
+	__xdata uint16_t guard_ = 0; \
+	do { \
+		if (++guard_ == 0) \
+			break;		/* ~65535 iterations, then give up */ \
+	} while (SFR_EXEC_STATUS != 0); \
+} while (0)
+
+#define NIC_BUSY_WAIT() do { \
+	__xdata uint16_t guard_ = 0; \
+	do { \
+		if (++guard_ == 0) \
+			break;		/* ~65535 iterations, then give up */ \
+	} while (SFR_NIC_CTRL != 0); \
+} while (0)
+
 /* Standard 8051 sfr */
 // Timer 0 value
 __sfr16 __at(0x8c8a) T0_U16;

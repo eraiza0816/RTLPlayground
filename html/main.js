@@ -918,7 +918,7 @@ var mib_counters = [
 ];
 
 function showCounters(p) {
-  var queryPort = physToLogMap[p] !== undefined ? physToLogMap[p] : (p - 1);
+  var queryPort = p;   /* physical port number (1-based), as the server expects */
   document.getElementById('statsModalTitle').textContent = (t('stat_detailed') || 'Detailed Counters') + ': Port ' + p;
   document.getElementById('statsModal').style.display = 'flex';
   fetchAPI('GET', '/counters.json?port=' + queryPort, function(raw) {

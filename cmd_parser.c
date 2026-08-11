@@ -175,6 +175,22 @@ uint8_t cmd_compare(uint8_t start, __code uint8_t * cmd)
 	returns number of hexvalue[] entries has been written.
 	return value = 0 means error.
 */
+/* Parse a physical port argument (1-9).  Returns the logical port or
+ * 0xff on error.  widx is the word index into cmd_words_b[]. */
+static uint8_t parse_phys_port(uint8_t widx)
+{
+	uint8_t p;
+	if (cmd_words_len <= widx || !isnumber(cmd_buffer[cmd_words_b[widx]]))
+		return 0xff;
+	p = cmd_buffer[cmd_words_b[widx]] - '1';
+	if (isnumber(cmd_buffer[cmd_words_b[widx] + 1]))
+		return 0xff;			/* only 1-9 exist */
+	if (p >= 9)
+		return 0xff;			/* rejects '0' (wraps to 0xff) */
+	return machine.phys_to_log_port[p];
+}
+
+
 uint8_t atoi_hex(uint8_t idx)
 {
 	uint8_t h_idx = 0;	uint8_t val = 0;
@@ -203,9 +219,13 @@ uint8_t atoi_hex(uint8_t idx)
 		}
 
 		idx++;
+		if (h_idx >= 8) {	/* hexvalue[] holds at most 4 bytes */
+			h_idx = 0;
+			break;
+		}
 		hexvalue[h_idx >> 1] = val;
 
-		if (h_idx & 1 == 1) {
+		if ((h_idx & 1) == 1) {
 			val = 0;
 		}
 		h_idx++;
@@ -296,15 +316,9 @@ void parse_lag(void)
 	uint8_t w = 2;
 	while (w < cmd_words_len) {
 //		write_char('|'); print_byte(w); write_char(':'); write_char(cmd_buffer[cmd_words_b[w]]); write_char('-');
-		uint8_t port;
-		if (isnumber(cmd_buffer[cmd_words_b[w]])) {
-			port = cmd_buffer[cmd_words_b[w]] - '1';
-			if (isnumber(cmd_buffer[cmd_words_b[w] + 1]))
-				port = (port + 1) * 10 + cmd_buffer[cmd_words_b[w] + 1] - '1';
-				port = machine.phys_to_log_port[port];
-		} else {
+		uint8_t port = parse_phys_port(w);
+		if (port == 0xff)
 			goto err;
-		}
 		if (port > machine.max_port)
 			goto err;
 		members |= ((uint16_t)1) << port;
@@ -375,13 +389,19 @@ void parse_vlan(void)
 		uint8_t w = 2;
 		if (cmd_words_len > w && isletter(cmd_buffer[cmd_words_b[w]])) {
 			register uint8_t i = 0;
+			while (cmd_buffer[cmd_words_b[w] + i] != ' ' && cmd_buffer[cmd_words_b[w] + i] != '\0')
+				i++;
 			vlan_name_remove(vlan_settings.vlan);
+			if (vlan_ptr + 3 + i + 2 > VLAN_NAMES_SIZE) {
+				print_string("VLAN name storage full\n");
+				goto err;
+			}
 			vlan_names[vlan_ptr++] = hex[(vlan_settings.vlan >> 8) & 0xf];
 			vlan_names[vlan_ptr++] = hex[(vlan_settings.vlan >> 4) & 0xf] ;
 			vlan_names[vlan_ptr++] = hex[vlan_settings.vlan & 0xf];
-			while(cmd_buffer[cmd_words_b[w] + i] != ' ' && cmd_buffer[cmd_words_b[w] + i] != '\0') {
-				write_char(cmd_buffer[cmd_words_b[w] + i]);
-				vlan_names[vlan_ptr++] = cmd_buffer[cmd_words_b[w] + i++];
+			for (uint8_t j = 0; j < i; j++) {
+				write_char(cmd_buffer[cmd_words_b[w] + j]);
+				vlan_names[vlan_ptr++] = cmd_buffer[cmd_words_b[w] + j];
 			}
 			vlan_names[vlan_ptr++] = ' '; vlan_names[vlan_ptr] = '\0';
 			w++;
@@ -390,18 +410,11 @@ void parse_vlan(void)
 		while (cmd_words_len > w) {
 			__xdata uint8_t port;
 			if (isnumber(cmd_buffer[cmd_words_b[w]])) {
-				port = cmd_buffer[cmd_words_b[w]] - '1';
-				if (isnumber(cmd_buffer[cmd_words_b[w] + 1])) {
-					port = (port + 1) * 10 + cmd_buffer[cmd_words_b[w] + 1] - '1';
-					if (cmd_buffer[cmd_words_b[w] + 2] == 't')
-						vlan_settings.tagged |= ((uint16_t)1) << port;
-				} else {
-						port = machine.phys_to_log_port[port];
-					if (cmd_buffer[cmd_words_b[w] + 1] == 't')
-						vlan_settings.tagged |= ((uint16_t)1) << port;
-				}
-				if (port > machine.max_port)
+				port = parse_phys_port(w);
+				if (port == 0xff)
 					goto err;
+				if (cmd_buffer[cmd_words_b[w] + 1] == 't')
+					vlan_settings.tagged |= ((uint16_t)1) << port;
 				vlan_settings.members |= ((uint16_t)1) << port;
 			}
 			w++;
@@ -433,10 +446,20 @@ void parse_isolate(void)
 	print_string("\nISOLATE ");
 
 	// TODO: validate port with isnumber() before phys_to_log_port access
-	__xdata int8_t port_configured = cmd_buffer[cmd_words_b[1]] - '1';
-	port_configured = machine.phys_to_log_port[port_configured];
-	if (isnumber(cmd_buffer[cmd_words_b[1] + 1]))  // CPU-port, logical port 9
-		port_configured = (port_configured + 1) * 10 + cmd_buffer[cmd_words_b[1] + 1] - '1';
+	__xdata int8_t port_configured;
+	if (!isnumber(cmd_buffer[cmd_words_b[1]]))
+		goto err;
+	port_configured = cmd_buffer[cmd_words_b[1]] - '1';
+	if (isnumber(cmd_buffer[cmd_words_b[1] + 1])) {
+		// CPU-port, logical port 9: only "10" is valid
+		if (port_configured != 0 || cmd_buffer[cmd_words_b[1] + 1] != '0')
+			goto err;
+		port_configured = 9;
+	} else {
+		if (port_configured >= 9)
+			goto err;
+		port_configured = machine.phys_to_log_port[port_configured];
+	}
 	if (port_configured < 0 || port_configured > 9)
 		goto err;
 
@@ -593,38 +616,24 @@ void parse_mirror(void)
 		return;
 	}
 
-	mirroring_port = cmd_buffer[cmd_words_b[1]] - '1';
-	if (isnumber(cmd_buffer[cmd_words_b[1] + 1]))
-		mirroring_port = (mirroring_port + 1) * 10 + cmd_buffer[cmd_words_b[1] + 1] - '1';
-	// TODO: validate mirroring_port range after phys_to_log_port mapping
-	mirroring_port = machine.phys_to_log_port[mirroring_port];
+	mirroring_port = parse_phys_port(1);
+	if (mirroring_port == 0xff)
+		return;
 
 	uint8_t w = 2;
 	while (w < cmd_words_len) {
 		uint8_t port;
 		if (isnumber(cmd_buffer[cmd_words_b[w]])) {
-			port = cmd_buffer[cmd_words_b[w]] - '1';
-			if (isnumber(cmd_buffer[cmd_words_b[w] + 1])) {
-				port = (port + 1) * 10 + cmd_buffer[cmd_words_b[w] + 1] - '1';
-				port = machine.phys_to_log_port[port];
-				if (cmd_buffer[cmd_words_b[w] + 2] == 'r')
-					rx_pmask |= ((uint16_t)1) << port;
-				else if (cmd_buffer[cmd_words_b[w] + 2] == 't')
-					tx_pmask |= ((uint16_t)1) << port;
-				else {
-					rx_pmask |= ((uint16_t)1) << port;
-					tx_pmask |= ((uint16_t)1) << port;
-				}
-			} else {
-				port = machine.phys_to_log_port[port];
-				if (cmd_buffer[cmd_words_b[w] + 1] == 'r')
-					rx_pmask |= ((uint16_t)1) << port;
-				else if (cmd_buffer[cmd_words_b[w] + 1] == 't')
-					tx_pmask |= ((uint16_t)1) << port;
-				else {
-					rx_pmask |= ((uint16_t)1) << port;
-					tx_pmask |= ((uint16_t)1) << port;
-				}
+			port = parse_phys_port(w);
+			if (port == 0xff)
+				return;
+			if (cmd_buffer[cmd_words_b[w] + 1] == 'r')
+				rx_pmask |= ((uint16_t)1) << port;
+			else if (cmd_buffer[cmd_words_b[w] + 1] == 't')
+				tx_pmask |= ((uint16_t)1) << port;
+			else {
+				rx_pmask |= ((uint16_t)1) << port;
+				tx_pmask |= ((uint16_t)1) << port;
 			}
 		}
 		w++;
@@ -647,8 +656,11 @@ void parse_port(void)
 		print_string("Illegal port number\n");
 		return;
 	}
-	phy_settings.port = cmd_buffer[cmd_words_b[1]] - '1';
-	phy_settings.port = machine.phys_to_log_port[phy_settings.port];
+	phy_settings.port = parse_phys_port(1);
+	if (phy_settings.port == 0xff) {
+		print_string("\nBad port\n");
+		return;
+	}
 	if (phy_settings.port > machine.max_port || phy_settings.port < machine.min_port) {
 		print_string("No such port\n");
 		return;
@@ -746,8 +758,9 @@ void parse_mtu(void)
 		}
 	}
 	// TODO: validate port with isnumber() before phys_to_log_port access
-	p = cmd_buffer[cmd_words_b[1]] - '1';
-	p = machine.phys_to_log_port[p];
+	p = parse_phys_port(1);
+	if (p == 0xff)
+		return;
 	print_byte(p);
 	if (cmd_words_len != 3) {
 		return;
@@ -1656,10 +1669,11 @@ void parse_eee(void)
 			speed_word = 2;
 		} else if (cmd_buffer[idx] == ' ' || cmd_buffer[idx] == '\0') {
 			// Word 2 is a port number
-			// TODO: validate port with isnumber() before phys_to_log_port access
-	// TODO: validate cmd_words_len >= 3 before accessing cmd_words_b[2]
-	port = cmd_buffer[cmd_words_b[2]] - '1';
-			port = machine.phys_to_log_port[port];
+			port = parse_phys_port(2);
+			if (port == 0xff) {
+				print_string("Bad port\n");
+				return;
+			}
 			// Check if word 3 is a speed
 			if (cmd_words_len >= 4)
 				speed_word = 3;
@@ -2567,10 +2581,8 @@ void cmd_parser(void) __banked
 			}
 		} else if (cmd_compare(0, "pvid") && cmd_words_len == 3) {
 			__xdata uint16_t pvid;
-			uint8_t port;
-			port = cmd_buffer[cmd_words_b[1]] - '1';
-			port = machine.phys_to_log_port[port];
-			if (!atoi_short(&pvid, cmd_words_b[2]))
+			uint8_t port = parse_phys_port(1);
+			if (port != 0xff && !atoi_short(&pvid, cmd_words_b[2]))
 				port_pvid_set(port, pvid);
 		} else if (cmd_compare(0, "sds")) {
 			print_reg(RTL837X_REG_SDS_MODES);

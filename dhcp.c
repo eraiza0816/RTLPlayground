@@ -93,7 +93,13 @@ void dhcp_prepare_request(void)
 	DHCP_P->hw_len = 6;
 	DHCP_P->hops = 0;
 
-	DHCP_P->tid = HTONS(dhcp_state.transaction_id);
+	/* The xid is a 32-bit transaction id in network byte order; HTONS
+	 * would truncate it to 16 bits and make replies unmatchable. */
+	__xdata uint8_t * __xdata tp = (__xdata uint8_t *)&DHCP_P->tid;
+	tp[0] = (uint8_t)(dhcp_state.transaction_id >> 24);
+	tp[1] = (uint8_t)(dhcp_state.transaction_id >> 16);
+	tp[2] = (uint8_t)(dhcp_state.transaction_id >> 8);
+	tp[3] = (uint8_t)dhcp_state.transaction_id;
 	DHCP_P->delay = HTONS(0);
 	DHCP_P->flags = 0;
 	// Clear fields client_ip to bootp_file
@@ -124,7 +130,6 @@ void dhcp_addopt_request_ip(void)
 	DHCP_OPT[dhcp_state.opt_ptr++] = dhcp_state.current_ip[1];
 	DHCP_OPT[dhcp_state.opt_ptr++] = dhcp_state.current_ip[2];
 	DHCP_OPT[dhcp_state.opt_ptr++] = dhcp_state.current_ip[3];
-	memcpy(&DHCP_OPT[dhcp_state.opt_ptr], uip_ethaddr.addr, 4);
 }
 
 
@@ -136,7 +141,6 @@ void dhcp_addopt_server_id(void)
 	DHCP_OPT[dhcp_state.opt_ptr++] = dhcp_state.server[1];
 	DHCP_OPT[dhcp_state.opt_ptr++] = dhcp_state.server[2];
 	DHCP_OPT[dhcp_state.opt_ptr++] = dhcp_state.server[3];
-	memcpy(&DHCP_OPT[dhcp_state.opt_ptr], uip_ethaddr.addr, 4);
 }
 
 
@@ -160,13 +164,10 @@ void dhcp_send_discover(void)
 	DHCP_OPT[dhcp_state.opt_ptr++] = DHCP_PARAM_DNS;
 
 	DHCP_OPT[dhcp_state.opt_ptr++] = DHCP_END;
-	// Padding to 300 bytes
-	DHCP_OPT[dhcp_state.opt_ptr++] = 0;
-	DHCP_OPT[dhcp_state.opt_ptr++] = 0;
-	DHCP_OPT[dhcp_state.opt_ptr++] = 0;
-	DHCP_OPT[dhcp_state.opt_ptr++] = 0;
-	DHCP_OPT[dhcp_state.opt_ptr++] = 0;
-	DHCP_OPT[dhcp_state.opt_ptr++] = 0;
+	// Padding to the 300 byte minimum packet size (RFC 2131): the fixed
+	// header is 240 bytes, so the options area is padded to 60 bytes.
+	while (dhcp_state.opt_ptr < 60)
+		DHCP_OPT[dhcp_state.opt_ptr++] = 0;
 
 	uip_udp_send(sizeof(struct dhcp_pkt) + dhcp_state.opt_ptr);
 	dhcp_state.state = DHCP_DISCOVER_SENT;
@@ -196,13 +197,10 @@ void dhcp_send_request(void)
 	DHCP_OPT[dhcp_state.opt_ptr++] = DHCP_PARAM_DNS;
 
 	DHCP_OPT[dhcp_state.opt_ptr++] = DHCP_END;
-	// Padding to 300 bytes
-	DHCP_OPT[dhcp_state.opt_ptr++] = 0;
-	DHCP_OPT[dhcp_state.opt_ptr++] = 0;
-	DHCP_OPT[dhcp_state.opt_ptr++] = 0;
-	DHCP_OPT[dhcp_state.opt_ptr++] = 0;
-	DHCP_OPT[dhcp_state.opt_ptr++] = 0;
-	DHCP_OPT[dhcp_state.opt_ptr++] = 0;
+	// Padding to the 300 byte minimum packet size (RFC 2131): the fixed
+	// header is 240 bytes, so the options area is padded to 60 bytes.
+	while (dhcp_state.opt_ptr < 60)
+		DHCP_OPT[dhcp_state.opt_ptr++] = 0;
 
 	uip_udp_send(sizeof(struct dhcp_pkt) + dhcp_state.opt_ptr);
 	dhcp_state.state = DHCP_REQUEST_SENT;
@@ -283,7 +281,11 @@ void parse_opts(void)
 
 void parse_dhcp(void)
 {
-	if (!DHCP_P->tid == HTONS(dhcp_state.transaction_id))
+	__xdata uint8_t * __xdata tp = (__xdata uint8_t *)&DHCP_P->tid;
+	if (tp[0] != (uint8_t)(dhcp_state.transaction_id >> 24) ||
+	    tp[1] != (uint8_t)(dhcp_state.transaction_id >> 16) ||
+	    tp[2] != (uint8_t)(dhcp_state.transaction_id >> 8) ||
+	    tp[3] != (uint8_t)dhcp_state.transaction_id)
 		return;
 	if (DHCP_P->cookie[0] != 0x63 || DHCP_P->cookie[1] != 0x82 || DHCP_P->cookie[2] != 0x53 || DHCP_P->cookie[3] != 0x63)
 		return;

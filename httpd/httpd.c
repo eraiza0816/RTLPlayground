@@ -83,6 +83,8 @@ __xdata uint16_t content_length;
 
 extern __xdata uint16_t crc_value;
 extern __xdata uint8_t ledEnabled;
+#include "machine.h"
+extern __code const struct machine machine;
 __xdata uint16_t crc_final;
 void crc16(__xdata uint8_t *v) __banked;
 
@@ -346,6 +348,21 @@ uint8_t stream_upload(uint16_t bptr)
 	__xdata uint8_t *p = uip_appdata;
 	__xdata struct httpd_state * __xdata s = &(uip_conn->appstate);
 
+	/* Guard the destination area: a bug in the size accounting above
+	 * must not let the transfer erase and write past the config or the
+	 * firmware upload area into the code region. */
+	if (verify_crc) {
+		if (uptr + FLASH_PAGE_SIZE >= FIRMWARE_UPLOAD_START + flash_size) {
+			s->tstate = TSTATE_FLASH_DONE;
+			send_bad_request();
+			return 0;
+		}
+	} else if (uptr + FLASH_PAGE_SIZE >= CONFIG_START + CONFIG_LEN) {
+		s->tstate = TSTATE_FLASH_DONE;
+		send_bad_request();
+		return 0;
+	}
+
 	dbg_string("Stream_upload called: ");
 	dbg_short(bptr); dbg_char('\n');
 
@@ -368,7 +385,19 @@ uint8_t stream_upload(uint16_t bptr)
 				dbg_string("CRC16: "); dbg_short(crc_final); dbg_char('\n');
 				if (crc_final == 0xb001) {
 					print_string("Checksum OK.\nUpload to flash done, will reset!\n");
-					slen = strtox(outbuf, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK\n");
+					/* A web page instead of plain text: the browser would
+					 * otherwise sit on a response that never ends while
+					 * the switch resets.  The meta refresh sends it back
+					 * to the login page once the reboot is done. */
+					slen = strtox(outbuf,
+						"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n"
+						"<!DOCTYPE html><html><head><meta charset=\"UTF-8\">"
+						"<meta http-equiv=\"refresh\" content=\"5;url=/login.html\"></head>"
+						"<body style=\"font-family:sans-serif;text-align:center;margin-top:20%\">"
+						"<h2>Firmware upload complete</h2>"
+						"<p>The switch is updating and will reboot. "
+						"<a href=\"/login.html\">Continue to login</a></p>"
+						"</body></html>\n");
 					pending_reset = 1;
 				} else {
 					print_string("Checksum incorrect! Aborting.\n");
@@ -443,11 +472,65 @@ uint8_t stream_upload(uint16_t bptr)
 }
 
 
+/* Look up "?key=value" after the path in q (the path is NUL-terminated).
+ * The query bytes follow the NUL; the scan is bounded because /enc
+ * leaves binary ciphertext behind the query.  On success short_parsed
+ * holds the value and 1 is returned; otherwise short_parsed is 0.
+ * Locals live in XDATA: the 8051 internal RAM is full. */
+static uint8_t api_query_u16(__xdata uint8_t *q, __code uint8_t *key)
+{
+	__xdata uint8_t * __xdata p = q;
+	__xdata uint8_t qn = 0;
+	__xdata uint8_t i = 0;
+	__xdata uint8_t * __xdata k = 0;
+	short_parsed = 0;
+	while (*p)
+		p++;			/* skip the (NUL-terminated) path */
+	if (p == q)
+		return 0;
+	p++;				/* skip the NUL (the former '?') */
+	while (qn < 100 && *p) {
+		k = p;
+		while (qn < 100 && *p && *p != '=' && *p != '&') {
+			p++;
+			qn++;
+		}
+		if (*p == '=') {
+			i = 0;
+			while (key[i] && k[i] == key[i])
+				i++;
+			if (!key[i]) {
+				parse_short(p + 1);
+				return 1;
+			}
+		}
+		while (qn < 100 && *p && *p != '&') {
+			p++;
+			qn++;
+		}
+		if (*p == '&') {
+			p++;
+			qn++;
+		}
+	}
+	return 0;
+}
+
+
 /* Execute a JSON API request.  q is a NUL-terminated path (e.g. "/status.json").
  * On success the response (HTTP header + JSON body) is written to outbuf and
  * slen is updated.  Returns 1 on success, 0 if the path is unknown. */
 static uint8_t handle_api_path(__xdata uint8_t *q)
 {
+	/* Normalize: the plaintext GET path is already cut at '?', but the
+	 * /enc "api <path>?x=y" form passes the raw string followed by
+	 * binary ciphertext.  Truncate at the query so the strcmp()s below
+	 * cannot run into that data. */
+	/* Locals live in XDATA: the 8051 internal RAM is full. */
+	__xdata uint8_t * __xdata qq = q;
+	while (*qq && *qq != '?')
+		qq++;
+	*qq = '\0';
 	if (!strcmp(q, "/status.json")) {
 		send_status();
 		return 1;
@@ -455,14 +538,19 @@ static uint8_t handle_api_path(__xdata uint8_t *q)
 		send_basic_info();
 		return 1;
 	} else if (!strcmp(q, "/vlan.json")) {
-		parse_short(q + 15);
+		api_query_u16(q, "vid");
 		send_vlan(short_parsed);
 		return 1;
 	} else if (is_word(q, "/sfp_diag.json")) {
 		send_sfp_diag();
 		return 1;
 	} else if (is_word(q, "/counters.json")) {
-		send_counters(q[20] - '0');
+		api_query_u16(q, "port");
+		if (short_parsed < 1 || short_parsed > 9) {
+			send_bad_request();
+			return 1;
+		}
+		send_counters((char)short_parsed);
 		return 1;
 	} else if (is_word(q, "/eee.json")) {
 		send_eee();
@@ -471,11 +559,11 @@ static uint8_t handle_api_path(__xdata uint8_t *q)
 		send_bandwidth();
 		return 1;
 	} else if (is_word(q, "/l2.json")) {
-		parse_short(q + 13);
+		api_query_u16(q, "idx");
 		send_l2(short_parsed);
 		return 1;
 	} else if (is_word(q, "/l2_del.json")) {
-		parse_short(q + 17);
+		api_query_u16(q, "idx");
 		l2_delete(short_parsed);
 		return 1;
 	} else if (is_word(q, "/mirror.json")) {
@@ -488,8 +576,12 @@ static uint8_t handle_api_path(__xdata uint8_t *q)
 		send_lag();
 		return 1;
 	} else if (is_word(q, "/sfp_eeprom.json")) {
-		parse_short(q + 20);
-		send_sfp_eeprom(short_parsed);
+		api_query_u16(q, "slot");
+		if (short_parsed >= machine.n_sfp) {
+			send_bad_request();
+			return 1;
+		}
+		send_sfp_eeprom((uint8_t)short_parsed);
 		return 1;
 	} else if (is_word(q, "/vlanlist")) {
 		send_vlanlist();
@@ -499,6 +591,10 @@ static uint8_t handle_api_path(__xdata uint8_t *q)
 		return 1;
 	} else if (is_word(q, "/running-config")) {
 		send_running_config();
+		return 1;
+	} else if (!strcmp(q, "/reset")) {
+		pending_reset = 1;
+		slen = strtox(outbuf, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK\n");
 		return 1;
 	} else if (is_word(q, "/ping.json")) {
 		send_ping();
@@ -647,13 +743,15 @@ void handle_enc(__xdata uint8_t *body)
 			body_len++;
 		body_len += 4;
 		ct_len = slen - body_len;
-		if (!ct_len || ct_len > TCP_OUTBUF_SIZE) {
+		/* The response is header + nonce[12] + ct + tag[16] in outbuf;
+		 * bound ct so everything fits instead of overflowing XRAM. */
+		slen = strtox(outbuf, "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n\r\n");
+		if (!ct_len || ct_len > TCP_OUTBUF_SIZE - slen - AEAD_NONCE_LEN - AEAD_TAG_LEN) {
 			send_bad_request();
 			return;
 		}
 		for (i = 0; i < ct_len; i++)
 			enc_scratch[i] = outbuf[body_len + i];
-		slen = strtox(outbuf, "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n\r\n");
 		gen_random_bytes(resp_nonce, AEAD_NONCE_LEN);
 		for (i = 0; i < AEAD_NONCE_LEN; i++)
 			outbuf[slen++] = resp_nonce[i];
@@ -986,8 +1084,9 @@ void httpd_appcall(void) __banked
 			s->tstate = TSTATE_TX;
 		}
 	} else if (uip_newdata() && s->tstate == TSTATE_POST) {
-		// Check here maxupload by subtracting uip_len and close socekt if fails!
-		if (max_upload - uip_len > 0) {
+		// Enforce the upload limit by subtracting what we have received.
+		if (uip_len <= max_upload) {
+			max_upload -= uip_len;
 			stream_upload(0);
 			if (s->tstate == TSTATE_FLASH_DONE)
 				goto do_send;

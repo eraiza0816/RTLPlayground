@@ -80,6 +80,7 @@ static uint16_t management_vlan = 0;
 static uint8_t telnet_enabled = 1;
 static uint8_t web_enabled = 1;
 static uint8_t stp_enabled = 0;
+static uint8_t led_enabled = 1;
 static uint8_t igmp_enabled = 0;
 static uint8_t mirror_enabled = 0;
 static uint8_t mirror_port = 0;
@@ -195,12 +196,13 @@ static void cmd_show(struct conn *c)
 	char buf[256];
 	snprintf(buf, sizeof(buf),
 		"Hostname: %s\nIP: 192.168.10.247\nGateway: 192.168.10.1\n"
-		"Netmask: 255.255.255.0\nTelnet: %s\nWeb: %s\nSTP: %s\nIGMP: %s\n",
+		"Netmask: 255.255.255.0\nTelnet: %s\nWeb: %s\nSTP: %s\nIGMP: %s\nLED: %s\n",
 		hostname,
 		telnet_enabled ? "enabled" : "disabled",
 		web_enabled ? "enabled" : "disabled",
 		stp_enabled ? "on" : "off",
-		igmp_enabled ? "on" : "off");
+		igmp_enabled ? "on" : "off",
+		led_enabled ? "on" : "off");
 	conn_send(c, buf);
 }
 
@@ -717,11 +719,13 @@ static void cmd_show_running_config(struct conn *c)
 		"passwd %s\n"
 		"stp %s\n"
 		"telnet %s\n"
-		"web %s\n",
+		"web %s\n"
+		"led %s\n",
 		hostname, passwd,
 		stp_enabled ? "on" : "off",
 		telnet_enabled ? "on" : "off",
-		web_enabled ? "on" : "off");
+		web_enabled ? "on" : "off",
+		led_enabled ? "on" : "off");
 	conn_send(c, buf);
 }
 
@@ -759,6 +763,19 @@ static void cmd_stp(struct conn *c, char **w, int nw)
 	} else {
 		stp_enabled = 0;
 		conn_send(c, "STP disabled\n");
+	}
+}
+
+static void cmd_led(struct conn *c, char **w, int nw)
+{
+	if (nw >= 2 && !strcmp(w[1], "on")) {
+		led_enabled = 1;
+		conn_send(c, "LEDs enabled\n");
+	} else if (nw >= 2 && !strcmp(w[1], "off")) {
+		led_enabled = 0;
+		conn_send(c, "LEDs disabled\n");
+	} else {
+		conn_send(c, led_enabled ? "LEDs enabled\n" : "LEDs disabled\n");
 	}
 }
 
@@ -1001,6 +1018,8 @@ static void execute_line(struct conn *c, char *line)
 		cmd_netmask(c, words, nw);
 	else if (!strcmp(cmd, "stp"))
 		cmd_stp(c, words, nw);
+	else if (!strcmp(cmd, "led"))
+		cmd_led(c, words, nw);
 	else if (!strcmp(cmd, "lldp"))
 		cmd_lldp(c, words, nw);
 	else if (!strcmp(cmd, "igmp"))

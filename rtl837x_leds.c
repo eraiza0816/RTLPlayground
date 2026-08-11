@@ -298,3 +298,21 @@ void leds_setup(void) __banked
 	}
 	print_string("leds_setup done\n");
 }
+
+/*
+ * Enable or disable all chip-driven LEDs.  LED_GLB_IO_EN has one enable
+ * bit per LED pad (bits 0-29) plus a master pad enable (bit 30).  The
+ * per-pad bits that matter are set by leds_setup()/machine_custom_init()
+ * at boot, so only the master bit needs to be toggled here: clearing it
+ * disables every LED pad at once and setting it restores the previous
+ * per-pad configuration.
+ * Note: a power LED wired straight to the supply rail (not through an
+ * LED pad) is outside the chip and cannot be switched off.
+ */
+void leds_set_enabled(uint8_t on) __banked
+{
+	if (on)
+		reg_bit_set(RTL837X_REG_LED_GLB_IO_EN, RTL837X_REG_LED_GLB_IO_EN_PAD_EN);
+	else
+		reg_bit_clear(RTL837X_REG_LED_GLB_IO_EN, RTL837X_REG_LED_GLB_IO_EN_PAD_EN);
+}

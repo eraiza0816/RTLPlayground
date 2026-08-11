@@ -3,6 +3,7 @@
 #include "page_impl.h"
 #include "rtl837x_common.h"
 #include "rtl837x_regs.h"
+#include "rtl837x_leds.h"
 #include "cmd_parser.h"
 #include "rtl837x_flash.h"
 #include "uip.h"
@@ -81,6 +82,7 @@ __xdata uint16_t content_length;
 #define TSTATE_FLASH_DONE	6
 
 extern __xdata uint16_t crc_value;
+extern __xdata uint8_t ledEnabled;
 __xdata uint16_t crc_final;
 void crc16(__xdata uint8_t *v) __banked;
 
@@ -370,6 +372,12 @@ uint8_t stream_upload(uint16_t bptr)
 					pending_reset = 1;
 				} else {
 					print_string("Checksum incorrect! Aborting.\n");
+					if (!ledEnabled) {
+						// Upload failed while the LEDs were temporarily
+						// enabled for the update; restore the off state.
+						leds_set_enabled(0);
+						set_sys_led_state(SYS_LED_OFF);
+					}
 					slen = strtox(outbuf, "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\n\r\nCRC mismatch\n");
 				}
 				s->tstate = TSTATE_FLASH_DONE;
@@ -862,6 +870,8 @@ void handle_post(void)
 		p += 4; // Skip \r\n\r\n sequence at end of preamble of part
 
 		flash_init(0); // Re-initialize flash for non-DIO operation, otherwise flashing fails
+		if (!ledEnabled)
+			leds_set_enabled(1); // Keep the status LED visible during the update
 		set_sys_led_state(SYS_LED_FAST);
 
 		crc_value = 0;

@@ -24,5 +24,6 @@
 #include <stdint.h>
 void leds_dump(void) __banked;
 void leds_setup(void) __banked;
+void leds_set_enabled(uint8_t on) __banked;
 
 #endif

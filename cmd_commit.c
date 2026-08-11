@@ -15,6 +15,7 @@ extern __xdata char hostname[32];
 extern __xdata char passwd[21];
 extern __xdata uip_ipaddr_t uip_hostaddr, uip_draddr, uip_netmask;
 extern __xdata uint8_t stpEnabled;
+extern __xdata uint8_t ledEnabled;
 extern __xdata uint16_t management_vlan;
 extern __xdata uint8_t telnet_enabled;
 extern __xdata uint8_t web_enabled;
@@ -185,6 +186,11 @@ static uint16_t config_serialize(void)
 		COMMIT_PUTS("stp on\n");
 	else
 		COMMIT_PUTS("stp off\n");
+
+	if (ledEnabled)
+		COMMIT_PUTS("led on\n");
+	else
+		COMMIT_PUTS("led off\n");
 
 	if (management_vlan >= 2) {
 		COMMIT_PUTS("vlan ");

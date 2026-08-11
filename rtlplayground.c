@@ -138,6 +138,7 @@ __xdata char hostname[32];
 __xdata uint8_t stpEnabled;
 __xdata uint8_t telnet_enabled;
 __xdata uint8_t web_enabled;
+__xdata uint8_t ledEnabled;
 
 __code uint16_t bit_mask[16] = {
 	0x0001, 0x0002, 0x0004, 0x0008, 0x0010, 0x0020, 0x0040, 0x0080,
@@ -1354,7 +1355,8 @@ void handle_button(void)
 			else
 			{
 				print_string("Short button press detected; no action.\n");
-				set_sys_led_state(SYS_LED_ON);
+	if (ledEnabled)
+		set_sys_led_state(SYS_LED_ON);
 			}
 		}
 		else
@@ -1912,7 +1914,7 @@ void check_and_flash_update_image(void)
 		__xdata uint16_t j = 0;
 		__xdata uint8_t * __xdata bptr;
 		print_string("found update image!\nChecking integrity");
-		flash_init(0); // Re-initialize flash for non-DIO operation, otherwise flashing will fail
+		flash_init(0); // Re-initialize flash for non-DIO operation, otherwise flashing fails
 		set_sys_led_state(SYS_LED_FAST);
 		crc_value = 0x0000;
 		for (i = 0; i < 1024; i++) {
@@ -1928,6 +1930,8 @@ void check_and_flash_update_image(void)
 		}
 		if (crc_value == 0xb001) {
 			print_string("Checksum OK.\nUpdate in progress, moving firmware to start of flash");
+			if (!ledEnabled)
+				leds_set_enabled(1); // Keep the status LED visible during the update
 			source = FIRMWARE_UPLOAD_START;
 			// Don't copy the config area at the end of flash
 			for (i = 0; i < CONFIG_START/FLASH_BUF_SIZE; i++) {
@@ -1979,6 +1983,7 @@ void main(void)
 	stp_clock = STP_TICK_DIVIDER;
 	dhcp_state.state = DHCP_OFF;
 	sbuf_ptr = 0;
+	ledEnabled = 1;
 
 	CKCON = 0;	// Initial Clock configuration
 	SFR_97 = 0;	// HADDR?

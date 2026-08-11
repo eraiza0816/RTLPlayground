@@ -30,6 +30,10 @@
 #define RTL837X_REG_LED_GLB_MUX_6	0x65F4
 #define RTL837X_REG_LED_GLB_ACTIVE	0x65D8
 #define RTL837X_REG_LED_GLB_IO_EN	0x65DC
+// LED_GLB_IO_EN bit 30: master enable for all LED pads (LED_PAD_EN).
+// Clearing it turns off every LED pad at once; the per-pad enables
+// (bits 0-29) only matter while it is set.
+#define RTL837X_REG_LED_GLB_IO_EN_PAD_EN	30
 #define RTL837X_REG_LED3_0_SET3		0x6524
 #define RTL837X_REG_LED3_0_SET1		0x6528
 #define RTL837X_REG_LED3_2_SET3		0x652C

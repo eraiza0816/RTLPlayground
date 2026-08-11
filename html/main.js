@@ -549,6 +549,8 @@ function pollInfo() {
         updateTelnetLabel(data.telnet_enabled === '1');
       if (data.web_enabled !== undefined)
         updateWebLabel(data.web_enabled === '1');
+      if (data.led_enabled !== undefined)
+        updateLedLabel(data.led_enabled === '1');
     } catch (e) {}
   });
 }
@@ -1180,6 +1182,18 @@ function updateWebLabel(enabled) {
   if (lb) lb.textContent = enabled ? 'enabled' : 'disabled';
 }
 
+function ledToggle() {
+  var cmd = 'led ' + ($in('led_toggle').checked ? 'on' : 'off');
+  fetchAPI('POST', '/cmd', function() { notify('LEDs toggled.', 'success'); }, cmd + '\n');
+}
+
+function updateLedLabel(enabled) {
+  var cb = $in('led_toggle');
+  var lb = document.getElementById('led_label');
+  if (cb) cb.checked = enabled;
+  if (lb) lb.textContent = enabled ? 'enabled' : 'disabled';
+}
+
 function openTab(evt, tabId) {
   var parent = evt.currentTarget.parentElement;
   parent.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
@@ -1223,6 +1237,7 @@ function getKey(line) {
   if (line.match(/^laghash\s+/)) return 'laghash';
   if (line.match(/^isolate\s+\d+/)) return line.match(/^isolate\s+\d+/)[0];
   if (line.match(/^stp\s+/)) return 'stp';
+  if (line.match(/^led\s+/)) return 'led';
   if (line.match(/^igmp\s+/)) return 'igmp';
   if (line.match(/^bw\s+(in|out)\s+\d+/)) return line.match(/^bw\s+(in|out)\s+\d+/)[0];
   if (line.match(/^port\s+\d+\s+name/)) return line.match(/^port\s+\d+\s+name/)[0];

@@ -174,6 +174,7 @@ void send_basic_info(int socket)
 	json_object_object_add(v, "ip_netmask", json_object_new_string("255.255.255.0"));
 	json_object_object_add(v, "telnet_enabled", json_object_new_string("1"));
 	json_object_object_add(v, "web_enabled", json_object_new_string("1"));
+	json_object_object_add(v, "led_enabled", json_object_new_string("1"));
 	json_object_object_add(v, "mac_address", json_object_new_string("1c:2a:a3:23:00:02"));
 	json_object_object_add(v, "sw_ver", json_object_new_string(VERSION_SW));
 	json_object_object_add(v, "build_date", json_object_new_string(__DATE__));

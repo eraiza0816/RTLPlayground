@@ -7,6 +7,7 @@
 
 #include "cmd_parser.h"
 #include "rtl837x_common.h"
+#include "rtl837x_leds.h"
 #include "rtl837x_port.h"
 #include "rtl837x_flash.h"
 #include "rtl837x_phy.h"
@@ -32,6 +33,7 @@
 
 extern __code struct machine machine;
 extern __xdata uint8_t stpEnabled;
+extern __xdata uint8_t ledEnabled;
 extern __code uint8_t log_to_phys_port[9];
 
 extern volatile __xdata uint32_t ticks;
@@ -2282,6 +2284,7 @@ __code struct mode_entry mode_allow[] = {
 	{"lag",         (1<<MODE_CONFIG)},
 	{"laghash",     (1<<MODE_CONFIG)},
 	{"stp",         (1<<MODE_CONFIG)},
+	{"led",         (1<<MODE_CONFIG)},
 	{"igmp",        (1<<MODE_CONFIG)},
 	{"storm-control", (1<<MODE_CONFIG)},
 	{"qos",         (1<<MODE_CONFIG)},
@@ -2549,6 +2552,18 @@ void cmd_parser(void) __banked
 				print_string("STP disabled\n");
 				stp_off();
 				stpEnabled = 0;
+			}
+		} else if (cmd_compare(0, "led")) {
+			if (cmd_compare(1, "on")) {
+				leds_set_enabled(1);
+				ledEnabled = 1;
+				print_string("LEDs enabled\n");
+			} else if (cmd_compare(1, "off")) {
+				leds_set_enabled(0);
+				ledEnabled = 0;
+				print_string("LEDs disabled\n");
+			} else {
+				print_string(ledEnabled ? "LEDs enabled\n" : "LEDs disabled\n");
 			}
 		} else if (cmd_compare(0, "pvid") && cmd_words_len == 3) {
 			__xdata uint16_t pvid;

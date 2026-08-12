@@ -294,12 +294,15 @@ __xdata uint8_t *scan_header(__xdata uint8_t * __xdata p)
 			__xdata uint8_t * __xdata cl = p + 16;
 			if (*cl == ' ')
 				cl++;
-			/* Bounded to 6 digits: more would wrap the uint16 accumulator
-			 * (e.g. 65536 -> 0) and bypass the incomplete-body checks. */
+			/* Bounded: at most 4 digits are accumulated into the uint16
+			 * accumulator.  A 5th digit or more (value >= 10000) would
+			 * wrap (e.g. 65536 -> 0) and bypass the incomplete-body
+			 * checks below, so any larger value is clamped to 0xffff
+			 * (the /cmd, /enc and /login bodies never reach 10k). */
 			__xdata uint8_t digits = 0;
 			while (*cl >= '0' && *cl <= '9') {
 				digits++;
-				if (digits > 6) {
+				if (digits >= 5) {
 					content_length = 0xffff;
 					break;
 				}

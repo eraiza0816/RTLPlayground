@@ -118,6 +118,28 @@ __sfr __at(0xb6) SFR_NIC_RING_H;
 	} while (SFR_NIC_CTRL != 0); \
 } while (0)
 
+/* Bounded wait for an ASIC table operation (L2/VLAN/ACL/IGMP) or an
+ * I2C transaction to complete; re-reads the control register each
+ * iteration so a hung SMI/I2C (e.g. a pulled SFP module) cannot lock
+ * up the switch forever. */
+#define TBL_BUSY_WAIT() do { \
+	__xdata uint16_t guard_ = 0; \
+	do { \
+		reg_read_m(RTL837X_TBL_CTRL); \
+		if (++guard_ == 0) \
+			break; \
+	} while (sfr_data[3] & TBL_EXECUTE); \
+} while (0)
+
+#define I2C_BUSY_WAIT() do { \
+	__xdata uint16_t guard_ = 0; \
+	do { \
+		reg_read_m(RTL837X_REG_I2C_CTRL); \
+		if (++guard_ == 0) \
+			break; \
+	} while (sfr_data[3] & 0x1); \
+} while (0)
+
 /* Standard 8051 sfr */
 // Timer 0 value
 __sfr16 __at(0x8c8a) T0_U16;

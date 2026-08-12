@@ -233,14 +233,33 @@ void sfp_send_data(uint8_t slot, uint8_t reg, uint8_t len)
 	reg_bit_set(RTL837X_REG_I2C_CTRL, 0);
 
 	// Wait for execution to finish
-	do {
-		reg_read_m(RTL837X_REG_I2C_CTRL);
-	} while (sfr_data[3] & 0x1);
+	I2C_BUSY_WAIT();
 
 	for (uint8_t i = 0; i < len; i++) {
 		if (!(i & 0x3))
 			reg_read_m(RTL837X_REG_I2C_OUT + i);
 		byte_to_html(sfr_data[3 - (i & 0x3)]);
+	}
+}
+
+
+/* JSON string escaping: writes *s (NUL- or space-terminated, like the
+ * VLAN/port name storage) into outbuf, escaping '"', '\\' and control
+ * characters as \u00xx so a hostile name cannot break the JSON. */
+void json_escape(__xdata uint8_t *s)
+{
+	while (*s && *s != ' ') {
+		__xdata uint8_t c = *s++;
+		if (c == '"' || c == '\\') {
+			char_to_html('\\');
+			char_to_html(c);
+		} else if (c < 0x20) {
+			char_to_html('\\'); char_to_html('u');
+			char_to_html('0'); char_to_html('0');
+			byte_to_html(c);	/* emits 2 lowercase hex chars */
+		} else {
+			char_to_html(c);
+		}
 	}
 }
 
@@ -296,10 +315,8 @@ void send_basic_info(void)
 	string_to_html(get_flash_size_str());
 
 	slen += strtox(outbuf + slen, "\",\"hostname\":\"");
-	if (hostname[0]) {
-		for (uint8_t i = 0; hostname[i]; i++)
-			char_to_html(hostname[i]);
-	}
+	if (hostname[0])
+		json_escape((__xdata uint8_t *)hostname);
 
 	if (machine.n_sfp) {
 		slen += strtox(outbuf + slen, "\",\"sfp_slot_0\":\"");
@@ -328,8 +345,7 @@ void send_vlan(uint16_t vlan)
 	if (n== 0xffff) {
 		dbg_string("VLAN has no name\n");
 	} else {
-		while(vlan_names[n] && vlan_names[n] != ' ')
-			char_to_html(vlan_names[n++]);
+		json_escape(&vlan_names[n]);
 	}
 	slen += strtox(outbuf + slen, "\",\"pvid\":\"0x");
 	uint16_t pvid_mask = 0;
@@ -373,9 +389,7 @@ void send_l2(uint16_t idx)
 	dbg_short(idx);
 	__xdata uint8_t entries_left = L2_MAX_TRANSFER;
 
-	do {
-		reg_read_m(RTL837X_TBL_CTRL);
-	} while (sfr_data[3] & TBL_EXECUTE);
+	TBL_BUSY_WAIT();
 
 	/* The L2 table in the ASIC can hold up to 4096 (0x1000) entries, which
 	 * are accessed using an index. The index is the hash of the MAC address
@@ -400,9 +414,7 @@ void send_l2(uint16_t idx)
 		REG_WRITE(RTL837x_TBL_DATA_0, sfr_data[0], sfr_data[1] & 0xfc, sfr_data[2] | (TBL_LUTREAD_NEXT_L2UC << 6), sfr_data[3]);
 
 		REG_WRITE(RTL837X_TBL_CTRL, entry >> 8, entry, TBL_L2_UNICAST, TBL_EXECUTE);
-		do {
-			reg_read_m(RTL837X_TBL_CTRL);
-		} while (sfr_data[3] & TBL_EXECUTE);
+		TBL_BUSY_WAIT();
 
 		reg_read_m(RTL837x_L2_DATA_OUT_B);
 		if ((sfr_data[0] & 0x20)) {	// Check entry is valid
@@ -477,18 +489,14 @@ void l2_delete(uint16_t idx)
 	dbg_short(idx);
 	__xdata uint8_t entries_left = L2_MAX_TRANSFER;
 
-	do {
-		reg_read_m(RTL837X_TBL_CTRL);
-	} while (sfr_data[3] & TBL_EXECUTE);
+	TBL_BUSY_WAIT();
 	slen += strtox(outbuf + slen, "{\"result\":");
 	// First, search for the entry based on the index
 	reg_read_m(RTL837x_TBL_DATA_0);
 	REG_WRITE(RTL837x_TBL_DATA_0, sfr_data[0], sfr_data[1] & 0xfc, sfr_data[2] | (TBL_LUTREAD_NEXT_L2UC << 6), sfr_data[3]);
 
 	REG_WRITE(RTL837X_TBL_CTRL, (idx >> 8) & 0xf, idx, TBL_L2_UNICAST, TBL_EXECUTE);
-	do {
-		reg_read_m(RTL837X_TBL_CTRL);
-	} while (sfr_data[3] & 0x1);
+	TBL_BUSY_WAIT();
 	reg_read_m(RTL837x_L2_DATA_OUT_B);
 	if (!(sfr_data[0] & 0x20)) {
 		char_to_html('0');
@@ -509,9 +517,7 @@ void l2_delete(uint16_t idx)
 		REG_WRITE(RTL837x_TBL_DATA_0, sfr_data[0], sfr_data[1], TBL_L2_UNICAST, sfr_data[3]);
 
 		REG_WRITE(RTL837X_TBL_CTRL, idx >> 8, idx, TBL_L2_UNICAST, TBL_WRITE | TBL_EXECUTE);
-		do {
-			reg_read_m(RTL837X_TBL_CTRL);
-		} while (sfr_data[3] & TBL_EXECUTE);
+		TBL_BUSY_WAIT();
 
 		char_to_html('1');
 	}
@@ -718,9 +724,7 @@ void send_status(void)
 		slen += strtox(outbuf + slen, ",\"logPort\":");
 		itoa_html(i);
 		slen += strtox(outbuf + slen, ",\"name\":\"");
-		for (uint8_t j = 0; j < PORT_NAME_SIZE && port_names[i][j]; j++) {
-			char_to_html(port_names[i][j]);
-		}
+		json_escape((__xdata uint8_t *)port_names[i]);
 		slen += strtox(outbuf + slen, "\"");
 
 			if (machine.is_sfp[i]) {
@@ -729,14 +733,11 @@ void send_status(void)
 			if (!(sfp_pins_last & (0x1 << (sfp << 2)))) {
 				bool_to_html(1);
 				slen += strtox(outbuf + slen,",\"sfp_vendor\":\"");
-				for (register uint8_t s = 0; s < 16 && sfp_module_vendor[sfp][s]; s++)
-					outbuf[slen++] = sfp_module_vendor[sfp][s];
+				json_escape((__xdata uint8_t *)sfp_module_vendor[sfp]);
 				slen += strtox(outbuf + slen,"\",\"sfp_model\":\"");
-				for (register uint8_t s = 0; s < 16 && sfp_module_model[sfp][s]; s++)
-					outbuf[slen++] = sfp_module_model[sfp][s];
+				json_escape((__xdata uint8_t *)sfp_module_model[sfp]);
 				slen += strtox(outbuf + slen,"\",\"sfp_serial\":\"");
-				for (register uint8_t s = 0; s < 16 && sfp_module_serial[sfp][s]; s++)
-					outbuf[slen++] = sfp_module_serial[sfp][s];
+				json_escape((__xdata uint8_t *)sfp_module_serial[sfp]);
 				slen += strtox(outbuf + slen,"\",\"sfp_los\":");
 				if (machine.sfp_port[sfp].pin_los == GPIO_NA) {
 					slen += strtox(outbuf + slen,"null");
@@ -960,16 +961,25 @@ void send_vlanlist(void)
 		slen += strtox(outbuf + slen, ",\"name\":\"");
 
 		n = vlan_name(i);
-		if (n != 0xffff) {
-			while (vlan_names[n] && vlan_names[n] != ' ')
-				char_to_html(vlan_names[n++]);
-		}
+		if (n != 0xffff)
+			json_escape(&vlan_names[n]);
 
 		/* members: low 10 bits = member ports, bits 10-19 = untagged ports.
 		 * (See /vlan.json). Inlined here so the frontend needs no N+1 fetches. */
 		slen += strtox(outbuf + slen, "\",\"members\":\"0x");
 		vlan_get(i);
 		sfr_data_to_html();
+		/* pvid: bit mask (logical ports) of the ports whose PVID is this
+		 * VLAN, so the table can show the PVID column without N+1. */
+		slen += strtox(outbuf + slen, "\",\"pvid\":\"0x");
+		{
+			__xdata uint16_t pm = 0;
+			for (__xdata uint8_t pi = machine.min_port; pi <= machine.max_port; pi++)
+				if (port_pvid_get(pi) == i)
+					pm |= (1 << pi);
+			byte_to_html(pm >> 8);
+			byte_to_html(pm);
+		}
 		slen += strtox(outbuf + slen, "\"}");
 
 	}

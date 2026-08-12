@@ -211,8 +211,17 @@ void dhcp_send_request(void)
 
 void ip_opt(__xdata uint8_t * ip)
 {
+	/* Bounded: a truncated option (len < 4 or past the end of the
+	 * received packet) must not shift opt_ptr backwards or read past
+	 * uip_appdata + uip_len.  Stored in the __xdata state so the
+	 * internal-RAM DSEG/OSEG areas are not touched (they are full). */
+	dhcp_state.opt_end = uip_len - sizeof(struct dhcp_pkt);
 	dhcp_state.opt_ptr++;
 	uint8_t len = DHCP_OPT[dhcp_state.opt_ptr++];
+	if (len < 4 || dhcp_state.opt_ptr + len > dhcp_state.opt_end) {
+		dhcp_state.opt_ptr = dhcp_state.opt_end;
+		return;
+	}
 	*ip++ = DHCP_OPT[dhcp_state.opt_ptr++];
 	*ip++ = DHCP_OPT[dhcp_state.opt_ptr++];
 	*ip++ = DHCP_OPT[dhcp_state.opt_ptr++];
@@ -224,8 +233,13 @@ void ip_opt(__xdata uint8_t * ip)
 
 void long_opt(void)
 {
+	dhcp_state.opt_end = uip_len - sizeof(struct dhcp_pkt);
 	dhcp_state.opt_ptr++;
 	dhcp_state.opt_ptr++;
+	if (dhcp_state.opt_ptr + 4 > dhcp_state.opt_end) {
+		dhcp_state.opt_ptr = dhcp_state.opt_end;
+		return;
+	}
 	long_value =  DHCP_OPT[dhcp_state.opt_ptr++];
 	long_value <<= 8;
 	long_value |= DHCP_OPT[dhcp_state.opt_ptr++];
@@ -238,7 +252,9 @@ void long_opt(void)
 
 void parse_opts(void)
 {
-	while (DHCP_OPT[dhcp_state.opt_ptr] && DHCP_OPT[dhcp_state.opt_ptr] != DHCP_END) {
+	dhcp_state.opt_end = uip_len - sizeof(struct dhcp_pkt);
+	while (dhcp_state.opt_ptr + 2 <= dhcp_state.opt_end &&
+	       DHCP_OPT[dhcp_state.opt_ptr] && DHCP_OPT[dhcp_state.opt_ptr] != DHCP_END) {
 		switch(DHCP_OPT[dhcp_state.opt_ptr]) {
 		case DHCP_SUBNET_MASK:
 			ip_opt(&dhcp_state.subnet[0]);
@@ -271,9 +287,11 @@ void parse_opts(void)
 			break;
 		default:
 			print_string("Unknown DHCP option: "); print_byte(DHCP_OPT[dhcp_state.opt_ptr]); write_char('\n');
-			dhcp_state.opt_ptr++;
-			dhcp_state.opt_ptr += DHCP_OPT[dhcp_state.opt_ptr];
-			dhcp_state.opt_ptr++;
+			if (dhcp_state.opt_ptr + 2 + DHCP_OPT[dhcp_state.opt_ptr + 1] > dhcp_state.opt_end) {
+				dhcp_state.opt_ptr = dhcp_state.opt_end;
+				return;
+			}
+			dhcp_state.opt_ptr += 2 + DHCP_OPT[dhcp_state.opt_ptr + 1];
 		}
 	}
 }

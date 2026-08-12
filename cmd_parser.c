@@ -391,23 +391,31 @@ void parse_vlan(void)
 			return;
 		}
 		uint8_t w = 2;
-		if (cmd_words_len > w && isletter(cmd_buffer[cmd_words_b[w]])) {
+		if (cmd_words_len > w &&
+		    (isletter(cmd_buffer[cmd_words_b[w]]) || cmd_buffer[cmd_words_b[w]] == '-')) {
 			register uint8_t i = 0;
 			while (cmd_buffer[cmd_words_b[w] + i] != ' ' && cmd_buffer[cmd_words_b[w] + i] != '\0')
 				i++;
 			vlan_name_remove(vlan_settings.vlan);
-			if (vlan_ptr + 3 + i + 2 > VLAN_NAMES_SIZE) {
-				print_string("VLAN name storage full\n");
-				goto err;
+			// A lone '-' in the name position clears the VLAN name
+			// instead of storing a new one.
+			uint8_t name_is_clear = (cmd_buffer[cmd_words_b[w]] == '-' &&
+						 (cmd_buffer[cmd_words_b[w] + 1] == ' ' ||
+						  cmd_buffer[cmd_words_b[w] + 1] == '\0'));
+			if (!name_is_clear) {
+				if (vlan_ptr + 3 + i + 2 > VLAN_NAMES_SIZE) {
+					print_string("VLAN name storage full\n");
+					goto err;
+				}
+				vlan_names[vlan_ptr++] = hex[(vlan_settings.vlan >> 8) & 0xf];
+				vlan_names[vlan_ptr++] = hex[(vlan_settings.vlan >> 4) & 0xf] ;
+				vlan_names[vlan_ptr++] = hex[vlan_settings.vlan & 0xf];
+				for (uint8_t j = 0; j < i; j++) {
+					write_char(cmd_buffer[cmd_words_b[w] + j]);
+					vlan_names[vlan_ptr++] = cmd_buffer[cmd_words_b[w] + j];
+				}
+				vlan_names[vlan_ptr++] = ' '; vlan_names[vlan_ptr] = '\0';
 			}
-			vlan_names[vlan_ptr++] = hex[(vlan_settings.vlan >> 8) & 0xf];
-			vlan_names[vlan_ptr++] = hex[(vlan_settings.vlan >> 4) & 0xf] ;
-			vlan_names[vlan_ptr++] = hex[vlan_settings.vlan & 0xf];
-			for (uint8_t j = 0; j < i; j++) {
-				write_char(cmd_buffer[cmd_words_b[w] + j]);
-				vlan_names[vlan_ptr++] = cmd_buffer[cmd_words_b[w] + j];
-			}
-			vlan_names[vlan_ptr++] = ' '; vlan_names[vlan_ptr] = '\0';
 			w++;
 			print_string("<\n");
 		}
@@ -681,9 +689,14 @@ void parse_port(void)
 		}
 	} else if (cmd_compare(2, "name")) {
 		uint8_t i = 0;
-		while ( (i < PORT_NAME_SIZE-1) && (cmd_buffer[cmd_words_b[3] + i] != '\0') ) {
-			port_names[phy_settings.port][i] = cmd_buffer[cmd_words_b[3] + i];
-			i++;
+		// A missing name argument clears the port name.  cmd_words_b[]
+		// only holds offsets of words actually present, so a stale index
+		// must not be dereferenced when cmd_words_len < 4.
+		if (cmd_words_len >= 4) {
+			while ( (i < PORT_NAME_SIZE-1) && (cmd_buffer[cmd_words_b[3] + i] != '\0') ) {
+				port_names[phy_settings.port][i] = cmd_buffer[cmd_words_b[3] + i];
+				i++;
+			}
 		}
 		port_names[phy_settings.port][i] = '\0';
 		print_string("\nName set to: \"");

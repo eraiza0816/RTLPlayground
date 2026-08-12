@@ -1018,9 +1018,7 @@ uint8_t sfp_read_reg(uint8_t slot, uint8_t reg)
 	reg_bit_set(RTL837X_REG_I2C_CTRL, 0);
 
 	// Wait for execution to finish
-	do {
-		reg_read_m(RTL837X_REG_I2C_CTRL);
-	} while (sfr_data[3] & 0x1);
+	I2C_BUSY_WAIT();
 
 	reg_read_m(RTL837X_REG_I2C_OUT);
 	return sfr_data[3];

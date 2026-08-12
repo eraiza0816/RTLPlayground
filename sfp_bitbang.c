@@ -22,6 +22,10 @@ __xdata uint8_t sfp_pw_pending;
 // Only the most common key stays inline; the full dictionary lives in
 // sfp_pw_dict.inc (not committed).
 // CI builds create the file empty, in which case only the inline entry is used.
+/* Guard counter for the I2C busy-waits (the functions are __reentrant,
+ * so they cannot declare __xdata locals; they never actually re-enter). */
+static __xdata uint16_t sfp_i2c_guard;
+
 static __code uint8_t sfp_pw_dict[][4] = {
 	{ 0x00, 0x00, 0x00, 0x00 },   // empty protection key
 #include "sfp_pw_dict.inc"
@@ -56,8 +60,11 @@ uint8_t sfp_write_reg(uint8_t slot, uint8_t reg, uint8_t data) __reentrant
 			REG_WRITE(RTL837X_REG_I2C_IN, 0, 0, 0, 0x7B);
 			REG_WRITE(RTL837X_REG_I2C_OUT, sfp_pw[3], sfp_pw[2], sfp_pw[1], sfp_pw[0]);
 			reg_bit_set(RTL837X_REG_I2C_CTRL, 0);
+			sfp_i2c_guard = 0;
 			do {
 				reg_read_m(RTL837X_REG_I2C_CTRL);
+				if (++sfp_i2c_guard == 0)
+					break;
 			} while (sfr_data[3] & 0x1);
 			// the module's MCU needs time to process the password before
 			// the unlock window opens; the window is short, so write promptly
@@ -73,8 +80,11 @@ uint8_t sfp_write_reg(uint8_t slot, uint8_t reg, uint8_t data) __reentrant
 		REG_WRITE(RTL837X_REG_I2C_OUT, 0, 0, 0, data);
 
 		reg_bit_set(RTL837X_REG_I2C_CTRL, 0);
+		sfp_i2c_guard = 0;
 		do {
 			reg_read_m(RTL837X_REG_I2C_CTRL);
+			if (++sfp_i2c_guard == 0)
+				break;
 		} while (sfr_data[3] & 0x1);
 		if (sfr_data[3] & 0x02) return 1;
 

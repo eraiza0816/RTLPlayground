@@ -117,7 +117,7 @@ struct ethip_hdr {
 struct arp_entry {
   u16_t ipaddr[2];
   struct uip_eth_addr ethaddr;
-  u8_t time;
+  u16_t time;
 };
 
 static __code const struct uip_eth_addr broadcast_ethaddr =
@@ -128,8 +128,8 @@ static __xdata struct arp_entry arp_table[UIP_ARPTAB_SIZE];
 static __xdata u16_t ipaddr[2];
 static __xdata u8_t i, c;
 
-static __xdata u8_t arptime;
-static __xdata u8_t tmpage;
+static __xdata u16_t arptime;
+static __xdata u16_t tmpage;
 
 /* Scan pointer into arp_table for uip_arp_entry_next().  Walked byte-
  * wise: indexing a struct with a variable n needs 16-bit multiply
@@ -157,7 +157,7 @@ uint8_t uip_arp_entry_next(__xdata uint8_t * __xdata ip, __xdata uint8_t * __xda
 			ip[2] = arp_scan[2];
 			ip[3] = arp_scan[3];
 			memcpy(mac, arp_scan + 4, 6);
-			*age = (u8_t)(arptime - arp_scan[10]);
+			*age = (u16_t)(arptime - arp_scan[10]);
 			arp_scan += 11;
 			return 1;
 		}

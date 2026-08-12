@@ -310,9 +310,7 @@ uint16_t igmp_json_group_next(__xdata uint16_t idx) __banked
 		reg_read_m(RTL837X_TBL_CTRL);
 		REG_WRITE(RTL837X_TBL_CTRL, 0, (uint8_t)idx, TB_TARGET_IGMP_GROUP,
 			  TB_EXECUTE | (TB_OP_READ << 1));
-		do {
-			reg_read_m(RTL837X_TBL_CTRL);
-		} while (sfr_data[3] & TB_EXECUTE);
+		TBL_BUSY_WAIT();
 		reg_read_m(RTL837X_ITA_READ_DATA0(0));
 		igmp_json_gmask = (uint16_t)sfr_data[3] |
 				  ((uint16_t)(sfr_data[2] & 0x07) << 8);
@@ -373,9 +371,7 @@ void igmp_mld_show(void) __banked
 		reg_read_m(RTL837X_TBL_CTRL);  // serialized with any other table use
 		REG_WRITE(RTL837X_TBL_CTRL, (uint8_t)(igmp_gidx >> 8), (uint8_t)igmp_gidx,
 			  TB_TARGET_IGMP_GROUP, TB_EXECUTE | (TB_OP_READ << 1));
-		do {
-			reg_read_m(RTL837X_TBL_CTRL);
-		} while (sfr_data[3] & TB_EXECUTE);
+		TBL_BUSY_WAIT();
 		reg_read_m(RTL837X_ITA_READ_DATA0(0));
 		// Port timers: bits 0-7 = sfr_data[3], bits 8-10 = sfr_data[2]
 		igmp_gmask = (uint16_t)sfr_data[3] | ((uint16_t)(sfr_data[2] & 0x07) << 8);
@@ -439,6 +435,11 @@ void igmp_packet_handler(void) __banked
 	// By default we do not send anything out
 	uip_len = 0;
 
+	// A short frame cannot hold an IGMP packet (IP header 20 + 8 bytes
+	// of IGMP); refuse to read past it.
+	if (uip_len < 28)
+		return;
+
 #ifdef DEBUG
 	print_string("\nIPv4 MC packet:\n");
 	for (uint8_t i = 0; i < 80; i++) {
@@ -452,8 +453,8 @@ void igmp_packet_handler(void) __banked
 #ifdef DEBUG
 	print_string("Found IGMP, type: "); print_byte(IGMP_I->igmp_type); write_char('\n');
 #endif
-	// We react to IGMPv1/v2 and v3 membership reports
-	if (!(IGMP_I->igmp_type == 0x12 || IGMP_I->igmp_type == 0x16 || IGMP_I->igmp_type == 0x22))
+	// We react to IGMPv1/v2 and v3 membership reports and v2 Leave
+	if (!(IGMP_I->igmp_type == 0x12 || IGMP_I->igmp_type == 0x16 || IGMP_I->igmp_type == 0x22 || IGMP_I->igmp_type == 0x17))
 		return;
 #ifdef DEBUG
 	print_string("IGMP membership report, type "); print_byte(IGMP_I->igmp_rtype); write_char('\n');
@@ -479,9 +480,7 @@ void igmp_packet_handler(void) __banked
 	entry_to_ipmc();
 #endif
 	// Wait for any pending Table operations to end
-	do {
-		reg_read_m(RTL837X_TBL_CTRL);
-	} while (sfr_data[3] & 1);
+	TBL_BUSY_WAIT();
 
 	reg_read_m(RTL837x_TBL_DATA_0);
 #ifdef DEBUG
@@ -496,9 +495,7 @@ void igmp_packet_handler(void) __banked
 #endif
 	// First try to find entry to see whether it needs to be updated
 	REG_WRITE(RTL837X_TBL_CTRL, 0x00, 0x00, TBL_L2_UNICAST, TBL_EXECUTE);
-	do {
-		reg_read_m(RTL837X_TBL_CTRL);
-	} while (sfr_data[3] & 0x1);
+	TBL_BUSY_WAIT();
 #ifdef DEBUG
 	print_string("\nsearch done\n");
 	print_string("Table data searched:\n");
@@ -531,7 +528,14 @@ void igmp_packet_handler(void) __banked
 			entry.pmask |= ((uint16_t)sfr_data[3]) << 2;
 		}
 		// Update (found) entry with portmask from trapped Packet
-		entry.pmask |= (1L << (IGMP_I->rtl_tag.pmask >> 8));  // Swap bytes from network order, only 4 LSB count
+		// Port number is 4 bits in the tag; validate it before shifting
+		// (a bogus value would shift a 32-bit mask by up to 255).
+		{
+			uint8_t gport = IGMP_I->rtl_tag.pmask >> 8;
+			if (gport > 8)
+				return;
+			entry.pmask |= (1L << gport);
+		}
 //		print_string("\nPort-Mask: "); print_short(entry.pmask); write_char('\n');
 	} else if (IGMP_I->igmp_rtype == 0x3){  // Leave group
 		if (sfr_data[2] & 0x10) {
@@ -548,7 +552,12 @@ void igmp_packet_handler(void) __banked
 			write_char('\n');
 #endif
 			// Remove portmask of IGMP packet from entry
-			entry.pmask &= ~(1L << (IGMP_I->rtl_tag.pmask >> 8));  // Swap bytes from network order, only 4 LSB count
+			{
+				uint8_t gport = IGMP_I->rtl_tag.pmask >> 8;
+				if (gport > 8)
+					return;
+				entry.pmask &= ~(1L << gport);
+			}
 //			print_string("\nPort-Mask: "); print_short(entry.pmask); write_char('\n');
 		} else {
 			print_string("IGMP Entry already deleted\n");
@@ -560,9 +569,7 @@ void igmp_packet_handler(void) __banked
 			sfr_data[1] |= 0x04;	// Clear entry
 			reg_write_m(RTL837x_TBL_DATA_0);
 			REG_WRITE(RTL837X_TBL_CTRL, idx >> 8, idx & 0xff, TBL_L2_UNICAST, TBL_WRITE | TBL_EXECUTE);
-			do {
-				reg_read_m(RTL837X_TBL_CTRL);
-			} while (sfr_data[3] & 0x1);
+			TBL_BUSY_WAIT();
 			print_string("IGMP Entry deleted\n");
 			return;
 		}
@@ -592,9 +599,7 @@ void igmp_packet_handler(void) __banked
 #endif
 	reg_read_m(RTL837X_TBL_CTRL);
 	REG_WRITE(RTL837X_TBL_CTRL, sfr_data[0], sfr_data[1], TBL_L2_UNICAST, TBL_WRITE | TBL_EXECUTE);
-	do {
-		reg_read_m(RTL837X_TBL_CTRL);
-	} while (sfr_data[3] & 0x1);
+	TBL_BUSY_WAIT();
 #ifdef DEBUG
 	print_string("\nupdate done\n");
 	print_string("Table data written:\n");

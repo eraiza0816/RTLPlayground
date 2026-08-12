@@ -1181,6 +1181,13 @@ uip_process(u8_t flag) __banked
 //    UIP_LOG("tcp: bad checksum.");
 //    goto drop;
 //  }
+//  Note (audit E2): the SDK NIC RX status word (rx_stat_t in
+//  dal_rtl8373_nic.h) carries L3cse (IP checksum error) and L4cse
+//  (ICMP/IGMP/TCP/UDP checksum error) bits, but the firmware's NIC RX
+//  header layout (rx_headers[]: [3]=port, [4:5]=length) does not match
+//  that structure, and the header is only fetched as one 8-byte word.
+//  Locating the checksum bits needs a header dump from the UART
+//  (RXTXDBG) on real hardware before this check can be re-enabled.
   
   
   /* Demultiplex this segment. */
@@ -1386,12 +1393,21 @@ uip_process(u8_t flag) __banked
      sequence number of this reset is wihtin our advertised window
      before we accept the reset. */
   if(BUF->flags & TCP_RST) {
-    uip_connr->tcpstateflags = UIP_CLOSED;
-    UIP_LOG("tcp: got reset, aborting connection.");
-    uip_flags = UIP_ABORT;
-    dbg_char('F');
-    UIP_APPCALL();
-    dbg_char('f');
+    /* Accept the reset only when its sequence number is within one of
+       the next expected sequence (RFC 5961), so a forged RST from an
+       off-path attacker cannot kill the connection. */
+    if(BUF->seqno[0] == uip_connr->rcv_nxt[0] &&
+       BUF->seqno[1] == uip_connr->rcv_nxt[1] &&
+       BUF->seqno[2] == uip_connr->rcv_nxt[2] &&
+       (BUF->seqno[3] == uip_connr->rcv_nxt[3] ||
+        BUF->seqno[3] == (uip_connr->rcv_nxt[3] - 1))) {
+      uip_connr->tcpstateflags = UIP_CLOSED;
+      UIP_LOG("tcp: got reset, aborting connection.");
+      uip_flags = UIP_ABORT;
+      dbg_char('F');
+      UIP_APPCALL();
+      dbg_char('f');
+    }
     goto drop;
   }
   /* Calculated the length of the data, if the application has sent
@@ -1598,8 +1614,13 @@ uip_process(u8_t flag) __banked
     } else {
       uip_urglen = 0;
 #else /* UIP_URGDATA > 0 */
-      uip_appdata = ((char *)uip_appdata) + ((BUF->urgp[0] << 8) | BUF->urgp[1]);
-      uip_len -= (BUF->urgp[0] << 8) | BUF->urgp[1];
+      /* Bounded: a URG pointer beyond the segment length would wrap the
+         uint16 uip_len and make the application read past the buffer. */
+      tmp16 = (BUF->urgp[0] << 8) | BUF->urgp[1];
+      if (tmp16 > uip_len)
+        tmp16 = uip_len;
+      uip_appdata = ((char *)uip_appdata) + tmp16;
+      uip_len -= tmp16;
 #endif /* UIP_URGDATA > 0 */
     }
 

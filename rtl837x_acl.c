@@ -105,9 +105,7 @@ __xdata struct acl_json_rule acl_json_data;
 /* Wait until the table controller is idle (any outstanding op done) */
 static void acl_tbl_busy(void) __banked
 {
-	do {
-		reg_read_m(RTL837X_TBL_CTRL);
-	} while (sfr_data[3] & TBL_EXECUTE);
+	TBL_BUSY_WAIT();
 }
 
 /*

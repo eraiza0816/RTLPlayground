@@ -16,7 +16,9 @@
 #include "debug.h"
 
 #define SESSION_ID_LENGTH 24
-#define SESSION_TIMEOUT 200
+/* Session idle timeout, in ticks: 200 s at SYS_TICK_HZ (read_tick_counter
+ * returns the firmware tick counter, not seconds). */
+#define SESSION_TIMEOUT (200 * SYS_TICK_HZ)
 
 #define CMARK_S 6
 
@@ -1027,7 +1029,7 @@ void handle_post(void)
 			login_failures++;
 			if (login_failures >= 5) {
 				read_tick_counter(&login_now);
-				login_locked_until = login_now + 30;
+				login_locked_until = login_now + 30 * SYS_TICK_HZ;
 			}
 			slen = strtox(outbuf, "HTTP/1.1 302 Found\r\nLocation: login.html\r\n\r\n");
 		}

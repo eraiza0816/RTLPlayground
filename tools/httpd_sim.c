@@ -3,6 +3,19 @@
 #include <unistd.h>
 #include <string.h>
 #include <ctype.h>
+
+/* Word-boundary match like the firmware's is_word(): the literal must be
+ * followed by a separator or a query string, so "/status.jsonx" does not
+ * match "/status.json". */
+static int sim_is_word(const char *s, const char *lit)
+{
+	size_t n = strlen(lit);
+	if (strncmp(s, lit, n))
+		return 0;
+	char c = s[n];
+	return c == '\0' || c == ' ' || c == '\t' || c == '?' ||
+	       c == '=' || c == '&' || c == '\r' || c == '\n' || c == ';';
+}
 #include <stdint.h>
 #include <stdbool.h>
 #include <time.h>
@@ -429,10 +442,17 @@ void send_l2(int s, int idx)
 
 	printf("First entry %d, idx: %04x\n", j, l2_entries[j].idx);
 	int transferred = 0;
+	int prev = -1;
+	// Like the real device (page_impl.c send_l2): walk in ascending
+	// index order and close the array when the index wraps around to the
+	// first entry again instead of emitting it twice.
 	while ((j < L2_ENTRY_NUM + 1) && (transferred < L2_MAX_TRANSFER)) {
-//		if (rand() / (RAND_MAX / 2) >= 1)
-//			continue;
 		int i = j % L2_ENTRY_NUM;
+		if (prev >= 0 && l2_entries[i].idx <= prev) {
+			printf("Wrapped around (idx %04x <= %04x), stopping\n",
+			       l2_entries[i].idx, prev);
+			break;
+		}
 		printf("Entry %d, idx: %04x, transferred %d\n", i, l2_entries[i].idx, transferred);
 		v = json_object_new_object();
 		json_object_object_add(v, "mac", json_object_new_string(l2_entries[i].mac));
@@ -448,6 +468,7 @@ void send_l2(int s, int idx)
 		sprintf(l2_idx_buff, "0x%04x", l2_entries[i].idx);
 		json_object_object_add(v, "idx", json_object_new_string(l2_idx_buff));
 		json_object_array_add(entries, v);
+		prev = l2_entries[i].idx;
 		j++;
 		transferred++;
 		printf("j %d, transferred %d\n", j, transferred);
@@ -947,49 +968,49 @@ void launch(struct Server *server)
 
 			if (is_word(buffer, "GET")) {
 				scan_header(buffer);
-				if (!strncmp(&buffer[4], "/status.json", 12)) {
+				if (sim_is_word(&buffer[4], "/status.json")) {
 					printf("Status request\n");
 					if (!authenticated)
 						send_unauthorized(new_socket);
 					else
 						send_status(new_socket);
 					goto done;
-				} else if (!strncmp(&buffer[4], "/sfp_diag.json", 14)) {
+				} else if (sim_is_word(&buffer[4], "/sfp_diag.json")) {
 					printf("SFP diag request\n");
 					if (!authenticated)
 						send_unauthorized(new_socket);
 					else
 						send_sfp_diag(new_socket);
 					goto done;
-				} else if (!strncmp(&buffer[4], "/eee.json", 9)) {
+				} else if (sim_is_word(&buffer[4], "/eee.json")) {
 					printf("EEE request\n");
 					if (!authenticated)
 						send_unauthorized(new_socket);
 					else
 						send_eee(new_socket);
 					goto done;
-				} else if (!strncmp(&buffer[4], "/bandwidth.json", 15)) {
+				} else if (sim_is_word(&buffer[4], "/bandwidth.json")) {
 					printf("Bandwidth request\n");
 					if (!authenticated)
 						send_unauthorized(new_socket);
 					else
 						send_bandwidth(new_socket);
 					goto done;
-				} else if (!strncmp(&buffer[4], "/information.json", 17)) {
+				} else if (sim_is_word(&buffer[4], "/information.json")) {
 					printf("Status request\n");
 					if (!authenticated)
 						send_unauthorized(new_socket);
 					else
 						send_basic_info(new_socket);
 					goto done;
-				} else if (!strncmp(&buffer[4], "/mirror.json", 12)) {
+				} else if (sim_is_word(&buffer[4], "/mirror.json")) {
 					printf("Mirror request\n");
 					if (!authenticated)
 						send_unauthorized(new_socket);
 					else
 						send_mirror(new_socket);
 					goto done;
-				} else if (!strncmp(&buffer[4], "/lag.json", 9)) {
+				} else if (sim_is_word(&buffer[4], "/lag.json")) {
 					printf("LAG request\n");
 					if (!authenticated)
 						send_unauthorized(new_socket);
@@ -1012,14 +1033,14 @@ void launch(struct Server *server)
 					else
 						send_l2(new_socket, idx);
 					goto done;
-				} else if (!strncmp(&buffer[4], "/mtu.json", 9)) {
+				} else if (sim_is_word(&buffer[4], "/mtu.json")) {
 					printf("MTU request\n");
 					if (!authenticated)
 						send_unauthorized(new_socket);
 					else
 						send_mtu(new_socket);
 					goto done;
-				} else if (!strncmp(&buffer[4], "/vlanlist", 9)) {
+				} else if (sim_is_word(&buffer[4], "/vlanlist")) {
 					printf("VLAN list request\n");
 					if (!authenticated)
 						send_unauthorized(new_socket);
@@ -1034,19 +1055,19 @@ void launch(struct Server *server)
 					else
 						send_vlan(new_socket, vlan);
 					goto done;
-				} else if (!strncmp(&buffer[4], "/cmd_log_clear", 14)) {
+				} else if (sim_is_word(&buffer[4], "/cmd_log_clear")) {
 					printf("Request cmd_log_clear\n");
 					cmd_ptr = 0;
 					send_mtu(new_socket);
 					goto done;
-				} else if (!strncmp(&buffer[4], "/cmd_log", 8)) {
+				} else if (sim_is_word(&buffer[4], "/cmd_log")) {
 					printf("Request cmd_log\n");
 					if (!authenticated)
 						send_unauthorized(new_socket);
 					else
 						send_cmd_log(new_socket);
 					goto done;
-				} else if (!strncmp(&buffer[4], "/config", 7)) {
+				} else if (sim_is_word(&buffer[4], "/config")) {
 					printf("Request current config.\n");
 					if (!authenticated)
 						send_unauthorized(new_socket);
@@ -1061,7 +1082,7 @@ void launch(struct Server *server)
 					else
 						send_sfp_eeprom(new_socket, slot);
 					goto done;
-				} else if (!strncmp(&buffer[4], "/reset", 6)) {
+				} else if (sim_is_word(&buffer[4], "/reset")) {
 					printf("Reset request\n");
 					goto done;
 				} else if (!strncmp(&buffer[4], "/counters.json?port=", 20)) {
@@ -1072,60 +1093,57 @@ void launch(struct Server *server)
 					else
 						send_counters(new_socket, port);
 					goto done;
-				} else if (!strncmp(&buffer[4], "/ping.json", 10)) {
+				} else if (sim_is_word(&buffer[4], "/ping.json")) {
 					if (!authenticated)
 						send_unauthorized(new_socket);
 					else
 						send_ping(new_socket);
 					goto done;
-				} else if (!strncmp(&buffer[4], "/arp.json", 9)) {
+				} else if (sim_is_word(&buffer[4], "/arp.json")) {
 					if (!authenticated)
 						send_unauthorized(new_socket);
 					else
 						send_arp(new_socket);
 					goto done;
-				} else if (!strncmp(&buffer[4], "/lldp.json", 10)) {
+				} else if (sim_is_word(&buffer[4], "/lldp.json")) {
 					if (!authenticated)
 						send_unauthorized(new_socket);
 					else
 						send_lldp(new_socket);
 					goto done;
-				} else if (!strncmp(&buffer[4], "/igmp.json", 10)) {
+				} else if (sim_is_word(&buffer[4], "/igmp.json")) {
 					if (!authenticated)
 						send_unauthorized(new_socket);
 					else
 						send_igmp(new_socket);
 					goto done;
-				} else if (!strncmp(&buffer[4], "/storm-control.json", 19)) {
+				} else if (sim_is_word(&buffer[4], "/storm-control.json")) {
 					if (!authenticated)
 						send_unauthorized(new_socket);
 					else
 						send_storm(new_socket);
 					goto done;
-				} else if (!strncmp(&buffer[4], "/qos.json", 9)) {
+				} else if (sim_is_word(&buffer[4], "/qos.json")) {
 					if (!authenticated)
 						send_unauthorized(new_socket);
 					else
 						send_qos(new_socket);
 					goto done;
-				} else if (!strncmp(&buffer[4], "/acl.json", 9)) {
+				} else if (sim_is_word(&buffer[4], "/acl.json")) {
 					if (!authenticated)
 						send_unauthorized(new_socket);
 					else
 						send_acl(new_socket);
 					goto done;
-				} else if (!strncmp(&buffer[4], "/running-config", 15)) {
+				} else if (sim_is_word(&buffer[4], "/running-config")) {
 					if (!authenticated)
 						send_unauthorized(new_socket);
 					else
 						send_running_config(new_socket);
 					goto done;
 				}
-				if (!authenticated && strncmp(&buffer[4], "/login.html", 11) && strncmp(&buffer[4], "/main.js", 8) && strncmp(&buffer[4], "/i18n.js", 8)) {
-					send_to_login(new_socket);
-					goto done;
-				}
-
+				// Static files are served without authentication, matching
+				// the real httpd (only the JSON APIs require a session).
 				// A web-page is actively accessed, we can reset session time-out
 				last_session_use = time(NULL);
 
@@ -1185,10 +1203,11 @@ void launch(struct Server *server)
 				printf("Bytes read %ld\n", bytesRead);
 				if (is_word(&buffer[5], "/cmd")) {
 					printf("POST cmd\n");
-					printf("CMD: %s\n", p + 4);
-					strcpy(cmd_history[cmd_ptr], p + 4);
-					cmd_ptr++;
-					print_cmd_history();
+				printf("CMD: %s\n", p + 4);
+				strncpy(cmd_history[cmd_ptr], p + 4, 255);
+				cmd_history[cmd_ptr][255] = '\0';
+				cmd_ptr = (cmd_ptr + 1) % 1024;
+				print_cmd_history();
 					char *response = "HTTP/1.1 200 OK\r\n"
 							"Content-Type: text/html\r\n\r\n"
 							"<!DOCTYPE html> <html><head><title>Upload OK</title></head>"
@@ -1279,8 +1298,9 @@ void launch(struct Server *server)
 					}
 					body[AEAD_NONCE_LEN + ct_len] = '\0';
 					printf("CMD: %s\n", body + AEAD_NONCE_LEN);
-					strcpy(cmd_history[cmd_ptr], body + AEAD_NONCE_LEN);
-					cmd_ptr++;
+					strncpy(cmd_history[cmd_ptr], body + AEAD_NONCE_LEN, 255);
+					cmd_history[cmd_ptr][255] = '\0';
+					cmd_ptr = (cmd_ptr + 1) % 1024;
 					print_cmd_history();
 
 					if (is_word(body + AEAD_NONCE_LEN, "api")) {
@@ -1290,29 +1310,37 @@ void launch(struct Server *server)
 						char *path = (char *)(body + AEAD_NONCE_LEN + 4);
 						enc_resp_len = 0;
 						enc_capture = 1;
-						if (!strncmp(path, "/status.json", 12)) send_status(new_socket);
-						else if (!strncmp(path, "/information.json", 17)) send_basic_info(new_socket);
-						else if (!strncmp(path, "/sfp_diag.json", 14)) send_sfp_diag(new_socket);
-						else if (!strncmp(path, "/eee.json", 9)) send_eee(new_socket);
-						else if (!strncmp(path, "/bandwidth.json", 15)) send_bandwidth(new_socket);
-						else if (!strncmp(path, "/mirror.json", 12)) send_mirror(new_socket);
-						else if (!strncmp(path, "/lag.json", 9)) send_lag(new_socket);
-						else if (!strncmp(path, "/mtu.json", 9)) send_mtu(new_socket);
-						else if (!strncmp(path, "/vlanlist", 9)) send_vlanlist(new_socket);
-						else if (!strncmp(path, "/counters.json", 14)) send_counters(new_socket, atoi(path + 20));
-						else if (!strncmp(path, "/l2.json", 8)) send_l2(new_socket, atoi(path + 15));
-						else if (!strncmp(path, "/vlan.json", 10)) send_vlan(new_socket, atoi(path + 17));
-						else if (!strncmp(path, "/ping.json", 10)) send_ping(new_socket);
-						else if (!strncmp(path, "/arp.json", 9)) send_arp(new_socket);
-						else if (!strncmp(path, "/lldp.json", 10)) send_lldp(new_socket);
-						else if (!strncmp(path, "/igmp.json", 10)) send_igmp(new_socket);
-						else if (!strncmp(path, "/storm-control.json", 19)) send_storm(new_socket);
-						else if (!strncmp(path, "/qos.json", 9)) send_qos(new_socket);
-						else if (!strncmp(path, "/acl.json", 9)) send_acl(new_socket);
-						else if (!strncmp(path, "/running-config", 15)) send_running_config(new_socket);
-						else if (!strncmp(path, "/config", 7)) send_config(new_socket);
-						else { snprintf(enc_resp, sizeof(enc_resp), "HTTP/1.1 404 Not found\r\n\r\n"); enc_resp_len = strlen(enc_resp); }
+						int enc_not_found = 0;
+						if (sim_is_word(path, "/status.json")) send_status(new_socket);
+						else if (sim_is_word(path, "/information.json")) send_basic_info(new_socket);
+						else if (sim_is_word(path, "/sfp_diag.json")) send_sfp_diag(new_socket);
+						else if (sim_is_word(path, "/eee.json")) send_eee(new_socket);
+						else if (sim_is_word(path, "/bandwidth.json")) send_bandwidth(new_socket);
+						else if (sim_is_word(path, "/mirror.json")) send_mirror(new_socket);
+						else if (sim_is_word(path, "/lag.json")) send_lag(new_socket);
+						else if (sim_is_word(path, "/mtu.json")) send_mtu(new_socket);
+						else if (sim_is_word(path, "/vlanlist")) send_vlanlist(new_socket);
+						else if (sim_is_word(path, "/counters.json")) send_counters(new_socket, atoi(path + 20));
+						else if (sim_is_word(path, "/l2.json")) send_l2(new_socket, atoi(path + 15));
+						else if (sim_is_word(path, "/vlan.json")) send_vlan(new_socket, atoi(path + 17));
+						else if (sim_is_word(path, "/ping.json")) send_ping(new_socket);
+						else if (sim_is_word(path, "/arp.json")) send_arp(new_socket);
+						else if (sim_is_word(path, "/lldp.json")) send_lldp(new_socket);
+						else if (sim_is_word(path, "/igmp.json")) send_igmp(new_socket);
+						else if (sim_is_word(path, "/storm-control.json")) send_storm(new_socket);
+						else if (sim_is_word(path, "/qos.json")) send_qos(new_socket);
+						else if (sim_is_word(path, "/acl.json")) send_acl(new_socket);
+						else if (sim_is_word(path, "/running-config")) send_running_config(new_socket);
+						else if (sim_is_word(path, "/config")) send_config(new_socket);
+						else { snprintf(enc_resp, sizeof(enc_resp), "HTTP/1.1 404 Not found\r\n\r\n"); enc_resp_len = strlen(enc_resp); enc_not_found = 1; }
 						enc_capture = 0;
+
+						/* The firmware answers an unknown /enc path with a
+						 * plaintext 404, not an encrypted response. */
+						if (enc_not_found) {
+							write(new_socket, enc_resp, enc_resp_len);
+							goto done;
+						}
 
 						/* strip the HTTP header, keep the JSON body */
 						char *hdr_end = strstr(enc_resp, "\r\n\r\n");

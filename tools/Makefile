@@ -20,8 +20,16 @@ $(BUILDDIR)/fileadder: fileadder.c
 $(BUILDDIR)/crc_calculator: crc_calculator.c
 	gcc $^ $(CCFLAGS) $@
 
-$(BUILDDIR)/httpd_sim: httpd_sim.c httpd_sim.h ../crypto/aead.c ../crypto/chacha20.c ../crypto/poly1305.c rtl837x_common.h
+$(BUILDDIR)/httpd_sim: httpd_sim.c httpd_sim.h ../crypto/aead.c ../crypto/chacha20.c ../crypto/poly1305.c rtl837x_common.h ../version.h
 	gcc -O2 -Wall -Wno-unknown-pragmas -I. -include rtl837x_common.h $< ../crypto/aead.c ../crypto/chacha20.c ../crypto/poly1305.c $(CCFLAGS) $@ -I/usr/include/json-c -ljson-c
+
+# The firmware Makefile regenerates ../version.h; when building the tools
+# standalone, create it if it is missing so httpd_sim compiles.
+../version.h:
+	@test -f $@ || { \
+	  printf '#ifndef VERSION_H\n#define VERSION_H\n#define VERSION_SW "v0.2.25-sim"\n#define BUILD_DATE "%s"\n#endif\n' \
+	  "$$(date +'%Y-%m-%d %H:%M:%S')" > $@; \
+	}
 
 $(BUILDDIR)/cli_sim: cli_sim.c httpd_sim.h
 	gcc -O2 -Wall -I. $< $(CCFLAGS) $@

@@ -43,7 +43,7 @@ jobs:
           python3 installer/verify_image.py installer/output/rtlplayground_oem_upgrade.bin
 
       - name: Set up Go (host tool tests)
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version: '1.26.5'
 

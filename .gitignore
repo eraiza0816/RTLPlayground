@@ -15,3 +15,4 @@ tools/webuitest/node_modules/
 
 # Python bytecode from tools/perftest
 __pycache__/
+tools/rtlplayground_exporter/rtlplayground_exporter

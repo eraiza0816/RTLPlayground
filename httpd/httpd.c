@@ -324,7 +324,7 @@ __xdata uint8_t *scan_header(__xdata uint8_t * __xdata p)
 		boundary[i + 4] = 0;
 	}
 
-	read_reg_timer(&now);
+	read_tick_counter(&now);
 
 	if (session) {
 		if (now - last_session_use > SESSION_TIMEOUT) {
@@ -824,7 +824,7 @@ void handle_enc(__xdata uint8_t *body)
 		 * and /config (multipart POST) without the password login. */
 		gen_random_bytes(session_id, SESSION_ID_LENGTH);
 		session_id[SESSION_ID_LENGTH] = '\0';
-		read_reg_timer(&last_session_use);
+		read_tick_counter(&last_session_use);
 		slen = strtox(outbuf, "HTTP/1.1 200 OK\r\nSet-Cookie: session=");
 		for (i = 0; i < SESSION_ID_LENGTH; i++)
 			outbuf[slen++] = session_id[i];
@@ -972,7 +972,7 @@ void handle_post(void)
 
 		/* Rate limit: 5 failed attempts lock the login for 30 s (global,
 		 * not per-IP -- the switch has no per-IP accounting). */
-		read_reg_timer(&login_now);
+		read_tick_counter(&login_now);
 		if (login_failures >= 5) {
 			if (login_now < login_locked_until) {
 				dbg_string("Login rate-limited\n");
@@ -992,7 +992,7 @@ void handle_post(void)
 			if (is_word(p + 4, "enc") && login_psk(p + 8)) {
 				dbg_string("PSK login accepted\n");
 				login_failures = 0;
-				read_reg_timer(&last_session_use);
+				read_tick_counter(&last_session_use);
 				gen_random_bytes(session_id, SESSION_ID_LENGTH);
 				session_id[SESSION_ID_LENGTH] = '\0';
 				slen = strtox(outbuf, "HTTP/1.1 302 Found\r\nLocation: index.html\r\n" \
@@ -1011,7 +1011,7 @@ void handle_post(void)
 		if (is_url_word_x(p, passwd)) {
 			dbg_string("Password accepted!\n");
 			login_failures = 0;
-			read_reg_timer(&last_session_use);
+			read_tick_counter(&last_session_use);
 			gen_random_bytes(session_id, SESSION_ID_LENGTH);
 			session_id[SESSION_ID_LENGTH] = '\0';
 			slen = strtox(outbuf, "HTTP/1.1 302 Found\r\nLocation: index.html\r\n" \
@@ -1023,7 +1023,7 @@ void handle_post(void)
 			dbg_string("Password invalid!\n");
 			login_failures++;
 			if (login_failures >= 5) {
-				read_reg_timer(&login_now);
+				read_tick_counter(&login_now);
 				login_locked_until = login_now + 30;
 			}
 			slen = strtox(outbuf, "HTTP/1.1 302 Found\r\nLocation: login.html\r\n\r\n");

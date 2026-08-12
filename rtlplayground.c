@@ -771,16 +771,13 @@ void cpy_4(__xdata uint8_t dest[], __xdata uint8_t source[])
 }
 
 
-void read_reg_timer(__xdata uint32_t * tmr)
+/* Time source for the HTTP login rate limit and session timeout.  The
+ * ASIC SEC_COUNTER register (0x06f4) stays at 0 on the RTL8372 and only
+ * runs on the RTL8373 once the SDS is configured, so use the firmware
+ * tick counter (ISR-maintained, SYS_TICK_HZ Hz) instead. */
+void read_tick_counter(__xdata uint32_t * tmr)
 {
-	uint8_t * val = (uint8_t *)tmr;
-	SFR_REG_ADDR_U16 = RTL837X_REG_SEC_COUNTER;
-	SFR_EXEC_GO = SFR_EXEC_READ_REG;
-	SFR_BUSY_WAIT();
-	*val++ = SFR_DATA_0;
-	*val++ = SFR_DATA_8;
-	*val++ = SFR_DATA_16;
-	*val = SFR_DATA_24;
+	*tmr = ticks;
 }
 
 

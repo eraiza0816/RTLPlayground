@@ -70,7 +70,6 @@ __xdata char session_id[SESSION_ID_LENGTH + 1];
 __xdata uint8_t authenticated;
 __xdata uint8_t preshared_key[AEAD_KEY_LEN];
 __xdata uint32_t now;
-__xdata uint8_t * __xdata timeptr;
 __xdata uint32_t last_session_use;
 /* Login rate limiting: 5 failed attempts lock /login for 30 s. */
 __xdata uint8_t login_failures;
@@ -1231,9 +1230,7 @@ void httpd_appcall(void) __banked
 			/* API access also refreshes the session timeout: a client
 			 * that only talks to the JSON API (rtlpctl, exporter)
 			 * would otherwise be cut off after 200 s. */
-			reg_read_m(RTL837X_REG_SEC_COUNTER);
-			timeptr = (uint8_t*)&last_session_use;
-			timeptr[0] = sfr_data[3]; timeptr[1] = sfr_data[2]; timeptr[2] = sfr_data[1]; timeptr[3] = sfr_data[0];
+			read_tick_counter(&last_session_use);
 			if (!handle_api_path(q)) {
 				send_not_found();
 			}
@@ -1242,9 +1239,7 @@ void httpd_appcall(void) __banked
 		else {
 			dbg_string("Have entry, authenticated: "); dbg_byte(authenticated); dbg_char('\n');
 			// A web-page is actively accessed, we can reset session time-out
-			reg_read_m(RTL837X_REG_SEC_COUNTER);
-			timeptr = (uint8_t*)&last_session_use; // last_session_use is Little endian
-			timeptr[0] = sfr_data[3]; timeptr[1] = sfr_data[2]; timeptr[2] = sfr_data[1]; timeptr[3] = sfr_data[0];
+			read_tick_counter(&last_session_use);
 
 			slen = strtox(outbuf, "HTTP/1.1 200 OK\r\nContent-Type: ");
 			slen += strtox(outbuf + slen, mime_strings[f_data[entry].mime]);

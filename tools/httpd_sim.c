@@ -1085,6 +1085,14 @@ void launch(struct Server *server)
 				} else if (sim_is_word(&buffer[4], "/reset")) {
 					printf("Reset request\n");
 					goto done;
+				} else if (sim_is_word(&buffer[4], "/logout")) {
+					/* Match the firmware: invalidate the session and
+					 * answer 200 (the browser returns to login.html). */
+					authenticated = 0;
+					last_session_use = 0;
+					const char *ok = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK\n";
+					write(new_socket, ok, strlen(ok));
+					goto done;
 				} else if (!strncmp(&buffer[4], "/counters.json?port=", 20)) {
 					int port = atoi(&buffer[24]);
 					printf("Counters request for %d\n", port);

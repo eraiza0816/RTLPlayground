@@ -7,6 +7,15 @@
 #define UPDATE_LOC	0x0001D000
 #define HEADER_LENGTH	0x14
 #define UPDATE_CODE_LOC	(UPDATE_LOC + HEADER_LENGTH)
+#define HEADER_MAGIC	0x12345678
+
+/* Update-image geometry (must match installer/updatebuilder.c).  The
+ * payload sum covers the installer code image [0x14, 0x4012) (linked at
+ * flash 0x1000, i.e. flash [0x1000, 0x3ffe)), a constant 0xff*HEADER_LENGTH
+ * and the payload image [0x4026, image_size) (flash [0x1d014, ...)). */
+#define SUM_CODE_START		0x00001000
+#define SUM_CODE_END		0x00003ffe
+#define SUM_PAYLOAD_START	(UPDATE_CODE_LOC)
 
 #include "../rtl837x_sfr.h"
 #include "../rtl837x_regs.h"
@@ -195,7 +204,10 @@ void flash_init(uint8_t enable_dio)
 uint8_t flash_read_status(void)
 {
 	// Test Controller Busy (we might call this directly after executing a command)
-	while(SFR_FLASH_EXEC_BUSY);
+	__xdata uint16_t guard = 0;
+	while(SFR_FLASH_EXEC_BUSY) {
+		if (++guard == 0) return 0xff;	/* controller hung */
+	}
 
 	// setup status read command
 	SFR_FLASH_TCONF = 0x11;
@@ -203,7 +215,10 @@ uint8_t flash_read_status(void)
 
 	// execute and wait for controller done
 	SFR_FLASH_EXEC_GO = 1;
-	while(SFR_FLASH_EXEC_BUSY);
+	guard = 0;
+	while(SFR_FLASH_EXEC_BUSY) {
+		if (++guard == 0) return 0xff;	/* controller hung */
+	}
 
 	return SFR_FLASH_DATA0;
 }
@@ -216,8 +231,14 @@ uint8_t flash_read_status(void)
 void flash_read_bulk(register __xdata uint8_t *dst, __xdata uint32_t src, register uint16_t len)
 {
 	short status;
+	__xdata uint16_t guard = 0;
 	do {
 		status = flash_read_status();
+		if (status == 0xff) {	/* controller hung: give up */
+			print_string("Flash controller timeout\n");
+			return;
+		}
+		if (++guard == 0) { print_string("Flash busy timeout\n"); return; }
 	} while (status & 0x1);
 
 	// Set fast read mode
@@ -257,13 +278,18 @@ void flash_read_bulk(register __xdata uint8_t *dst, __xdata uint32_t src, regist
 }
 
 
-void flash_write_enable(void)
+uint8_t flash_write_enable(void)
 {
 	short status;
+	__xdata uint16_t guard = 0;
 
 	// Wait until busy bit clear
 	do {
 		status = flash_read_status();
+		if (status == 0xff || ++guard == 0) {
+			print_string("Flash busy timeout\n");
+			return 1;
+		}
 	} while (status & 0x1);
 // 	while (flash_read_status() & 0x1);
 
@@ -274,16 +300,23 @@ void flash_write_enable(void)
 
 	SFR_FLASH_EXEC_GO = 1;
 	// Wait for write status enabled
+	guard = 0;
 	do {
 		status = flash_read_status();
+		if (status == 0xff || ++guard == 0) {
+			print_string("Flash busy timeout\n");
+			return 1;
+		}
 	} while (!(status & 0x2));
+	return 0;
 }
 
 
 // Erases the 4k sector in which the address lies
 void flash_sector_erase(uint32_t addr)
 {
-	flash_write_enable();
+	if (flash_write_enable())	/* timed out */
+		return;
 	SFR_FLASH_TCONF = 8;
 	SFR_FLASH_CMD = 0x20;
 
@@ -292,7 +325,12 @@ void flash_sector_erase(uint32_t addr)
 	SFR_FLASH_ADDR0 = addr;
 
 	SFR_FLASH_EXEC_GO = 1;
-	while (flash_read_status() & 0x1);
+	{
+		__xdata uint16_t guard = 0;
+		while (flash_read_status() & 0x1) {
+			if (++guard == 0) { print_string("Flash erase timeout\n"); break; }
+		}
+	}
 
 	flash_configure_mmio();
 
@@ -302,9 +340,11 @@ void flash_sector_erase(uint32_t addr)
 void flash_write_bytes(__xdata uint32_t addr, __xdata uint8_t *ptr, uint16_t len)
 {
 	uint8_t exit_loop = 0;
+	__xdata uint16_t guard = 0;
 
 	while(1) {
-		flash_write_enable();
+		if (flash_write_enable())	/* timed out */
+			return;
 		SFR_FLASH_CMD = 2;
 		SFR_FLASH_TCONF = 0x40 | 8 | 4; // Bytes written is 4, 8 enables write, 0x40 is unknown
 		// Last transfer?
@@ -344,6 +384,82 @@ void reg_write(uint16_t reg_addr)
 }
 
 
+// 32-bit big-endian read of the update header (updatebuilder htonl's all
+// fields).
+uint32_t rd32(__xdata uint8_t *p)
+{
+	return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) |
+	       ((uint32_t)p[2] << 8) | p[3];
+}
+
+
+// Verify the update image header at UPDATE_LOC (F9): magic, header
+// checksum, payload length and the updatebuilder payload sum.  Returns 0
+// on success, 1 on any mismatch (caller must abort the copy).
+uint8_t verify_update_header(void)
+{
+	// Header: magic, length, header sum, payload sum, reserved
+	flash_read_bulk(buffer, UPDATE_LOC, HEADER_LENGTH);
+	if (rd32(buffer + 0x00) != HEADER_MAGIC) {
+		print_string("Invalid update image (bad magic)\n");
+		return 1;
+	}
+	// Header checksum is the byte sum of the header with the +0x08 field
+	// itself still zero (updatebuilder computes it before writing it).
+	uint32_t hsum = 0;
+	for (uint8_t i = 0; i < 0x08; i++)
+		hsum += buffer[i];
+	for (uint8_t i = 0x0c; i < HEADER_LENGTH; i++)
+		hsum += buffer[i];
+	if (hsum != rd32(buffer + 0x08)) {
+		print_string("Invalid update image (header checksum)\n");
+		return 1;
+	}
+	uint32_t image_size = rd32(buffer + 0x04) + HEADER_LENGTH;
+	if (image_size < SUM_PAYLOAD_START - UPDATE_LOC + 0x1000) {
+		print_string("Invalid update image (length)\n");
+		return 1;
+	}
+
+	// Payload sum, byte-wise over the same ranges as updatebuilder:
+	// installer code + 0xff*HEADER_LENGTH + payload.
+	uint32_t sum = 0;
+	__xdata uint32_t addr;
+	__xdata uint16_t range_len;
+
+	range_len = SUM_CODE_END - SUM_CODE_START;
+	for (addr = SUM_CODE_START; range_len; ) {
+		__xdata uint16_t chunk = range_len > 0x1000 ? 0x1000 : range_len;
+		flash_read_bulk(buffer, addr, chunk);
+		for (uint16_t k = 0; k < chunk; k++)
+			sum += buffer[k];
+		addr += chunk;
+		range_len -= chunk;
+	}
+	sum += 0xff * HEADER_LENGTH;
+	/* Payload image offset 0x4026 lands at flash SUM_PAYLOAD_START, and
+	 * image offset 0x4012 (second header) at flash UPDATE_LOC. */
+	{
+		__xdata uint32_t payload_end = UPDATE_LOC + image_size - 0x4012;
+		range_len = payload_end - SUM_PAYLOAD_START;
+	}
+	for (addr = SUM_PAYLOAD_START; range_len; ) {
+		__xdata uint16_t chunk = range_len > 0x1000 ? 0x1000 : range_len;
+		flash_read_bulk(buffer, addr, chunk);
+		for (uint16_t k = 0; k < chunk; k++)
+			sum += buffer[k];
+		addr += chunk;
+		range_len -= chunk;
+	}
+	if (sum != rd32(buffer + 0x0c)) {
+		print_string("Invalid update image (payload checksum)\n");
+		return 1;
+	}
+	print_string("Update image header verified\n");
+	return 0;
+}
+
+
 void installer(void)
 {
 
@@ -363,6 +479,11 @@ void installer(void)
 
 	// Initialize flash functions with disable DIO because writing does not work otherwise
 	flash_init(0);
+
+	if (verify_update_header()) {
+		print_string("Aborting update.\n");
+		return;
+	}
 
 	__xdata uint32_t dest = 0x0;
 	__xdata uint32_t source = UPDATE_CODE_LOC;

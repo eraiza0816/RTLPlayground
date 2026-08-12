@@ -133,11 +133,15 @@ int main(int argc, char **argv)
 	filesize = ftell(inptr);
 	rewind(inptr);
 	printf("Input file size: %ld\n", filesize);
-	if (filesize > BUFFER_SIZE) {
+	/* The payload is placed at SEG_1d000_OFFSET + 2*HEADER_LENGTH, so an
+	 * input of BUFFER_SIZE bytes would already overflow the buffer
+	 * (F10).  Reject anything that does not fit after the offset. */
+	size_t max_payload = BUFFER_SIZE - SEG_1d000_OFFSET - 2 * HEADER_LENGTH;
+	if (filesize > max_payload) {
 		printf("File too large.\n");
 		return 5;
 	}
-	size_t bytes_read = fread(buffer + SEG_1d000_OFFSET + 2 * HEADER_LENGTH, 1, sizeof(buffer), inptr);
+	size_t bytes_read = fread(buffer + SEG_1d000_OFFSET + 2 * HEADER_LENGTH, 1, filesize, inptr);
 
 	printf("Bytes read: %ld\n", bytes_read);
 
@@ -147,6 +151,10 @@ int main(int argc, char **argv)
 	}
 	fclose(inptr);
 	filesize += SEG_1d000_OFFSET + 2 * HEADER_LENGTH;
+	if (filesize > BUFFER_SIZE) {
+		printf("File too large.\n");
+		return 5;
+	}
 
 	// Read the installer file, which is in Intel Hex format
 	if (arguments.installer_file) {

@@ -37,6 +37,17 @@ jobs:
       - name: Run AEAD RFC 8439 vector test (firmware crypto, host build)
         run: ./tools/output/aead_test
 
+      - name: Build OEM installer and verify the update image header
+        run: |
+          make -C installer
+          python3 installer/verify_image.py installer/output/rtlplayground_oem_upgrade.bin
+
+      - name: Run host tool tests (rtlpctl, exporter)
+        run: |
+          apt install golang-go -y
+          GOTOOLCHAIN=local go test ./... -C tools/rtlpctl
+          GOTOOLCHAIN=local go test ./... -C tools/rtlplayground_exporter
+
       - name: Rename WEB Lite firmware
         run: |
           cd output/${{ matrix.machine }}

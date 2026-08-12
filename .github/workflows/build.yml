@@ -49,8 +49,8 @@ jobs:
 
       - name: Run host tool tests (rtlpctl, exporter)
         run: |
-          go test ./... -C tools/rtlpctl
-          go test ./... -C tools/rtlplayground_exporter
+          go test -C tools/rtlpctl ./...
+          go test -C tools/rtlplayground_exporter ./...
 
       - name: Rename WEB Lite firmware
         run: |

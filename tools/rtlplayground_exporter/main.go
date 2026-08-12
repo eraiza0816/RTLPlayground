@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -401,6 +402,10 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	start := time.Now()
 	success := 1.0
 	var wg sync.WaitGroup
+	// Any failed endpoint below (sfp_diag, counters, vlanlist, l2,
+	// mirror, lag, eee, bandwidth, mtu) must also clear rtl_scrape_success.
+	var failCount int32
+	fail := func() { atomic.AddInt32(&failCount, 1) }
 
 	info, err := fetchJSON[SwitchInfo](e, "/information.json")
 	if err != nil {
@@ -492,6 +497,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		}
 	} else {
 		log.Printf("Error fetching sfp_diag: %v", err)
+		fail()
 	}
 
 	// MIB counters (parallel per port). The device expects the physical
@@ -505,6 +511,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 			counters, err := fetchJSON[[]string](e, fmt.Sprintf("/counters.json?port=%d", portNum))
 			if err != nil {
 				log.Printf("Error fetching counters for port %d: %v", portNum, err)
+				fail()
 				return
 			}
 			port := strconv.Itoa(portNum)
@@ -528,6 +535,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		vlans, err := fetchJSON[[]VLANEntry](e, "/vlanlist")
 		if err != nil {
 			log.Printf("Error fetching vlanlist: %v", err)
+			fail()
 			return
 		}
 		ch <- prometheus.MustNewConstMetric(vlanCountDesc, prometheus.GaugeValue,
@@ -538,7 +546,11 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		count := e.countL2Entries()
+		count, ok := e.countL2Entries()
+		if !ok {
+			fail()
+			return
+		}
 		ch <- prometheus.MustNewConstMetric(l2EntriesDesc, prometheus.GaugeValue,
 			float64(count))
 	}()
@@ -550,6 +562,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		mirror, err := fetchJSON[MirrorConfig](e, "/mirror.json")
 		if err != nil {
 			log.Printf("Error fetching mirror: %v", err)
+			fail()
 			return
 		}
 		ch <- prometheus.MustNewConstMetric(mirrorEnabledDesc, prometheus.GaugeValue,
@@ -565,6 +578,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		lags, err := fetchJSON[[]LAGGroup](e, "/lag.json")
 		if err != nil {
 			log.Printf("Error fetching lag: %v", err)
+			fail()
 			return
 		}
 		for _, g := range *lags {
@@ -584,6 +598,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		eee, err := fetchJSON[[]EEEPort](e, "/eee.json")
 		if err != nil {
 			log.Printf("Error fetching eee: %v", err)
+			fail()
 			return
 		}
 		for _, p := range *eee {
@@ -599,6 +614,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		bw, err := fetchJSON[[]BWPort](e, "/bandwidth.json")
 		if err != nil {
 			log.Printf("Error fetching bandwidth: %v", err)
+			fail()
 			return
 		}
 		for _, p := range *bw {
@@ -628,6 +644,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 		mtus, err := fetchJSON[[]MTUPort](e, "/mtu.json")
 		if err != nil {
 			log.Printf("Error fetching mtu: %v", err)
+			fail()
 			return
 		}
 		for _, p := range *mtus {
@@ -638,19 +655,23 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 	wg.Wait()
 
+	if atomic.LoadInt32(&failCount) > 0 {
+		success = 0.0
+	}
+
 	ch <- prometheus.MustNewConstMetric(scrapeDurationDesc, prometheus.GaugeValue,
 		time.Since(start).Seconds())
 	ch <- prometheus.MustNewConstMetric(scrapeSuccessDesc, prometheus.GaugeValue, success)
 }
 
-func (e *Exporter) countL2Entries() int {
+func (e *Exporter) countL2Entries() (int, bool) {
 	idx := 0
 	seen := make(map[uint64]bool)
 	for iter := 0; iter < 20; iter++ {
 		entries, err := fetchJSON[[]L2Entry](e, fmt.Sprintf("/l2.json?idx=%d", idx))
 		if err != nil {
 			log.Printf("Error fetching L2 at idx %04x: %v", idx, err)
-			break
+			return len(seen), false
 		}
 		if len(*entries) == 0 {
 			break
@@ -670,7 +691,7 @@ func (e *Exporter) countL2Entries() int {
 		}
 		idx = int(lastIdx) + 1
 	}
-	return len(seen)
+	return len(seen), true
 }
 
 func (e *Exporter) login() error {

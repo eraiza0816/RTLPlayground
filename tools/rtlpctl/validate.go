@@ -144,8 +144,8 @@ func validateHostname(s string) error {
 }
 
 func validateCountersPort(s string) error {
-	if len(s) != 1 || s[0] < '1' || s[0] > '8' {
-		return fmt.Errorf("invalid port: %q (must be a single digit 1-8)", s)
+	if len(s) != 1 || s[0] < '1' || s[0] > '9' {
+		return fmt.Errorf("invalid port: %q (must be a single digit 1-9)", s)
 	}
 	return nil
 }

@@ -318,13 +318,24 @@ func aristaShowInterfaces(client *Client, args []string, jsonMode bool) error {
 			if err := validateCountersPort(eosCmpEthernet(strings.Join(args[1:], " "))); err != nil {
 				return err
 			}
+			port := parseEthernetPort(strings.Join(args[1:], " "))
+			data, err := client.GetJSON(fmt.Sprintf("/counters.json?port=%d", port))
+			if err != nil {
+				return err
+			}
+			return eosFormatCounters(data, jsonMode, port)
 		}
-		port := parseEthernetPort(strings.Join(args[1:], " "))
-		data, err := client.GetJSON(fmt.Sprintf("/counters.json?port=%d", port))
-		if err != nil {
-			return err
+		// No port given: show every port (the device rejects port=0).
+		for p := 1; p <= 9; p++ {
+			data, err := client.GetJSON(fmt.Sprintf("/counters.json?port=%d", p))
+			if err != nil {
+				return err
+			}
+			if err := eosFormatCounters(data, jsonMode, p); err != nil {
+				return err
+			}
 		}
-		return eosFormatCounters(data, jsonMode, port)
+		return nil
 	}
 	if matchCmd(sub, "status") || matchCmd(sub, "stat") || matchCmd(sub, "brief") {
 		port := 0
@@ -346,7 +357,7 @@ func aristaShowInterfaces(client *Client, args []string, jsonMode bool) error {
 	}
 	port := parseEthernetPort(sub)
 	if port > 0 {
-		if port > 8 {
+		if port > 9 {
 			aristaUnknown("show interfaces "+sub, jsonMode)
 			return nil
 		}

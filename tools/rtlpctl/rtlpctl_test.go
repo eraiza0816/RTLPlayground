@@ -70,6 +70,18 @@ func TestFilterFlags(t *testing.T) {
 			wantCfg:  config{password: "secret"},
 			wantArgs: nil,
 		},
+		{
+			// Options after the command word are command arguments
+			// (F4: `cmd "passwd --json"` must not set jsonMode).
+			args:     []string{"passwd", "--json"},
+			wantCfg:  config{},
+			wantArgs: []string{"passwd", "--json"},
+		},
+		{
+			args:     []string{"--json", "info", "--force"},
+			wantCfg:  config{jsonMode: true},
+			wantArgs: []string{"info", "--force"},
+		},
 	}
 	for _, tt := range tests {
 		cfg := config{}
@@ -247,12 +259,12 @@ func TestValidateHost(t *testing.T) {
 }
 
 func TestValidateCountersPort(t *testing.T) {
-	for _, p := range []string{"1", "2", "8"} {
+	for _, p := range []string{"1", "2", "8", "9"} {
 		if err := validateCountersPort(p); err != nil {
 			t.Errorf("validateCountersPort(%q) unexpected error: %v", p, err)
 		}
 	}
-	for _, p := range []string{"0", "9", "10", "12", "abc", "", "1 "} {
+	for _, p := range []string{"0", "10", "12", "abc", "", "1 "} {
 		if err := validateCountersPort(p); err == nil {
 			t.Errorf("validateCountersPort(%q) expected error", p)
 		}

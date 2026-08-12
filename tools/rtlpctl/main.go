@@ -77,43 +77,54 @@ func parseFlags() config {
 
 func filterFlags(args []string, cfg *config) []string {
 	var remaining []string
+	// Options are only recognized before the first non-option argument
+	// (the command word).  Everything from the command on is passed
+	// through untouched, so a command argument that happens to start
+	// with "--" (e.g. `passwd --json`) is not consumed by the flag
+	// parser.  Option values (--host <ip>, ...) are consumed here.
+	seenCommand := false
 	for i := 0; i < len(args); i++ {
-		switch {
-		case args[i] == "--help" || args[i] == "-h":
-			printHelp()
-			os.Exit(0)
-		case args[i] == "--json" || args[i] == "-j":
-			cfg.jsonMode = true
-		case args[i] == "--force" || args[i] == "-f":
-			cfg.force = true
-		case args[i] == "--host" && i+1 < len(args):
-			i++
-			cfg.host = args[i]
-		case strings.HasPrefix(args[i], "--host="):
-			cfg.host = args[i][7:]
-		case args[i] == "--password" && i+1 < len(args):
-			i++
-			cfg.password = args[i]
-		case strings.HasPrefix(args[i], "--password="):
-			cfg.password = args[i][11:]
-		case args[i] == "--psk" && i+1 < len(args):
-			i++
-			cfg.psk = args[i]
-		case strings.HasPrefix(args[i], "--psk="):
-			cfg.psk = args[i][6:]
-		case args[i] == "--env-file" && i+1 < len(args):
-			i++
-			loadDotEnv(args[i])
-		case strings.HasPrefix(args[i], "--env-file="):
-			loadDotEnv(args[i][11:])
-		case args[i] == "--mode" && i+1 < len(args):
-			i++
-			cfg.mode = args[i]
-		case strings.HasPrefix(args[i], "--mode="):
-			cfg.mode = args[i][7:]
-		default:
-			remaining = append(remaining, args[i])
+		if !seenCommand && strings.HasPrefix(args[i], "-") {
+			switch {
+			case args[i] == "--help" || args[i] == "-h":
+				printHelp()
+				os.Exit(0)
+			case args[i] == "--json" || args[i] == "-j":
+				cfg.jsonMode = true
+			case args[i] == "--force" || args[i] == "-f":
+				cfg.force = true
+			case args[i] == "--host" && i+1 < len(args):
+				i++
+				cfg.host = args[i]
+			case strings.HasPrefix(args[i], "--host="):
+				cfg.host = args[i][7:]
+			case args[i] == "--password" && i+1 < len(args):
+				i++
+				cfg.password = args[i]
+			case strings.HasPrefix(args[i], "--password="):
+				cfg.password = args[i][11:]
+			case args[i] == "--psk" && i+1 < len(args):
+				i++
+				cfg.psk = args[i]
+			case strings.HasPrefix(args[i], "--psk="):
+				cfg.psk = args[i][6:]
+			case args[i] == "--env-file" && i+1 < len(args):
+				i++
+				loadDotEnv(args[i])
+			case strings.HasPrefix(args[i], "--env-file="):
+				loadDotEnv(args[i][11:])
+			case args[i] == "--mode" && i+1 < len(args):
+				i++
+				cfg.mode = args[i]
+			case strings.HasPrefix(args[i], "--mode="):
+				cfg.mode = args[i][7:]
+			default:
+				remaining = append(remaining, args[i])
+			}
+			continue
 		}
+		seenCommand = true
+		remaining = append(remaining, args[i])
 	}
 	return remaining
 }
@@ -126,7 +137,9 @@ func runCmd(client *Client, args []string, cfg config) error {
 	cmd := args[0]
 	cmdArgs := args[1:]
 
-	if cmd != "login" && client.password != "" {
+	// Login with either the password or the PSK (a PSK-only invocation
+	// must not hit the password path and fail with 401).
+	if cmd != "login" && (client.password != "" || len(client.psk) == aeadKeyLen) {
 		if err := client.Login(); err != nil {
 			return fmt.Errorf("login failed: %w", err)
 		}

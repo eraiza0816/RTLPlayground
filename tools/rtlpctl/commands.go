@@ -661,7 +661,7 @@ func cmdEnc(client *Client, args []string, asJSON bool, force bool) error {
 }
 
 func cmdEncAPI(client *Client, args []string, asJSON bool) error {
-	if len(args) == 0 {
+	if len(args) == 0 || args[0] == "" {
 		return fmt.Errorf("usage: enc-api <path> (e.g. /status.json)")
 	}
 	if len(client.psk) != aeadKeyLen {

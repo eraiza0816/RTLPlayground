@@ -17,8 +17,11 @@
 
 #define SESSION_ID_LENGTH 24
 /* Session idle timeout, in ticks: 200 s at SYS_TICK_HZ (read_tick_counter
- * returns the firmware tick counter, not seconds). */
-#define SESSION_TIMEOUT (200 * SYS_TICK_HZ)
+ * returns the firmware tick counter, not seconds).  The ul suffix keeps
+ * the constant positive in 32-bit arithmetic: 40000 wraps to a negative
+ * int16 and would sign-extend to 0xffff9c40 in the comparison, which
+ * never expires the session. */
+#define SESSION_TIMEOUT (200ul * SYS_TICK_HZ)
 
 #define CMARK_S 6
 

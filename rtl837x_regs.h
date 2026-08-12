@@ -253,6 +253,7 @@
 #define IGMP_TRAP			0x0000002a
 #define IGMP_FLOOD			0x00000015
 #define IGMP_ASIC			0x00000000
+#define IGMP_ALLOW_QUERY		0x00004000
 /* Per-protocol operations in RTL837X_IGMP_PORT_CFG (2 bits each):
  * 00: HW processing by ASIC, 01: flood, 10: trap to CPU, 11: drop
  * bits 0-1: IGMPv1, 2-3: IGMPv2, 4-5: IGMPv3, 6-7: MLDv1, 8-9: MLDv2 */

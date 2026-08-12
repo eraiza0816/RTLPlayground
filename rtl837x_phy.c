@@ -495,8 +495,6 @@ void phy_show(uint8_t port) __banked
 				print_string("Unknown\n");
 			}
 			break;
-		default:
-			print_string("Unknown\n");
 		}
 		phy_read(port, PHY_MMD31, PHY_MMD31_FEDCR);
 		v = SFR_DATA_U16;
@@ -590,7 +588,7 @@ void rtl8224_read_reg_u16(uint16_t reg) __banked
 	SFR_SMI_REG_U16 = reg;		// c2, c2
 
 	SFR_SMI_PHY = RTL8224_PHY_ID;		// a5
-	SFR_SMI_DEV = PHY_MMD30 << 3 | 2;	// c4
+	SFR_SMI_DEV = (uint8_t)(PHY_MMD30 << 3) | 2;	// c4
 
 	SFR_EXEC_GO = SFR_EXEC_READ_SMI;
 	SFR_BUSY_WAIT();

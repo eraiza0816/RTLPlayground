@@ -26,7 +26,7 @@ static void poly1305_mul(__xdata struct poly1305_t *ctx) __reentrant
 	/* Hot computation uses static scratch (single-threaded firmware) to keep
 	 * the reentrant stack depth small on the 8051. */
 	static __xdata uint32_t m0, m1, m2, t, plo, phi;
-	static __xdata uint32_t a, b, c;
+	static __xdata uint32_t a, c;
 	/* volatile: SDCC 4.5.0 mcs51 caches i/j in registers across the hot
 	 * multiply and clobbers the register copy (the phi computation reuses
 	 * the register holding j), corrupting the lo[]/hi[] accumulation
@@ -45,7 +45,6 @@ static void poly1305_mul(__xdata struct poly1305_t *ctx) __reentrant
 		p1305_alo = (uint16_t)(a & 0x1fff);
 		p1305_ahi = (uint16_t)(a >> 13);
 		for (j = 0; j < 5; j++) {
-			b = ctx->r[j];
 			m0 = (uint32_t)p1305_alo * poly1305_rlo[j];
 			m1 = ((uint32_t)p1305_alo * poly1305_rhi[j]) +
 			     ((uint32_t)p1305_ahi * poly1305_rlo[j]);

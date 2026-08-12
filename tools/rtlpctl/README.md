@@ -81,6 +81,11 @@ rtlpctl [--host HOST] [--password PASS] [--json] <command> [args...]
 | `--json` | — | — | Output raw JSON (with arista mode: EAPI JSON-RPC format) |
 | `--force` | — | — | Bypass local command validation (`cmd` / `enc-cmd`) |
 
+Global flags are only parsed **before** the command word; everything
+from the command on is passed through untouched.  A command argument
+that happens to start with `--` (e.g. `rtlpctl passwd --json` to set a
+password literally) is therefore not consumed by the flag parser.
+
 ### Command Validation
 
 The firmware has deliberately minimal input validation to save code space
@@ -124,7 +129,7 @@ locally with a `config line N: ...` error. Empty lines are skipped.
 | `info` | GET /information.json | System info (IP, MAC, version etc.) |
 | `vlan <vid>` | GET /vlan.json?vid=<vid> | VLAN details (members, name, PVID) (1-4094) |
 | `vlan list` | GET /vlanlist | VLAN list |
-| `counters <port>` | GET /counters.json?port=<port> | Port hardware counters (single digit 1-8) |
+| `counters <port>` | GET /counters.json?port=<port> | Port hardware counters (single digit 1-9; omitted port lists all) |
 | `eee` | GET /eee.json | EEE settings |
 | `bandwidth` | GET /bandwidth.json | Bandwidth control settings |
 | `mirror` | GET /mirror.json | Port mirroring configuration |
@@ -288,7 +293,7 @@ Use `--mode arista` or the environment variable `MODE=arista` for Arista EOS-com
 |---------------|-------------------|
 | `show interfaces status` | GET /status.json |
 | `show interfaces Ethernet<X> status` | GET /status.json (port filtered) |
-| `show interfaces counters [Ethernet<X>]` | GET /counters.json |
+| `show interfaces counters [Ethernet<X>]` | GET /counters.json | Without a port, loops Et1-Et9 |
 | `show running-config` | GET /running-config |
 | `show startup-config` | GET /config |
 | `show vlan` | GET /vlanlist |

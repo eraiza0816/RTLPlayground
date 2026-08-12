@@ -100,7 +100,10 @@ summary and a reference to the detailed description.
   capabilities). For SFP ports, no PHY info is available.
 
 > port <port> name <name>
-  Assigns a custom name to a port (max 15 characters).
+  Assigns a custom name to a port (max 15 characters).  A name
+  containing spaces must be given without spaces (the CLI splits
+  commands on spaces); the WebUI replaces spaces with underscores.
+  `port <port> name` without a name argument clears the name.
 
 > port <port> [10m|100m|1g|2g5|5g|10g|auto|on|off]
   Forces the port speed.
@@ -157,6 +160,9 @@ summary and a reference to the detailed description.
 ```
 > vlan <vlan-id> [<port>[t|u]...]
   Creates or updates a VLAN. See doc/vlan.md for details.
+  A name may be given before the port list: `vlan <vlan-id> <name> <port>...`
+  (letters only; spaces are not allowed).  A lone `-` in the name
+  position clears the name: `vlan <vlan-id> - <port>...`.
 
 > vlan <vlan-id> d
   Deletes a VLAN. See doc/vlan.md for details.

@@ -26,7 +26,7 @@ jobs:
       - name: Install dependencies
         run: |
           apt update
-          apt install make gcc sdcc xxd python-is-python3 libjson-c-dev git -y
+          apt install make gcc sdcc xxd python-is-python3 libjson-c-dev zlib1g-dev git -y
 
       - name: Check if machine.c can be compiled for all machines
         run: make machine_check
@@ -42,11 +42,15 @@ jobs:
           make -C installer
           python3 installer/verify_image.py installer/output/rtlplayground_oem_upgrade.bin
 
+      - name: Set up Go (host tool tests)
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.5'
+
       - name: Run host tool tests (rtlpctl, exporter)
         run: |
-          apt install golang-go -y
-          GOTOOLCHAIN=local go test ./... -C tools/rtlpctl
-          GOTOOLCHAIN=local go test ./... -C tools/rtlplayground_exporter
+          go test ./... -C tools/rtlpctl
+          go test ./... -C tools/rtlplayground_exporter
 
       - name: Rename WEB Lite firmware
         run: |

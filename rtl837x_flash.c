@@ -326,15 +326,27 @@ void flash_write_bytes(__xdata uint8_t *ptr)
 		// Last transfer?
 		if (flash_region.len < 5) {
 			SFR_FLASH_TCONF = 8 | flash_region.len;
+			/* Only read as many data registers as remain: the final
+			 * short chunk must not fetch 4 bytes past the buffer. */
+			SFR_FLASH_ADDR16 = flash_region.addr >> 16;
+			SFR_FLASH_ADDR8 = flash_region.addr >> 8;
+			SFR_FLASH_ADDR0 = flash_region.addr;
+			SFR_FLASH_DATA0 = *ptr++;
+			if (flash_region.len > 1)
+				SFR_FLASH_DATA8 = *ptr++;
+			if (flash_region.len > 2)
+				SFR_FLASH_DATA16 = *ptr++;
+			if (flash_region.len > 3)
+				SFR_FLASH_DATA24 = *ptr++;
+		} else {
+			SFR_FLASH_ADDR16 = flash_region.addr >> 16;
+			SFR_FLASH_ADDR8 = flash_region.addr >> 8;
+			SFR_FLASH_ADDR0 = flash_region.addr;
+			SFR_FLASH_DATA0 = *ptr++;
+			SFR_FLASH_DATA8 = *ptr++;
+			SFR_FLASH_DATA16 = *ptr++;
+			SFR_FLASH_DATA24 = *ptr++;
 		}
-
-		SFR_FLASH_ADDR16 = flash_region.addr >> 16;
-		SFR_FLASH_ADDR8 = flash_region.addr >> 8;
-		SFR_FLASH_ADDR0 = flash_region.addr;
-		SFR_FLASH_DATA0 = *ptr++;
-		SFR_FLASH_DATA8 = *ptr++;
-		SFR_FLASH_DATA16 = *ptr++;
-		SFR_FLASH_DATA24 = *ptr++;
 
 		// Execute transfer, we wait for completion at top of loop
 		SFR_FLASH_EXEC_GO = 1;

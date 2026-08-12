@@ -943,7 +943,7 @@ void sds_config(uint8_t sds, uint8_t mode)
 		sds_write_v(sds, page, 0x0b, 0x232c); // Q00280b:232c
 		sds_write_v(sds, page, 0x0c, 0x9217); // Q00280c:9217
 		sds_write_v(sds, page, 0x0f, 0x5b50); // Q00280f:5b50
-		sds_write_v(sds, page, 0x15, 0xe7c1); // Q002815:e7f1 BUG !
+		sds_write_v(sds, page, 0x15, 0xe7c1); // Q002815: write 0xe7c1 (SDS sheet value to be confirmed)
 	}
 
 	sds_write_v(sds, page, 0x16, 0x0443); // Q002816:0443 / Q012e16:0443
@@ -1713,7 +1713,7 @@ void rtl8373_revision(void)
 	delay(50);
 
 	reg_read_m(RTL837X_REG_CHIP_INFO);
-	print_string("CPU revision: "); print_byte(sfr_data[2]); print_byte(sfr_data[2]); write_char('\n');
+	print_string("CPU revision: "); print_byte(sfr_data[2]); write_char('\n');
 	sfr_mask_data(2, 0x0a, 0x00); 	// Enable reading version
 	reg_write_m(RTL837X_REG_CHIP_INFO);
 }

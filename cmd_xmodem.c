@@ -56,7 +56,20 @@ void parse_xmodem(void) __banked __reentrant
             switch (state) {
             case 0:
                 if (b == 0x01) { seq = 1; pkt_pos = 0; pkt_crc = 0; state = 1; }
-                else if (b == 0x04) { write_char(0x06); goto verify; }
+                else if (b == 0x04) {
+                    /* Flush the tail of a partially received block (fewer
+                     * than 4 packets): flash_buf holds off*128 valid
+                     * bytes that the 4-packet path would have written. */
+                    uint8_t off = (seq - 1) & 3;
+                    if (off) {
+                        flash_region.addr = flash_addr;
+                        flash_region.len = (uint16_t)off << 7;
+                        flash_write_bytes(flash_buf);
+                        flash_addr += flash_region.len;
+                    }
+                    write_char(0x06);
+                    goto verify;
+                }
                 else if (b == 0x18) { print_string("\nCancelled\n"); goto done; }
                 break;
             case 1:

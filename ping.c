@@ -261,6 +261,13 @@ uint8_t ping_rx(void) __banked
 	if (uip_buf[UIP_LLH_LEN + 24] != (uint8_t)(ping_id >> 8) ||
 	    uip_buf[UIP_LLH_LEN + 25] != (uint8_t)ping_id)
 		return 0;
+	/* ICMP sequence number must match the echo that is currently in
+	 * flight (ping_send() writes HTONS(ping_seq); ping_rx() runs before
+	 * the counter is advanced on receipt).  Rejects stale or out-of-band
+	 * replies that pass the source/IP checks. */
+	if (uip_buf[UIP_LLH_LEN + 26] != (uint8_t)(ping_seq >> 8) ||
+	    uip_buf[UIP_LLH_LEN + 27] != (uint8_t)ping_seq)
+		return 0;
 
 	ping_w16 = (uint16_t)((ticks - ping_tx_ticks) * 5);
 	ping_rcvd++;

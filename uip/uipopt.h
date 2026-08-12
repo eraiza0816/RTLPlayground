@@ -153,6 +153,9 @@
  *
  * \hideinitializer
  */
+/* Fragmented IP packets are dropped outright: the switch has no
+ * reassembly buffer and the management traffic (HTTP/telnet/ICMP) uses
+ * packets well below the MTU, so no consumer needs fragments. */
 #define UIP_REASSEMBLY 0
 
 /**

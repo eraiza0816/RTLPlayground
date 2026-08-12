@@ -130,6 +130,14 @@ static char enc_resp[4096];
 static int enc_resp_len;
 static int enc_capture;
 
+/* write() is declared warn_unused_result by glibc; the socket writes in
+ * this simulator are best-effort, so consume the return value. */
+static void sock_send(int fd, const void *data, size_t len)
+{
+	ssize_t wr = write(fd, data, len);
+	(void)wr;
+}
+
 static void emit(int s, const void *data, size_t len)
 {
 	if (enc_capture) {
@@ -138,7 +146,7 @@ static void emit(int s, const void *data, size_t len)
 			enc_resp_len += len;
 		}
 	} else {
-		write(s, data, len);
+		sock_send(s, data, len);
 	}
 }
 
@@ -941,7 +949,7 @@ void launch(struct Server *server)
 		ssize_t bytesRead = read(new_socket, buffer, BUFFER_SIZE - 1);
 		printf("bytesRead: %ld\n", bytesRead);
 		int filesize = 0;
-		char *mime;
+		char *mime = "application/octet-stream";
 
 		if (bytesRead > 0) {
 			buffer[bytesRead] = '\0';  // Null terminate the string
@@ -1091,7 +1099,7 @@ void launch(struct Server *server)
 					authenticated = 0;
 					last_session_use = 0;
 					const char *ok = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK\n";
-					write(new_socket, ok, strlen(ok));
+					(void)sock_send(new_socket, ok, strlen(ok));
 					goto done;
 				} else if (!strncmp(&buffer[4], "/counters.json?port=", 20)) {
 					int port = atoi(&buffer[24]);
@@ -1220,7 +1228,7 @@ void launch(struct Server *server)
 							"Content-Type: text/html\r\n\r\n"
 							"<!DOCTYPE html> <html><head><title>Upload OK</title></head>"
 							"<body><h1>Command executed successully</h1></html>";
-					write(new_socket, response, strlen(response));
+					(void)sock_send(new_socket, response, strlen(response));
 					goto done;
 				} else if (is_word(&buffer[5], "/login")) {
 					printf("POST login\n");
@@ -1278,7 +1286,7 @@ void launch(struct Server *server)
 								   "Location: login.html\r\n\r\n";
 						}
 					}
-					write(new_socket, response, strlen(response));
+					(void)sock_send(new_socket, response, strlen(response));
 					goto done;
 				} else if (is_word(&buffer[5], "/enc")) {
 					/* body: nonce[12] || ciphertext || tag[16], plaintext = command text */
@@ -1346,7 +1354,7 @@ void launch(struct Server *server)
 						/* The firmware answers an unknown /enc path with a
 						 * plaintext 404, not an encrypted response. */
 						if (enc_not_found) {
-							write(new_socket, enc_resp, enc_resp_len);
+							(void)sock_send(new_socket, enc_resp, enc_resp_len);
 							goto done;
 						}
 
@@ -1366,7 +1374,7 @@ void launch(struct Server *server)
 							     (uint8_t *)out + olen,
 							     (uint8_t *)out + olen + body_len);
 						olen += body_len + 16;
-						write(new_socket, out, olen);
+						(void)sock_send(new_socket, out, olen);
 						goto done;
 					}
 
@@ -1382,7 +1390,7 @@ void launch(struct Server *server)
 						     resp_json, 16, (uint8_t *)out + olen,
 						     (uint8_t *)out + olen + 16);
 					olen += 32;
-					write(new_socket, out, olen);
+					(void)sock_send(new_socket, out, olen);
 					goto done;
 				} else if (is_word(&buffer[5], "/upload") || is_word(&buffer[5], "/config")) {
 					printf("POST upload/config request\n");
@@ -1437,7 +1445,7 @@ void launch(struct Server *server)
 							"Content-Type: text/html\r\n\r\n"
 							"<!DOCTYPE html> <html><head><title>Upload OK</title></head>"
 							"<body><h1>File uploaded successully</h1></html>";
-					write(new_socket, response, strlen(response));
+					(void)sock_send(new_socket, response, strlen(response));
 					if (config_upload) {
 						uploaded_config_len = (uptr - upload_buffer);
 						if (uploaded_config)
@@ -1450,15 +1458,15 @@ void launch(struct Server *server)
 			}
 			char *response = "HTTP/1.1 200 OK\r\n"
 					 "Content-Type: ";
-			write(new_socket, response, strlen(response));
+			(void)sock_send(new_socket, response, strlen(response));
 
-			write(new_socket, mime, strlen(mime));
+			(void)sock_send(new_socket, mime, strlen(mime));
 			response = "; charset=UTF-8\r\nCache-Control: no-cache, no-store, must-revalidate\r\n"
 				   "Access-Control-Allow-Origin: *\r\n"
 				   "Content-Security-Policy: style-src 'self' 'unsafe-inline'\r\n\r\n";
-			write(new_socket, response, strlen(response));
+			(void)sock_send(new_socket, response, strlen(response));
 			if (filesize)
-				write(new_socket, buffer, filesize);
+				(void)sock_send(new_socket, buffer, filesize);
 		} else if (bytesRead == 0) {
 			printf("EOF\n");
 			continue;

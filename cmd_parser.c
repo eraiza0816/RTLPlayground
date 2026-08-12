@@ -1669,7 +1669,7 @@ void parse_web(void)
 
 void parse_eee(void)
 {
-	__xdata int8_t port = -1;
+	__xdata uint8_t port = 0xff;
 	__xdata uint8_t speed = EEE_2G5;
 	__xdata uint8_t speed_word = 0;
 
@@ -1711,17 +1711,17 @@ void parse_eee(void)
 		}
 	}
 	if (cmd_compare(1, "on")) {
-		if (port >= 0)
+		if (port != 0xff)
 			port_eee_enable(port, speed);
 		else
 			port_eee_enable_all(speed);
 	} else if (cmd_compare(1, "off")) {
-		if (port >= 0)
+		if (port != 0xff)
 			port_eee_disable(port);
 		else
 			port_eee_disable_all();
 	} else if (cmd_compare(1, "status")) {
-		if (port >= 0)
+		if (port != 0xff)
 			port_eee_status(port);
 		else
 			port_eee_status_all();

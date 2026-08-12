@@ -140,17 +140,20 @@ struct conn {
 
 static void conn_send(struct conn *c, const char *s)
 {
-	write(c->fd, s, strlen(s));
+	ssize_t wr = write(c->fd, s, strlen(s));
+	(void)wr;
 }
 
 static void conn_send_n(struct conn *c, const void *p, size_t n)
 {
-	write(c->fd, p, n);
+	ssize_t wr = write(c->fd, p, n);
+	(void)wr;
 }
 
 static void conn_send_byte(struct conn *c, char b)
 {
-	write(c->fd, &b, 1);
+	ssize_t wr = write(c->fd, &b, 1);
+	(void)wr;
 }
 
 static void print_prompt(struct conn *c)

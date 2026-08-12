@@ -682,7 +682,7 @@ static uint8_t handle_api_path(__xdata uint8_t *q)
 /* Encrypted login challenge: the client encrypts this fixed string with
  * the pre-shared key and posts hex(nonce[12] || ct || tag) as enc=...
  * A wrong key/tag or a replayed nonce fails the login. */
-static __code uint8_t login_challenge[12] = "RTLP-LOGIN-1"; /* exactly 12 bytes */
+static __code uint8_t login_challenge[13] = "RTLP-LOGIN-1"; /* 12 chars + NUL */
 
 static uint8_t login_hexval(uint8_t c)
 {

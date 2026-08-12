@@ -65,14 +65,12 @@ struct igmp_pkt {
 	uint16_t checksum;
 	uint8_t src_ip[4];
 	uint8_t dst_ip[4];
-	uint8_t ip_opt;
-	uint8_t ip_len;
-	uint16_t ra;
+	/* The trapped packet has no 802.1Q tag: the RTL tag is followed
+	 * directly by the EtherType, then the 20-byte IP header. */
 	uint8_t igmp_type;
 	uint8_t igmp_res1;
 	uint16_t igmp_checksum;
-	uint16_t igmp_res2;
-	uint16_t igmp_records;
+	uint16_t igmp_res2;	/* Number of group records */
 	uint8_t igmp_rtype;
 	uint8_t igmp_auxlen;
 	uint16_t igmp_nsrc;
@@ -146,7 +144,7 @@ void igmp_enable(void) __banked
 	// bits 16-24 configure max MC group used by that port. Trap to CPU (10)
 	// bit 14 (ALLOW_QUERY) lets the ASIC send/receive IGMP queries on the port.
 	for (uint8_t i = machine.min_port; i <= machine.max_port; i++) {
-		REG_SET(RTL837X_IGMP_PORT_CFG + (i << 2), IGMP_MAX_GROUP | IGMP_PROTOCOL_ENABLE | IGMP_TRAP | (1 << 14));
+		REG_SET(RTL837X_IGMP_PORT_CFG + (i << 2), IGMP_MAX_GROUP | IGMP_PROTOCOL_ENABLE | IGMP_TRAP | IGMP_ALLOW_QUERY);
 	}
 }
 
@@ -432,13 +430,13 @@ void entry_to_l2mc(void)
 
 void igmp_packet_handler(void) __banked
 {
-	// By default we do not send anything out
-	uip_len = 0;
-
 	// A short frame cannot hold an IGMP packet (IP header 20 + 8 bytes
 	// of IGMP); refuse to read past it.
 	if (uip_len < 28)
 		return;
+
+	// By default we do not send anything out
+	uip_len = 0;
 
 #ifdef DEBUG
 	print_string("\nIPv4 MC packet:\n");

@@ -14,7 +14,7 @@ HTML_LOCATION = 262144
 ifeq ($(origin CC),default)
 CC = sdcc
 endif
-CC_FLAGS = -mmcs51 -DNO_CHACHA_HELPERS -DNO_AEAD_TEST -I. -Ihttpd -Iuip
+CC_FLAGS = -mmcs51 -DNO_CHACHA_HELPERS -DNO_AEAD_TEST -I. -Ihttpd -Iuip --disable-warning 110
 ASM ?= sdas8051
 AFLAGS= -plosgff
 

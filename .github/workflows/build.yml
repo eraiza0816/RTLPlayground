@@ -43,14 +43,14 @@ jobs:
           python3 installer/verify_image.py installer/output/rtlplayground_oem_upgrade.bin
 
       - name: Set up Go (host tool tests)
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version: '1.26.5'
 
       - name: Run host tool tests (rtlpctl, exporter)
         run: |
-          go test ./... -C tools/rtlpctl
-          go test ./... -C tools/rtlplayground_exporter
+          go test -C tools/rtlpctl ./...
+          go test -C tools/rtlplayground_exporter ./...
 
       - name: Rename WEB Lite firmware
         run: |

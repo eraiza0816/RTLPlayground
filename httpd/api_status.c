@@ -23,6 +23,7 @@
 #include "rtl837x_igmp.h"
 #include "rtl837x_acl.h"
 #include "ping.h"
+#include "page_impl.h"
 #include "lldp.h"
 #include "uip/uip_arp.h"
 #include "machine.h"
@@ -161,10 +162,10 @@ void send_lldp(void) __banked
 		}
 		char_to_html('"');
 		json_str(",\"port_id\":\"");
-		json_str_x(lldp_json.port_id);
+		json_escape((__xdata uint8_t *)lldp_json.port_id);
 		char_to_html('"');
 		json_str(",\"sysname\":\"");
-		json_str_x(lldp_json.sysname);
+		json_escape((__xdata uint8_t *)lldp_json.sysname);
 		char_to_html('"');
 		json_str(",\"ttl\":");
 		itoa_html(lldp_json.ttl);

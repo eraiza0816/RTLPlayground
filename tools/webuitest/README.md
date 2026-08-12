@@ -78,6 +78,45 @@ WUI_URL=http://127.0.0.1:18080 WUI_PASSWORD=1234 node test.js
 - 実機はポート 80 で WebUI を配信する。`node test.js http://192.168.10.247:80 <password>`
   のように指定する。
 
+## 実機用テスト (監査 D 群の回帰テスト)
+
+シミュレータはファームウェアの JSON エスケープ・PVID マスク・大ファイル転送を
+再現しないため、実機向けのスモークテストを別に用意している:
+
+```sh
+# 実機 HTTP API テスト: D1 (JSON エスケープ) / D5 (PVID マスク) / D8 (大ファイル転送)
+python3 device_api_test.py --host 192.168.10.247 --password 1234
+
+# オプション: GET /reset の 200 応答も確認 (スイッチが再起動する)
+python3 device_api_test.py --host 192.168.10.247 --reset-test
+
+# 実機 WebUI テスト (playwright): D4 / D5 / D9 / D10 と B5 (ログアウト)
+node device_ui_check.js http://192.168.10.247 1234
+```
+
+`device_api_test.py` はポート名の引用符エスケープ (`/status.json` が壊れないこと)、
+`/vlanlist` の PVID マスクが `pvid` コマンドの変更を追跡すること、`/main.js`
+(gzip) がほぼ完全に届いて展開後に実行可能なスクリプトになることを検証する。
+テストで変更したポート名・PVID は最後に元へ戻す (`--port` でテスト対象ポートを
+指定可能。既定 5 = 管理ポートを避ける)。
+
+監査 C 群 (機能修正) の回帰テストも含む:
+
+- C1: `vlan` / `pvid` 設定後の `/running-config` が vlan/pvid/mtu 行と
+  ベース行 (ip/gw/netmask/telnet/web) を含むこと
+- C1b: telnet 経由の `commit` が flash の config に vlan/pvid 行を書くこと
+- C2/C7: `storm-control on multicast 1000p` が running-config に `p` サフィックスで
+  シリアライズされ、`/storm-control.json` の `pps` フィールドが 1 になること
+- C5: `qos dscp 46 3` が 2 桁の dscp を正しくマップし、範囲外のキューは
+  マップを変更しないこと
+- C6: `lag 4 1` (グループ範囲外) が `/lag.json` を変更しないこと
+- C12: 奇数桁・20bit 超の `bw` レートが無視され、有効な偶数桁レートは
+  受け入れられること
+
+注意: `stp on` は全ユーザーポートを blocking にする (upstream の STP 実装に
+ポート状態遷移がない) ため、管理ポートも切り離され、電源リサイクルが必要に
+なる。このため C3 (STP) は HTTP テストで実行しない。
+
 ## 既知のデバイス挙動 (テストで許容)
 
 実機の httpd は `/` を認証なしで `index.html` として配信するため

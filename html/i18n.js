@@ -2,6 +2,14 @@
 var LANG = {
   en: {
     nav_overview: 'Overview',
+    nav_vlan: 'VLAN Config',
+    qos_heading: 'QoS Configuration',
+    qos_pcp_heading: 'PCP → Queue',
+    qos_dscp_heading: 'DSCP → Queue',
+    qos_sched_heading: 'Queue Scheduling',
+    storm_heading: 'Storm Control',
+    acl_heading: 'Ingress ACL Rules',
+    l2_mac_heading: 'MAC Address Table',
     nav_port_config: 'Port Configuration',
     nav_port_stat: 'Port Statistics',
     nav_l2: 'L2 Configuration',
@@ -123,6 +131,7 @@ var LANG = {
     l2_col_type: 'Type',
     l2_col_remove: 'Remove Entry',
     l2_delete: 'Delete',
+    l2_empty: 'No L2 entries',
     l2_static: 'static',
     l2_learned: 'learned',
 
@@ -187,6 +196,14 @@ var LANG = {
 
   ja: {
     nav_overview: '概要',
+    nav_vlan: 'VLAN 設定',
+    qos_heading: 'QoS 設定',
+    qos_pcp_heading: 'PCP → キュー',
+    qos_dscp_heading: 'DSCP → キュー',
+    qos_sched_heading: 'キュー スケジューリング',
+    storm_heading: 'ストーム制御',
+    acl_heading: '入力 ACL ルール',
+    l2_mac_heading: 'MAC アドレステーブル',
     nav_port_config: 'ポート設定',
     nav_port_stat: 'ポート統計',
     nav_l2: 'L2 設定',
@@ -308,6 +325,7 @@ var LANG = {
     l2_col_type: 'タイプ',
     l2_col_remove: 'エントリ削除',
     l2_delete: '削除',
+    l2_empty: 'L2 エントリなし',
     l2_static: '静的',
     l2_learned: '学習',
 

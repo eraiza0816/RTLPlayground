@@ -6,6 +6,22 @@
  * @returns {HTMLInputElement}
  */
 function $in(id) { return /** @type {HTMLInputElement} */ (document.getElementById(id)); }
+
+/* Keyboard navigation for the sidebar items (tabindex set in index.html) */
+document.addEventListener('keydown', function(e) {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target && e.target.id &&
+      e.target.id.indexOf('nav-') === 0 && typeof nav === 'function') {
+    e.preventDefault();
+    nav(e.target.id.slice(4));
+  }
+});
+
+/* HTML-escape a string for use in attribute values or innerHTML */
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, function(c) {
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
 /** NOTIFICATIONS **/
 let toastTimer;
 function notify(msg, type) {
@@ -577,7 +593,7 @@ function loadPortConfig() {
         var tr = document.createElement('tr');
         tr.id = 'pcfg-row-' + portNum;
         tr.innerHTML = '<td><strong>' + (t('common_port') || 'Port ') + portNum + '</strong></td>'
-          + '<td><input type="text" id="pname' + portNum + '" style="width:90px;" placeholder="' + (t('port_name') || 'Name') + '" value="' + (portNames[portNum] || '') + '"></td>'
+          + '<td><input type="text" id="pname' + portNum + '" style="width:90px;" placeholder="' + (t('port_name') || 'Name') + '" value="' + esc(portNames[portNum] || '') + '"></td>'
           + '<td id="link-' + portNum + '">' + linkS[(pState[portNum - 1] || 0) + 1] + '</td>'
           + '<td><select id="speed' + portNum + '" style="width:120px;">'
           + '<option value="auto">' + (t('port_auto') || 'Auto') + '</option>'
@@ -635,7 +651,8 @@ async function applyPortCfg(p) {
   var disabled = $in('disable' + p).checked;
   var cmd = 'port ' + p + ' ' + (disabled ? 'off' : speed);
   var pname = $in('pname' + p).value.trim().replace(/\s+/g, '_');
-  if (pname) fetchAPI('POST', '/cmd', null, 'port ' + p + ' name ' + pname);
+  // Always send the name command: an empty name clears the port name.
+  fetchAPI('POST', '/cmd', null, 'port ' + p + ' name ' + pname);
   fetchAPI('POST', '/cmd', function() {
     if (btn) btn.disabled = false;
     notify('Port ' + p + ' ' + (t('port_col_apply') || 'applied') + '.', 'success');
@@ -687,8 +704,8 @@ function applyVLAN() {
   var vid = $in('vid').value;
   if (!vid) return notify('Please enter a VLAN ID first.', 'warning');
   var vlanName = $in('vname').value.trim().replace(/\s+/g, '_');
-  var cmd = 'vlan ' + vid;
-  if (vlanName) cmd += ' ' + vlanName;
+  // An empty name field sends a lone '-' which clears the VLAN name.
+  var cmd = 'vlan ' + vid + (vlanName ? ' ' + vlanName : ' -');
   for (var p = 1; p <= globalNumPorts; p++) {
     if ($in('tport' + p).checked) cmd += ' ' + p + 't';
     else if ($in('uport' + p).checked) cmd += ' ' + p;
@@ -754,7 +771,7 @@ function loadVlanTable() {
           var members = m & 0x3FF;
           var untag = ((m >> 10) & 0x3FF) & members;
           var tagged = members & ~untag;
-          var pvid = 0;
+          var pvid = v.pvid !== undefined ? parseInt(v.pvid, 16) : 0;
           var tr = document.createElement('tr');
           var td = document.createElement('td');
           var a = document.createElement('a');
@@ -821,7 +838,16 @@ function getL2() {
         e.port = e.port == 9 ? 9 : (logToPhysMap[e.port] !== undefined ? logToPhysMap[e.port] : e.port);
         return e;
       });
-      if (!s.length) return;
+      if (!s.length) {
+        /* Empty table: show a message instead of "Loading..." forever
+         * (only on the very first fetch, before any entry arrived). */
+        if (!l2Entries.length) {
+          var tb = document.getElementById('l2body');
+          if (tb) tb.innerHTML = '<tr><td colspan="5" style="text-align:center;">' + (t('l2_empty') || 'No L2 entries') + '</td></tr>';
+          if (l2Interval) { clearInterval(l2Interval); l2Interval = null; }
+        }
+        return;
+      }
       l2Entries.push.apply(l2Entries, s);
       if (l2Entries.length >= 4096) { l2Entries = []; l2CurrentEntry = 0; clearInterval(l2Interval); return; }
       var w = 0;
@@ -1118,7 +1144,7 @@ function toggleBW(p, dir) {
 }
 
 function applyBandwidth(p) {
-  var logPort = p - 1;
+  var logPort = p;   /* physical port number (1-based), as the bw command expects */
   if ($in('ilim_' + p).checked) {
     var val = parseInt($in('ibw_' + p).value) || 0;
     var hex = Math.floor(val / 16).toString(16).padStart(4, '0');
@@ -1437,7 +1463,7 @@ function showSfpInfo() {
     return s.replace(/\0/g, '').trim();
   }
   var v = readStr(20, 36), pn = readStr(40, 56), sn = readStr(68, 84);
-  document.getElementById('info').innerHTML = '<b>Vendor:</b> ' + v + ' | <b>PN:</b> ' + pn + ' | <b>SN:</b> ' + sn + ' | <b>Type:</b> 0x' + hex(sfpData[3]);
+  document.getElementById('info').innerHTML = '<b>Vendor:</b> ' + esc(v) + ' | <b>PN:</b> ' + esc(pn) + ' | <b>SN:</b> ' + esc(sn) + ' | <b>Type:</b> 0x' + hex(sfpData[3]);
 }
 
 function editByte(offset) {

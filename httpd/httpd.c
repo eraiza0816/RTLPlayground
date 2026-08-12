@@ -506,9 +506,13 @@ uint8_t stream_upload(uint16_t bptr)
  * The query bytes follow the NUL; the scan is bounded because /enc
  * leaves binary ciphertext behind the query.  On success short_parsed
  * holds the value and 1 is returned; otherwise short_parsed is 0.
- * Locals live in XDATA: the 8051 internal RAM is full. */
-static uint8_t api_query_u16(__xdata uint8_t *q, __code uint8_t *key)
+ * Locals live in XDATA (the 8051 internal RAM is full) and the key
+ * is passed via a global for the same reason. */
+__code uint8_t * __xdata api_query_key;
+
+static uint8_t api_query_u16(__xdata uint8_t *q)
 {
+	__code uint8_t *key = api_query_key;
 	__xdata uint8_t * __xdata p = q;
 	__xdata uint8_t qn = 0;
 	__xdata uint8_t i = 0;
@@ -568,14 +572,16 @@ static uint8_t handle_api_path(__xdata uint8_t *q)
 		send_basic_info();
 		return 1;
 	} else if (!strcmp(q, "/vlan.json")) {
-		api_query_u16(q, "vid");
+		api_query_key = "vid";
+		api_query_u16(q);
 		send_vlan(short_parsed);
 		return 1;
 	} else if (is_word(q, "/sfp_diag.json")) {
 		send_sfp_diag();
 		return 1;
 	} else if (is_word(q, "/counters.json")) {
-		api_query_u16(q, "port");
+		api_query_key = "port";
+		api_query_u16(q);
 		if (short_parsed < 1 || short_parsed > 9) {
 			send_bad_request();
 			return 1;
@@ -589,11 +595,13 @@ static uint8_t handle_api_path(__xdata uint8_t *q)
 		send_bandwidth();
 		return 1;
 	} else if (is_word(q, "/l2.json")) {
-		api_query_u16(q, "idx");
+		api_query_key = "idx";
+		api_query_u16(q);
 		send_l2(short_parsed);
 		return 1;
 	} else if (is_word(q, "/l2_del.json")) {
-		api_query_u16(q, "idx");
+		api_query_key = "idx";
+		api_query_u16(q);
 		l2_delete(short_parsed);
 		return 1;
 	} else if (is_word(q, "/mirror.json")) {
@@ -606,7 +614,8 @@ static uint8_t handle_api_path(__xdata uint8_t *q)
 		send_lag();
 		return 1;
 	} else if (is_word(q, "/sfp_eeprom.json")) {
-		api_query_u16(q, "slot");
+		api_query_key = "slot";
+		api_query_u16(q);
 		if (short_parsed >= machine.n_sfp) {
 			send_bad_request();
 			return 1;
@@ -1142,6 +1151,9 @@ void httpd_appcall(void) __banked
 			dbg_string("CONT cont_len: "); dbg_short(cont_len);
 			slen = cont_len > uip_mss() ? uip_mss() : cont_len;
 
+			/* The chunk is loaded at the start of outbuf; reset the
+			 * offset so the ack/rexmit paths send the right region. */
+			o_idx = 0;
 			dbg_string("cont_addr: "); dbg_char('\n');
 			flash_region.addr = cont_addr;
 			flash_region.len = slen;

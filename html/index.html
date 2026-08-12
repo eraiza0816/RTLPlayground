@@ -144,6 +144,8 @@
     #hexdump th { padding: 2px 4px; font-size: 10px; }
     .inline-block { display: inline-block; }
     @media (max-width: 480px) {
+      body { flex-direction: column; }
+      #nav { width: 100%; height: auto; flex-direction: row; align-items: center; overflow-x: auto; white-space: nowrap; }
       #nav .brand { padding: 12px; font-size: 0.75rem; }
       #nav li { padding: 10px 8px; font-size: 11px; }
       #content { padding: 8px; }
@@ -176,9 +178,9 @@
 </head>
 <body>
 
-<div id="toast"></div>
+<div id="toast" aria-live="polite"></div>
 
-<div id="statsModal" class="modal-overlay" onclick="if(event.target===this) closeCounters()">
+<div id="statsModal" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Port counters" onclick="if(event.target===this) closeCounters()">
   <div class="modal-content">
     <span class="modal-close" onclick="closeCounters()">&times;</span>
     <h2 id="statsModalTitle" style="margin-top:0; border-bottom:none;">Detailed Port Counters</h2>
@@ -189,20 +191,20 @@
 <nav id="nav">
   <div class="brand"><span id="brand-title">RTLPlayground</span><br><span id="brand-version" style="font-size:10px;opacity:0.6"></span></div>
   <ul>
-    <li onclick="nav('dash')" id="nav-dash" class="active" data-i18n="nav_overview">Overview</li>
-    <li onclick="nav('port')" id="nav-port" data-i18n="nav_port_config">Port Configuration</li>
-    <li onclick="nav('vlan')" id="nav-vlan">VLAN Config</li>
-    <li onclick="nav('l2')" id="nav-l2" data-i18n="nav_l2">L2 Configuration</li>
-    <li onclick="nav('stat')" id="nav-stat" data-i18n="nav_port_stat">Port Statistics</li>
-    <li onclick="nav('mirror')" id="nav-mirror" data-i18n="nav_mirror">Mirroring</li>
-    <li onclick="nav('lag')" id="nav-lag" data-i18n="nav_lag">Link Aggregation</li>
-    <li onclick="nav('eee')" id="nav-eee" data-i18n="nav_eee">EEE</li>
-    <li onclick="nav('bw')" id="nav-bw" data-i18n="nav_bandwidth">Bandwidth Limits</li>
-    <li onclick="nav('qos')" id="nav-qos" data-i18n="nav_qos">QoS</li>
-    <li onclick="nav('storm')" id="nav-storm" data-i18n="nav_storm">Storm Control</li>
-    <li onclick="nav('acl')" id="nav-acl" data-i18n="nav_acl">ACL</li>
-    <li onclick="nav('sfp')" id="nav-sfp">SFP EEPROM</li>
-    <li onclick="nav('sys')" id="nav-sys" data-i18n="nav_system">System Settings</li>
+    <li tabindex="0" onclick="nav('dash')" id="nav-dash" class="active" data-i18n="nav_overview">Overview</li>
+    <li tabindex="0" onclick="nav('port')" id="nav-port" data-i18n="nav_port_config">Port Configuration</li>
+    <li tabindex="0" onclick="nav('vlan')" id="nav-vlan" data-i18n="nav_vlan">VLAN Config</li>
+    <li tabindex="0" onclick="nav('l2')" id="nav-l2" data-i18n="nav_l2">L2 Configuration</li>
+    <li tabindex="0" onclick="nav('stat')" id="nav-stat" data-i18n="nav_port_stat">Port Statistics</li>
+    <li tabindex="0" onclick="nav('mirror')" id="nav-mirror" data-i18n="nav_mirror">Mirroring</li>
+    <li tabindex="0" onclick="nav('lag')" id="nav-lag" data-i18n="nav_lag">Link Aggregation</li>
+    <li tabindex="0" onclick="nav('eee')" id="nav-eee" data-i18n="nav_eee">EEE</li>
+    <li tabindex="0" onclick="nav('bw')" id="nav-bw" data-i18n="nav_bandwidth">Bandwidth Limits</li>
+    <li tabindex="0" onclick="nav('qos')" id="nav-qos" data-i18n="nav_qos">QoS</li>
+    <li tabindex="0" onclick="nav('storm')" id="nav-storm" data-i18n="nav_storm">Storm Control</li>
+    <li tabindex="0" onclick="nav('acl')" id="nav-acl" data-i18n="nav_acl">ACL</li>
+    <li tabindex="0" onclick="nav('sfp')" id="nav-sfp">SFP EEPROM</li>
+    <li tabindex="0" onclick="nav('sys')" id="nav-sys" data-i18n="nav_system">System Settings</li>
   </ul>
 </nav>
 
@@ -283,7 +285,7 @@
     <button class="btn" style="padding:6px 12px;font-size:12px;" onclick="applyMLD()">Save MLD</button>
   </div>
   <div id="igmp-groups" style="margin-bottom:15px;font-size:13px;"></div>
-  <h3>MAC Address Table</h3>
+  <h3 data-i18n="l2_mac_heading">MAC Address Table</h3>
   <div class="table-responsive">
     <table id="l2table">
       <thead><tr><th data-i18n="l2_col_port">Port</th><th>MAC</th><th>VLAN</th><th data-i18n="l2_col_type">Type</th><th data-i18n="l2_col_remove">Remove Entry</th></tr></thead>
@@ -305,7 +307,7 @@
 
 <!-- QoS -->
 <div id="qos" class="panel">
-  <h2>QoS Configuration</h2>
+  <h2 data-i18n="qos_heading">QoS Configuration</h2>
   <div class="input-row">
     <label style="font-weight:600;">Priority Decision Mode:</label>
     <select id="qos-mode" style="min-width:150px;">
@@ -316,28 +318,28 @@
     </select>
     <button class="btn" onclick="applyQosMode()">Apply Mode</button>
   </div>
-  <h3>PCP → Queue</h3>
+  <h3 data-i18n="qos_pcp_heading">PCP → Queue</h3>
   <div class="table-responsive">
     <table id="qos-pcp-table" class="narrow"></table>
   </div>
   <div class="input-row">
     <button class="btn" onclick="applyQosPcp()">Apply PCP Map</button>
   </div>
-  <h3>DSCP → Queue</h3>
+  <h3 data-i18n="qos_dscp_heading">DSCP → Queue</h3>
   <div class="table-responsive">
     <table id="qos-dscp-table" class="narrow"></table>
   </div>
   <div class="input-row">
     <button class="btn" onclick="applyQosDscp()">Apply DSCP Map</button>
   </div>
-  <h3>Queue Scheduling</h3>
+  <h3 data-i18n="qos_sched_heading">Queue Scheduling</h3>
   <div id="qos-sched" style="font-size:13px;"></div>
   <p style="color:#64748b;font-size:12px;">(Remember to 'Save UI Changes to Flash' in System tab to persist reboots)</p>
 </div>
 
 <!-- STORM CONTROL -->
 <div id="storm" class="panel">
-  <h2>Storm Control</h2>
+  <h2 data-i18n="storm_heading">Storm Control</h2>
   <p style="color:#64748b;font-size:12px;">Per-type ingress rate limit for broadcast / multicast / unknown frames on all user ports.</p>
   <div class="table-responsive">
     <table id="storm-table">
@@ -349,7 +351,7 @@
 
 <!-- ACL -->
 <div id="acl" class="panel">
-  <h2>Ingress ACL Rules</h2>
+  <h2 data-i18n="acl_heading">Ingress ACL Rules</h2>
   <div class="input-row">
     <label style="font-weight:600;">Port:</label>
     <input type="number" id="acl-port" min="1" max="9" style="width:70px;">

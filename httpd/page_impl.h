@@ -2,6 +2,7 @@
 #define __PAGE_IMPL_H__
 
 void send_counters(char port);
+void json_escape(__xdata uint8_t *s);
 void send_status(void);
 void send_vlan(uint16_t vlan);
 void send_basic_info(void);

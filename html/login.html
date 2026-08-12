@@ -117,12 +117,16 @@
   <script>
     /* A stored PSK means the switch runs in PSK mode: the main.js issues
      * the session through the encrypted /enc endpoint, so the login page
-     * can go straight to the dashboard. */
+     * can go straight to the dashboard.  Redirect only once per tab:
+     * if the stored PSK no longer matches this switch, main.js gets a
+     * 401 and returns here - without the guard the two pages would
+     * bounce off each other forever. */
     document.addEventListener('DOMContentLoaded', function() {
       var stored = localStorage.getItem('rtlpsk');
-      if (stored && /^[0-9a-f]{64}$/.test(stored)) {
-        window.location.href = '/index.html';
-      }
+      if (!stored || !/^[0-9a-f]{64}$/.test(stored)) return;
+      if (sessionStorage.getItem('rtlpsk_redirected')) return;
+      sessionStorage.setItem('rtlpsk_redirected', '1');
+      window.location.href = '/index.html';
     });
   </script>
   <script>

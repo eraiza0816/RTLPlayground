@@ -51,7 +51,7 @@ int main(int argc, char **argv)
 
 	patchptr = fopen(argv[2], "r");
 	if (patchptr == NULL) {
-		printf("Cannot open %s\n", argv[1]); 
+		printf("Cannot open %s\n", argv[2]); 
 		return 5;
 	}
 
@@ -59,7 +59,10 @@ int main(int argc, char **argv)
 	int patches = 0;
 	while ((l = getline(&line, &len, patchptr)) != -1) {
 //		printf("Retrieved line of length %zu:\n", l);
-		sscanf(line, "%x: %x", &addr, &value);
+		if (sscanf(line, "%x: %x", &addr, &value) != 2) {
+			printf("Bad patch line (ignored): %s", line);
+			continue;
+		}
 		if (addr < 0x4000)
 			addr += OFFSET;
 		if (addr >= 0xff00) { // A bank change
@@ -88,7 +91,7 @@ int main(int argc, char **argv)
 
 	outptr = fopen(argv[3], "wb");
 	if (outptr == NULL) {
-		printf("Cannot open %s\n", argv[1]); 
+		printf("Cannot open %s\n", argv[3]); 
 		return 5;
 	}
 	size_t written = fwrite(buffer, 1, filesize, outptr);

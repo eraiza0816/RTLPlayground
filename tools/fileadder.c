@@ -44,7 +44,7 @@ static struct argp_option options[] = {
     { "size", 's', "SIZE", 0, "Resize image"},
     { "output", 'o', "FILE", 0, "Output image file name instead of overwriting input image"},
     { "data", 'd', "FILE", 0, "File or directory to add to image"},
-    { "address", 'a', "SIZE", 0, "Address where data is placed, default is 0x1000000 if option is used, otherwise 0x1fd000"},
+    { "address", 'a', "SIZE", 0, "Address where data is placed, default is 0x100000 if the option is used, otherwise 0x1fd000"},
     { "prefix", 'p', "FILE", 0, "Prefix for header and index file generation"},
     { "bank", 'b', "BANKNAME", 0, "Generate #pragma with given bank-name"},
     { "gzip", 'z', 0, 0, "gzip-compress the added files"},

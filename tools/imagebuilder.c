@@ -93,6 +93,13 @@ int main(int argc, char **argv)
 	int nbanks = (filesize - BANK0_SIZE) / BANK_STRIDE;
 	printf("Input file contains %d banks\n", nbanks+1);
 
+	/* The input must be BANK0_SIZE + n*64KB; warn about trailing data
+	 * that the bank copy loop will ignore (F11). */
+	if ((filesize - BANK0_SIZE) % BANK_STRIDE) {
+		printf("Warning: %ld trailing bytes not a multiple of 0x10000; ignored\n",
+		       (long)(filesize - BANK0_SIZE - (size_t)nbanks * BANK_STRIDE));
+	}
+
 	/* Verify the size of banks in input file:
 	 * Bank 0: 0x00002 - 0x04000 <- 0x00000 - 0x03ffe
 	 * Bank 1: 0x04000 - 0x10000 <- 0x14000 - 0x20000

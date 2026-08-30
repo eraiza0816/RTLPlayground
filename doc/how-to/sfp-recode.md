@@ -39,7 +39,10 @@ command rewrites the compliance bytes and fixes the checksums.
    ```
 
    The compliance codes now include 10GBase-LR / 1000Base-LX and the
-   checksum is valid.
+   checksum is valid.  The patch also rewrites the signalling rate
+   (byte 12) to 0x67 (10.3 GBit/s), so the switch configures the
+   SerDes for 10G automatically when the module is inserted — no
+   manual `sfp <slot> 10g` needed.
 
 ## See also
 

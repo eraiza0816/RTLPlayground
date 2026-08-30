@@ -934,9 +934,15 @@ static void sfp_cmd_patch(uint8_t slot)
 	sfp_pw_pending = sfp_pw_ok == 2;
 	if (sfp_write_reg(slot, 6, 0x02)) { print_string(" Patch failed!\n"); return; }
 	sfp_pw_pending = sfp_pw_ok == 2;
+	// Clear the FC link-length bits which some switches reject on
 	if (sfp_write_reg(slot, 7, 0x00)) { print_string(" Patch failed!\n"); return; }
 	sfp_pw_pending = sfp_pw_ok == 2;
 	if (sfp_write_reg(slot, 9, 0x00)) { print_string(" Patch failed!\n"); return; }
+	sfp_pw_pending = sfp_pw_ok == 2;
+	// Rewrite the nominal bit-rate (byte 12) to 103 x100MBd = 10.3 GBit/s so
+	// sfp_rate_to_sds_config() picks up SDS_10GR and the module auto-links
+	// without a manual "sfp <slot> 10g"
+	if (sfp_write_reg(slot, 12, 0x67)) { print_string(" Patch failed!\n"); return; }
 	sfp_calc_checksum(slot);
 	sfp_pw_pending = sfp_pw_ok == 2;
 	if (sfp_write_reg(slot, 0x3F, sfp_csum_base)) { print_string(" Checksum fix failed!\n"); return; }

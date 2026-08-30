@@ -230,6 +230,9 @@ read/write operations:
   - Byte 6 = 0x02 (1000BASE-LX)
   - Byte 7 = 0x00 (clear FC link length)
   - Byte 9 = 0x00 (clear FC speed)
+  - Byte 12 = 0x67 (10G signalling rate, so the switch auto-configures
+    the SerDes for 10G on insertion instead of leaving the module
+    unlinked)
   - CC_BASE recalculated after patching
 
 > sfp <slot> checksum [--fix] [--pw <hex8>]

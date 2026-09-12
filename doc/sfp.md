@@ -251,7 +251,11 @@ read/write operations:
 > sfp <slot> clone [--pw <hex8>]
   Writes the full 256-byte EEPROM from the flash buffer (pre-loaded via
   `sfp <slot> bulk <hex>` or `sfp <slot> restore`). The checksum is
-  auto-fixed after cloning.
+  auto-fixed after cloning. Note: single-byte `write`s do not touch the
+  flash buffer, so after a WebUI chunked upload the editor issues
+  `sfp <slot> save` first to load the buffer (and back it up) — without
+  that, `clone` would write stale data. Cloning takes a minute or more;
+  the WebUI request may time out while the switch keeps writing.
 ```
 
 ### Password notes

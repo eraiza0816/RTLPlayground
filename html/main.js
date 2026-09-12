@@ -1585,7 +1585,24 @@ function restoreBackup() {
 function cloneEeprom() {
   if (!sfpNeedA0()) return;
   if (!confirm('SFP ' + (sfpSlot + 1) + ': ' + (t('sfp_clone_confirm') || 'clone EEPROM from flash buffer (load via bulk upload or restore first)?'))) return;
-  fetchAPI('POST', '/cmd', function() { notify(t('sfp_clone_done') || 'Cloned.', 'success'); loadEeprom(); }, 'sfp ' + (sfpSlot + 1) + ' clone' + pwArg());
+  var btn = document.getElementById('clonebtn');
+  var done = false;
+  function finish(msg, cls) {
+    if (done) return; done = true;
+    if (btn) btn.disabled = false;
+    notify(msg, cls);
+  }
+  /* Cloning 256 bytes takes a minute or more; the XHR gives up after
+   * 4 s while the switch keeps writing, so restore the button on a
+   * long watchdog and let the user verify in the editor. */
+  setTimeout(function() {
+    if (!done) { finish(t('sfp_write_stall') || 'Still writing — verify in the editor before retrying.', 'error'); loadEeprom(); }
+  }, 600000);
+  if (btn) btn.disabled = true;
+  fetchAPI('POST', '/cmd', function() {
+    if (!done) { loadEeprom(); }
+    finish(t('sfp_clone_done') || 'Cloned.', 'success');
+  }, 'sfp ' + (sfpSlot + 1) + ' clone' + pwArg());
 }
 
 function downloadBin() {
@@ -1643,7 +1660,16 @@ function uploadBin(input) {
             if (k === 63 || k === 95) continue;
             if (sfpData[k] !== data[k]) bad++;
           }
-          finish(bad ? (t('sfp_verify_fail') || 'Verify failed.') + ' ' + bad + '/256' : (t('sfp_write_done') || 'Write complete.'), bad ? 'error' : 'success');
+          if (bad) {
+            finish((t('sfp_verify_fail') || 'Verify failed.') + ' ' + bad + '/256', 'error');
+            return;
+          }
+          /* Load flash_buf with the just-written image (single-byte
+           * writes do not touch it) so a later `clone` copies this
+           * image; this also backs it up to flash. */
+          fetchAPI('POST', '/cmd', function() {
+            finish((t('sfp_write_done') || 'Write complete.') + ' ' + (t('sfp_save_done') || 'Saved to flash.'), 'success');
+          }, 'sfp ' + (sfpSlot + 1) + ' save');
         }, 1200);
         return;
       }

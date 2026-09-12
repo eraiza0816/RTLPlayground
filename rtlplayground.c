@@ -93,6 +93,7 @@ volatile __xdata uint32_t ticks;
 volatile __xdata uint8_t sec_counter;
 volatile __xdata uint16_t sleep_ticks;
 __xdata uint8_t stp_clock;
+__xdata uint8_t arp_age_secs;
 extern __xdata struct dhcp_state dhcp_state;
 
 #define STP_TICK_DIVIDER 3
@@ -386,9 +387,10 @@ void isr_ext1(void) __interrupt(2)
  */
 void isr_ext2(void) __interrupt(8)
 {
-	EXIF &= 0xef;	// Clear IRQ flag (bit 7) in EXIF
+	EXIF &= 0xef;	// Clear IRQ flag (bit 4) in EXIF
 	ext_irq_flags |= 0x04;	// 'Z'
-	PCON |= 1; // Enter Idle mode until interrupt occurs
+	// No Idle sleep here: sleeping inside the ISR holds the priority
+	// latch and delays lower-priority interrupts.
 }
 
 /*
@@ -396,7 +398,7 @@ void isr_ext2(void) __interrupt(8)
  */
 void isr_ext3(void) __interrupt(9)
 {
-	EXIF &= 0xdf;	// Clear IRQ flag (bit 6) in EXIF
+	EXIF &= 0xdf;	// Clear IRQ flag (bit 5) in EXIF
 	ext_irq_flags |= 0x08;	// 'W'
 }
 
@@ -1407,6 +1409,12 @@ void idle(void)
 
 		// Check for button presses once a second
 		handle_button();
+		// Age the ARP cache: uip_arp_timer() expects a 10 s cadence.
+		// Without it a changed gateway/MAC stays blackholed in the cache.
+		if (++arp_age_secs >= 10) {
+			arp_age_secs = 0;
+			uip_arp_timer();
+		}
 
 #ifdef DEBUG
 		print_sfr_data();

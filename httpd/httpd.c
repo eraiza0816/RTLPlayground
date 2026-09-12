@@ -108,10 +108,11 @@ inline uint8_t is_separator(uint8_t c)
 
 void httpd_init(void) __banked
 {
-	__xdata struct httpd_state * __xdata s = &(uip_conn->appstate);
+	// Not through uip_conn: it only points at a connection while uIP is
+	// handling one, and nothing has set it yet at init time.
+	uip_conns[0].appstate.tstate = TSTATE_CLOSED;
 	// Start listening to port 80
 	uip_listen(HTONS(80));
-	s->tstate = TSTATE_CLOSED;
 }
 
 
@@ -275,8 +276,9 @@ __xdata uint8_t *scan_header(__xdata uint8_t * __xdata p)
 
 	while (*p != '\r' || *(p + 1) != '\n' || *(p + 2) != '\r' || *(p + 3) != '\n') {
 		dbg_char(*p);
-		if (!*p++)
+		if (!*p)
 			break;
+		p++;
 		if (is_word(p, "\nContent-Type:"))
 			content_type = p + 15;
 		else if (is_word(p, "\nCookie:")) {
@@ -292,7 +294,7 @@ __xdata uint8_t *scan_header(__xdata uint8_t * __xdata p)
 				c++;
 			}
 		}
-		else if (is_word(p, "\nContent-Length:")) {
+		else if (is_word(p, "\nContent-Length:") || is_word(p, "\ncontent-length:")) {
 			/* Header format: "\nContent-Length: <digits>" — skip the
 			 * separator space (may be absent, e.g. "Content-Length:12"). */
 			__xdata uint8_t * __xdata cl = p + 16;

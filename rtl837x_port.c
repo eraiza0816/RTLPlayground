@@ -363,10 +363,10 @@ void port_l2_learned(void) __banked
 			reg_read_m(RTL837x_L2_DATA_OUT_B);
 			print_short( (((uint16_t) (sfr_data[0] & 0x0f)) << 8) | sfr_data[1]); // VLAN
 
-			// type
-			reg_read_m(RTL837x_L2_DATA_OUT_C);
-			if (sfr_data[2] & 0x1)
-				print_string("\tstatic\t");
+		// type
+		reg_read_m(RTL837x_L2_DATA_OUT_C);
+		if (sfr_data[1] & 0x1)
+			print_string("\tstatic\t");
 			else
 				print_string("\tlearned\t");
 

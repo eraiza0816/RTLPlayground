@@ -1453,6 +1453,7 @@ function startFlash() {
 var sfpData = new Uint8Array(256);
 var sfpSlot = 0;
 var sfpPage = 0;
+var sfpLoaded = false;
 
 function hex(b) { return (b >> 4).toString(16) + (b & 0xf).toString(16); }
 
@@ -1464,6 +1465,7 @@ function loadEeprom() {
       var j = JSON.parse(raw);
       if (j.data) {
         for (var i = 0; i < 256; i++) sfpData[i] = parseInt(j.data.substr(i * 2, 2), 16);
+        sfpLoaded = true;
         showEeprom();
         if (sfpPage) showSfpDiag(); else showSfpInfo();
       }
@@ -1639,12 +1641,15 @@ function uploadBin(input) {
   if (!confirm('SFP ' + (sfpSlot + 1) + ': ' + (t('sfp_write_confirm') || 'write file to EEPROM?') + ' (' + file.name + ')')) return;
   var reader = new FileReader();
   reader.onload = function(e) {
-    /* Command lines are capped at 127 chars, so a 512-char bulk payload
-     * cannot go through /cmd: send 256 single-byte writes instead, with
-     * progress on the button and a read-back verification at the end.
-     * Bytes 63/95 are skipped in the comparison: the firmware maintains
-     * the checksums itself and fixes them when they arrive wrong. */
+    /* Write only the bytes that differ from the loaded image (like a
+     * template+diff flow): faster, and untouched bytes never risk an
+     * unlock attempt. Without a fresh load, fall back to all 256. */
     var data = new Uint8Array(/** @type {ArrayBuffer} */ (e.target.result));
+    var diffs = [];
+    for (var d = 0; d < 256; d++) {
+      if (!sfpLoaded || sfpData[d] !== data[d]) diffs.push(d);
+    }
+    if (!diffs.length) { notify(t('sfp_identical') || 'Already identical, nothing to do.', 'success'); return; }
     var pw = pwArg();
     var btn = document.getElementById('uploadbtn');
     var upLabel = t('sfp_upload') || 'Upload .bin';
@@ -1659,7 +1664,7 @@ function uploadBin(input) {
     }, 300000);
     if (btn) btn.disabled = true;
     (function next() {
-      if (i >= 256) {
+      if (i >= diffs.length) {
         loadEeprom();
         setTimeout(function() {
           var bad = 0;
@@ -1680,13 +1685,14 @@ function uploadBin(input) {
         }, 1200);
         return;
       }
-      if (btn) btn.textContent = (t('sfp_writing') || 'Writing ') + i + '/256';
+      var off = diffs[i];
+      if (btn) btn.textContent = (t('sfp_writing') || 'Writing ') + i + '/' + diffs.length;
       /* A single dropped request (timeout, HTTP error) used to stall
        * the chain forever with no message: retry the same byte, which
        * is idempotent, then abort naming the byte. */
-      fetchAPI('POST', '/cmd', function() { i++; tries = 0; next(); }, 'sfp ' + (sfpSlot + 1) + ' write ' + hex(i) + ' ' + hex(data[i]) + pw, function() {
+      fetchAPI('POST', '/cmd', function() { i++; tries = 0; next(); }, 'sfp ' + (sfpSlot + 1) + ' write ' + hex(off) + ' ' + hex(data[off]) + pw, function() {
         if (++tries <= 3) { next(); return; }
-        finish((t('sfp_write_fail') || 'Write failed at byte ') + i, 'error');
+        finish((t('sfp_write_fail') || 'Write failed at byte ') + off, 'error');
       });
     })();
   };

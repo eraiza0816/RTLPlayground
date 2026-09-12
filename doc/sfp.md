@@ -284,10 +284,11 @@ Features:
   A0h only, the diagnostics page is read-only)
 - Download the current page as a `.bin` file
 - Upload a `.bin` file (exactly 256 bytes) to write the entire EEPROM
-  (sent as 256 single-byte writes with progress and a read-back
-  verification; bytes 63/95 are maintained by the firmware and skipped
-  in the comparison — note some modules also drift in vendor scratch
-  bytes such as 225-231, which the verification may flag)
+  (only bytes differing from the loaded image are sent, with progress
+  and a read-back verification; bytes 63/95 are maintained by the
+  firmware and skipped in the comparison — note some modules also drift
+  in vendor scratch bytes such as 225-231, which the verification may
+  flag)
 - Vendor, part number, serial number, signalling rate and checksum
   validity (CC_BASE/CC_EXT, recomputed in the browser) are displayed
   at the top; on the A2h page the live diagnostics (temperature,

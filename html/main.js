@@ -333,15 +333,6 @@ const sysLabels = {
         var opt2 = document.querySelector('#slotsel option[value="1"]');
         if (opt2) opt2.style.display = (info.sfp_slot_1 === undefined) ? 'none' : '';
         if (info.sfp_slot_1 === undefined && $in('slotsel').value === '1') $in('slotsel').value = '0';
-        /* The firmware walks its password dictionary on its own; only
-         * ask for a manual password when no dictionary is compiled in
-         * (count 1 = just the inline all-zero key, or key absent). */
-        var pwrow = document.getElementById('pwrow');
-        if (pwrow) {
-          var hide = (info.sfp_pw_dict || 0) > 1;
-          pwrow.style.display = hide ? 'none' : '';
-          if (hide) $in('pwinput').value = '';
-        }
       } catch (e) {}
       loadEeprom();
     });

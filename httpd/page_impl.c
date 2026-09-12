@@ -338,8 +338,6 @@ void send_basic_info(void)
 			slen += strtox(outbuf + slen, "\",\"sfp_slot_1\":\"");
 			send_sfp_info(1);
 		}
-		slen += strtox(outbuf + slen, "\",\"sfp_pw_dict\":\"");
-		itoa_html(sfp_pw_dict_count());
 	}
 	char_to_html('"');
 

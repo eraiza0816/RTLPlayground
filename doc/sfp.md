@@ -167,9 +167,7 @@ is written to the A2h device (0x51) at registers 0x7B-0x7E (the module's MCU ope
 short unlock window afterwards). Every write tries, in order: a plain write, the
 `--pw` password when one was given, then each entry of the built-in dictionary
 (`sfp_pw_dict.inc`, `00000000` first) — no manual input is needed when the
-dictionary is compiled in. `information.json` reports the entry count as
-`sfp_pw_dict` (1 = only the inline all-zero key, i.e. effectively empty);
-the WebUI hides its manual password field when the count is above 1.
+dictionary is compiled in.
 
 The dictionary lives in `sfp_pw_dict.inc`, which is gitignored (generated from
 passwords.json). CI builds create an empty stub so the firmware compiles with only

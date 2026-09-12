@@ -31,15 +31,6 @@ static __code uint8_t sfp_pw_dict[][4] = {
 #include "sfp_pw_dict.inc"
 };
 
-/* Number of password dictionary entries, including the inline all-zero
- * key. The WebUI hides its manual password field when real entries
- * beyond the inline key are compiled in (count > 1). Banked: called
- * from BANK1 page code while living in BANK2. */
-uint8_t sfp_pw_dict_count(void) __banked
-{
-	return sizeof(sfp_pw_dict) / sizeof(sfp_pw_dict[0]);
-}
-
 uint8_t sfp_write_reg(uint8_t slot, uint8_t reg, uint8_t data) __reentrant
 {
 	uint8_t scl = machine.sfp_port[slot].i2c.scl;

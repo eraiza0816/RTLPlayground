@@ -472,6 +472,9 @@ void send_l2(uint16_t idx)
 
 			port |= (sfr_data[3] & 0x3) << 2;
 			itoa_html(port);
+			slen += strtox(outbuf + slen, ",\"lag\":");
+			uint8_t lag = port_lag_of(port);
+			itoa_html(lag == PORT_LAG_NONE ? 0 : lag + 1);
 
 			// Index
 			slen += strtox(outbuf + slen, ",\"idx\":\"");

@@ -287,8 +287,7 @@ void parse_lag(void)
 		print_string("LAG status:\n");
 		for (uint8_t i = 0; i < 4; i++) {
 			write_char(' '); write_char('1' + i);
-			reg_read_m(RTL837X_TRK_MBR_CTRL_BASE + (i << 2));
-			members = ((uint16_t)sfr_data[2]) << 8 | sfr_data[3]; 
+			members = port_lag_members_get(i);
 			if (!members) {
 				print_string(" disabled\n");
 				continue;
@@ -312,10 +311,9 @@ void parse_lag(void)
 	if (cmd_words_len < 3 || !isnumber(cmd_buffer[cmd_words_b[1]]))
 		goto err;
 	// Groups are 1-based on the command line, matching "lag show" and
-	// the WebUI ("LAG Group 1" is index 0 in the registers).
+	// the WebUI ("LAG Group 1" is index 0 in the registers). Range
+	// validation lives in rtlpctl; the set function below guards lag > 3.
 	group = cmd_buffer[cmd_words_b[1]] - '0';
-	if (group < 1 || group > 4)
-		goto err;
 	group--;
 
 	if (cmd_compare(2, "d")) {
@@ -346,9 +344,10 @@ void parse_lag_hash(void)
 	__xdata uint8_t group;
 	__xdata uint8_t hash = 0;
 
-	// Groups are 1-based on the command line, like "lag".
+	// Groups are 1-based on the command line, like "lag". Range
+	// validation lives in rtlpctl; the set function below guards lag > 3.
 	group = cmd_buffer[cmd_words_b[1]] - '0';
-	if (!isnumber(cmd_buffer[cmd_words_b[1]]) || group < 1 || group > 4) {
+	if (!isnumber(cmd_buffer[cmd_words_b[1]])) {
 		print_string("Error: laghash <1-4> [spa|smac|dmac|sip|dip|sport|dport]\n");
 		return;
 	}

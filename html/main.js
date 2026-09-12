@@ -873,7 +873,7 @@ function fillL2(s) {
     return 0;
   });
   s = s.filter(function(item, pos, ary) { return !pos || item.idx != ary[pos - 1].idx; });
-  s = s.map(function(e) { e.port = e.port != 9 ? e.port : 'CPU'; return e; });
+  s = s.map(function(e) { e.port = e.lag ? 'LAG' + e.lag : (e.port != 9 ? e.port : 'CPU'); return e; });
 
   /* Diff-update: skip DOM work entirely when the table is unchanged */
   var sig = s.map(function(e) { return e.idx + ':' + e.mac + ':' + e.vlan + ':' + e.port + ':' + e.type; }).join('|');

@@ -370,11 +370,17 @@ void port_l2_learned(void) __banked
 			else
 				print_string("\tlearned\t");
 
-			port |= (sfr_data[3] & 0x3) << 2;
-			if (port < 9)
+		port |= (sfr_data[3] & 0x3) << 2;
+		if (port < 9) {
+			uint8_t lag = port_lag_of(port);
+			if (lag == PORT_LAG_NONE)
 				write_char(machine.log_to_phys_port[port] + '0');
-			else
-				print_string("CPU");
+			else {
+				print_string("LAG");
+				write_char('1' + lag);
+			}
+		} else
+			print_string("CPU");
 		}
 
 		entry++;
@@ -719,6 +725,22 @@ void port_rldp_on(__xdata uint16_t p_ms)
 }
 
 
+uint16_t port_lag_members_get(uint8_t lag) __banked
+{
+	reg_read_m(RTL837X_TRK_MBR_CTRL_BASE + (lag << 2));
+	return ((uint16_t)sfr_data[2] << 8) | sfr_data[3];
+}
+
+
+uint8_t port_lag_of(uint8_t port) __banked
+{
+	for (uint8_t lag = 0; lag < 4; lag++)
+		if ((port_lag_members_get(lag) >> port) & 1)
+			return lag;
+	return PORT_LAG_NONE;
+}
+
+
 /*
  * Configure LAGs
  * Sets the members via port bitmask of a given Link Aggregation Group
@@ -733,7 +755,7 @@ void port_lag_members_set(__xdata uint8_t lag, __xdata uint16_t members) __banke
 	if (lag > 3) {
 		// Must not continue: the register offset would land in the
 		// next group's hash registers.
-		print_string("Link aggregation group must be 0-3!\n");
+		print_string("Invalid LAG group (use 1-4 on the command line)!\n");
 		return;
 	}
 	reg_read_m(RTL837X_TRK_HASH_CTRL_BASE + (lag << 2));
@@ -752,7 +774,7 @@ void port_lag_hash_set(__xdata uint8_t lag, __xdata uint8_t hash_bits) __banked
 	print_string("port_lag_hash_set, lag: "); print_byte(lag); print_string(", hash: "); print_byte(hash_bits);
 	write_char('\n');
 	if (lag > 3) {
-		print_string("Link aggregation group must be 0-3!\n");
+		print_string("Invalid LAG group (use 1-4 on the command line)!\n");
 		return;
 	}
 	REG_WRITE(RTL837X_TRK_HASH_CTRL_BASE + (lag << 2), 0, 0, 0, hash_bits);

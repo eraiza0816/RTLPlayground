@@ -294,6 +294,9 @@ func vLag(words []string) error {
 		return fmt.Errorf("invalid LAG group: %q (must be 1-4)", words[1])
 	}
 	for _, w := range words[2:] {
+		if w == "d" {
+			continue
+		}
 		if err := validatePortToken(w); err != nil {
 			return err
 		}
@@ -305,8 +308,8 @@ func vLagHash(words []string) error {
 	if len(words) < 2 {
 		return fmt.Errorf("usage: laghash <group> [spa|smac|dmac|sip|dip|sport|dport]...")
 	}
-	if len(words[1]) != 1 || words[1][0] < '0' || words[1][0] > '3' {
-		return fmt.Errorf("invalid LAG group: %q (must be 0-3)", words[1])
+	if len(words[1]) != 1 || words[1][0] < '1' || words[1][0] > '4' {
+		return fmt.Errorf("invalid LAG group: %q (must be 1-4)", words[1])
 	}
 	for _, w := range words[2:] {
 		switch w {

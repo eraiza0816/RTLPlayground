@@ -772,7 +772,7 @@ Commands (default mode):
   pvid <port> <vid>          Set the port VLAN ID
   ingress [ports...]         Set 802.1Q ingress filtering (t = tagged-only)
   isolate <port> [ports...]  Port isolation; <port> off clears it
-  laghash <hash> [fields]    LAG hash: 0-3 + smac|dmac|spa|sip|dip|sport|dport
+  laghash <hash> [fields]    LAG hash: 1-4 + smac|dmac|spa|sip|dip|sport|dport
   stp [on|off|show]          Spanning-tree protocol
   telnet on|off              Enable/disable the telnet console
   web on|off                 Enable/disable the web UI

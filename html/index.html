@@ -146,8 +146,10 @@
     @media (max-width: 480px) {
       body { flex-direction: column; }
       #nav { width: 100%; height: auto; flex-direction: row; align-items: center; overflow-x: auto; white-space: nowrap; }
-      #nav .brand { padding: 12px; font-size: 0.75rem; }
-      #nav li { padding: 10px 8px; font-size: 11px; }
+      #nav .brand { padding: 12px; font-size: 0.75rem; flex-shrink: 0; }
+      #nav ul { display: flex; flex-direction: row; }
+      #nav li { padding: 10px 8px; font-size: 11px; border-left: none; border-bottom: 4px solid transparent; flex-shrink: 0; }
+      #nav li.active { border-left: none; border-bottom-color: var(--accent); }
       #content { padding: 8px; }
       .panel { padding: 16px; border-radius: 4px; }
       h2 { font-size: 1.1rem; }
@@ -156,7 +158,12 @@
       table { font-size: 11px; min-width: 0; }
       th, td { padding: 6px 4px; }
       .input-row > * { width: 100% !important; }
+      /* 16px+ inputs prevent iOS Safari focus zoom */
+      input[type="text"], input[type="number"], select, textarea { font-size: 16px; }
       .btn { width: 100%; min-height: 48px; }
+      .tab-bar { overflow-x: auto; }
+      .tab-btn { white-space: nowrap; flex-shrink: 0; }
+      #toast { max-width: calc(100vw - 48px); right: 12px; }
       .modal-content { padding: 16px; width: 96%; }
       .lag-container { grid-template-columns: 1fr; }
     }
@@ -165,13 +172,18 @@
       #nav { width: 100%; height: auto; flex-direction: row; align-items: center; overflow-x: auto; white-space: nowrap; }
       #nav .brand { border-bottom: none; border-right: 1px solid rgba(255,255,255,0.1); padding: 16px; font-size: 0.85rem; }
       #nav ul { display: flex; flex-direction: row; }
-      #nav li { padding: 12px; border-left: none; border-bottom: 4px solid transparent; font-size: 12px; }
+      #nav li { padding: 12px; border-left: none; border-bottom: 4px solid transparent; font-size: 12px; flex-shrink: 0; }
       #nav li.active { border-left: none; border-bottom-color: var(--accent); }
       #content { padding: 16px; }
       .panel { padding: 20px; border-radius: 4px; }
       .input-row { flex-direction: column; align-items: flex-start; }
       .input-row > * { width: 100% !important; }
+      /* 16px+ inputs prevent iOS Safari focus zoom */
+      input[type="text"], input[type="number"], select, textarea { font-size: 16px; }
       .btn { width: 100%; }
+      .tab-bar { overflow-x: auto; }
+      .tab-btn { white-space: nowrap; flex-shrink: 0; }
+      #toast { max-width: calc(100vw - 48px); }
       .port-grid { grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); }
     }
   </style>
@@ -332,8 +344,6 @@
   <div class="input-row">
     <button class="btn" onclick="applyQosDscp()">Apply DSCP Map</button>
   </div>
-  <h3 data-i18n="qos_sched_heading">Queue Scheduling</h3>
-  <div id="qos-sched" style="font-size:13px;"></div>
   <p style="color:#64748b;font-size:12px;">(Remember to 'Save UI Changes to Flash' in System tab to persist reboots)</p>
 </div>
 
@@ -433,25 +443,31 @@
 
 <!-- SFP EEPROM -->
 <div id="sfp" class="panel">
-  <h2>SFP EEPROM Editor</h2>
+  <h2 data-i18n="sfp_heading">SFP EEPROM Editor</h2>
   <div class="input-row">
-    <label style="font-weight:600;">Slot:</label>
+    <label style="font-weight:600;" data-i18n="sfp_slot">Slot:</label>
     <select id="slotsel" onchange="loadEeprom()">
       <option value="0">SFP 1</option>
       <option value="1">SFP 2</option>
     </select>
-    <button class="btn" onclick="loadEeprom()">Refresh</button>
-    <button class="btn" onclick="downloadBin()">Download .bin</button>
+    <label style="font-weight:600;" data-i18n="sfp_page">Page:</label>
+    <select id="pagesel" onchange="loadEeprom()">
+      <option value="0">A0h EEPROM</option>
+      <option value="1" data-i18n="sfp_a2">A2h Diagnostics</option>
+    </select>
+    <button class="btn" onclick="loadEeprom()" data-i18n="sfp_refresh">Refresh</button>
+    <button class="btn" onclick="downloadBin()" data-i18n="sfp_download">Download .bin</button>
     <input type="file" id="uploadfile" accept=".bin" style="display:none" onchange="uploadBin(this)">
-    <button class="btn" onclick="document.getElementById('uploadfile').click()">Upload .bin</button>
-    <button class="btn btn-success" onclick="saveBackup()">Save Backup</button>
-    <button class="btn btn-danger" onclick="restoreBackup()">Restore Backup</button>
-    <button class="btn" style="background:#48a;" onclick="patchEeprom()">Patch FC→Eth</button>
-    <button class="btn" style="background:#a8a;" onclick="fixChecksum()">Fix Checksum</button>
-    <span style="margin-left:1em">PW: <input type="text" id="pwinput" size="8" maxlength="8" placeholder="00000000" style="font-family:monospace;width:80px;"></span>
+    <button class="btn" id="uploadbtn" onclick="document.getElementById('uploadfile').click()" data-i18n="sfp_upload">Upload .bin</button>
+    <button class="btn btn-success" onclick="saveBackup()" data-i18n="sfp_save">Save Backup</button>
+    <button class="btn btn-danger" onclick="restoreBackup()" data-i18n="sfp_restore">Restore Backup</button>
+    <button class="btn" id="clonebtn" onclick="cloneEeprom()" data-i18n="sfp_clone">Clone from Flash</button>
+    <button class="btn" style="background:#48a;" onclick="patchEeprom()" data-i18n="sfp_patch">Patch FC→Eth</button>
+    <button class="btn" style="background:#a8a;" onclick="fixChecksum()" data-i18n="sfp_fixsum">Fix Checksum</button>
+    <span id="pwrow" style="margin-left:1em">PW: <input type="text" id="pwinput" size="8" maxlength="8" placeholder="00000000" style="font-family:monospace;width:80px;"></span>
   </div>
   <div id="info" style="margin-top:1em;font-family:monospace;font-size:13px;"></div>
-  <div id="hexdump" style="margin-top:1em;font-family:monospace;font-size:12px;"></div>
+  <div id="hexdump" class="table-responsive" style="margin-top:1em;font-family:monospace;font-size:12px;"></div>
 </div>
 
 <!-- SYSTEM -->

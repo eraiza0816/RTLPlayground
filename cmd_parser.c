@@ -287,8 +287,7 @@ void parse_lag(void)
 		print_string("LAG status:\n");
 		for (uint8_t i = 0; i < 4; i++) {
 			write_char(' '); write_char('1' + i);
-			reg_read_m(RTL837X_TRK_MBR_CTRL_BASE + (i << 2));
-			members = ((uint16_t)sfr_data[2]) << 8 | sfr_data[3]; 
+			members = port_lag_members_get(i);
 			if (!members) {
 				print_string(" disabled\n");
 				continue;
@@ -309,9 +308,18 @@ void parse_lag(void)
 		return;
 	}
 
-	if (cmd_words_len < 2 || !isnumber(cmd_buffer[cmd_words_b[1]]))
+	if (cmd_words_len < 3 || !isnumber(cmd_buffer[cmd_words_b[1]]))
 		goto err;
+	// Groups are 1-based on the command line, matching "lag show" and
+	// the WebUI ("LAG Group 1" is index 0 in the registers). Range
+	// validation lives in rtlpctl; the set function below guards lag > 3.
 	group = cmd_buffer[cmd_words_b[1]] - '0';
+	group--;
+
+	if (cmd_compare(2, "d")) {
+		port_lag_members_set(group, 0);
+		return;
+	}
 
 	uint8_t w = 2;
 	while (w < cmd_words_len) {
@@ -327,7 +335,7 @@ void parse_lag(void)
 	port_lag_members_set(group, members);
 	return;
 err:
-	print_string("Bad lag cmd\n");
+	print_string("Error: lag (show | <1-4> (d | <port>...))\n");
 }
 
 
@@ -336,12 +344,14 @@ void parse_lag_hash(void)
 	__xdata uint8_t group;
 	__xdata uint8_t hash = 0;
 
-	// TODO: validate group range (0-3) before port_lag_hash_set call
+	// Groups are 1-based on the command line, like "lag". Range
+	// validation lives in rtlpctl; the set function below guards lag > 3.
 	group = cmd_buffer[cmd_words_b[1]] - '0';
-	if (!isnumber(cmd_buffer[cmd_words_b[1]]) || group > 3) {
-		print_string("Link aggregation group must be 0-3!\n");
+	if (!isnumber(cmd_buffer[cmd_words_b[1]])) {
+		print_string("Error: laghash <1-4> [spa|smac|dmac|sip|dip|sport|dport]\n");
 		return;
 	}
+	group--;
 
 	uint8_t w = 2;
 	while (w < cmd_words_len) {
@@ -396,17 +406,20 @@ void parse_vlan(void)
 			register uint8_t i = 0;
 			while (cmd_buffer[cmd_words_b[w] + i] != ' ' && cmd_buffer[cmd_words_b[w] + i] != '\0')
 				i++;
-			vlan_name_remove(vlan_settings.vlan);
 			// A lone '-' in the name position clears the VLAN name
 			// instead of storing a new one.
 			uint8_t name_is_clear = (cmd_buffer[cmd_words_b[w]] == '-' &&
 						 (cmd_buffer[cmd_words_b[w] + 1] == ' ' ||
 						  cmd_buffer[cmd_words_b[w] + 1] == '\0'));
-			if (!name_is_clear) {
-				if (vlan_ptr + 3 + i + 2 > VLAN_NAMES_SIZE) {
-					print_string("VLAN name storage full\n");
-					goto err;
-				}
+			if (name_is_clear) {
+				vlan_name_remove(vlan_settings.vlan);
+			} else if (vlan_ptr + 3 + i + 2 > VLAN_NAMES_SIZE) {
+				// Check before removing: an oversized name must not
+				// destroy the stored one, and the ports given on the
+				// same line are still applied below.
+				print_string("VLAN name table full, name ignored\n");
+			} else {
+				vlan_name_remove(vlan_settings.vlan);
 				vlan_names[vlan_ptr++] = hex[(vlan_settings.vlan >> 8) & 0xf];
 				vlan_names[vlan_ptr++] = hex[(vlan_settings.vlan >> 4) & 0xf] ;
 				vlan_names[vlan_ptr++] = hex[vlan_settings.vlan & 0xf];
@@ -1001,17 +1014,26 @@ static void sfp_cmd_checksum(uint8_t slot)
 
 static void sfp_cmd_bulk(uint8_t slot)
 {
+	/* NOTE: command lines are capped at 127 chars, so a full 512-char
+	 * payload never arrives here intact; the WebUI uploads in single
+	 * byte writes instead (see uploadBin). A short or malformed payload
+	 * aborts without writing: flash_buf may hold stale bytes. */
 	if (cmd_words_len < 4) return;
 	uint8_t bulk_idx = cmd_words_b[3];
 	for (uint16_t bulk_i = 0; bulk_i < 256; bulk_i++) {
 		uint8_t bh = sfp_hex(cmd_buffer[bulk_idx]);
 		uint8_t bl = sfp_hex(cmd_buffer[bulk_idx + 1]);
-		if (bh > 15 || bl > 15) { print_string("Invalid hex\n"); break; }
+		if (bh > 15 || bl > 15) {
+			print_string("Invalid hex\n");
+			return;
+		}
 		flash_buf[bulk_i] = (bh << 4) | bl;
 		bulk_idx += 2;
 	}
-	sfp_bulk_write(slot);
-	print_string(" Bulk write OK\n");
+	if (sfp_bulk_write(slot))
+		print_string(" Bulk write failed!\n");
+	else
+		print_string(" Bulk write OK\n");
 }
 
 static void sfp_cmd_write(uint8_t slot)
@@ -2317,7 +2339,7 @@ struct mode_entry {
 
 __code struct mode_entry mode_allow[] = {
 	{"reset",       (1<<MODE_PRIVILEGED)},
-	{"sfp",         (1<<MODE_PRIVILEGED)},
+	{"sfp",         (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
 	{"stat",        (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
 	{"flash",       (1<<MODE_PRIVILEGED)},
 	{"sds",         (1<<MODE_PRIVILEGED)},

@@ -164,9 +164,10 @@ uint8_t sfp_write_reg(uint8_t slot, uint8_t reg, uint8_t data) __reentrant
 
 Many modules require a 4-byte password to unlock the EEPROM for writes. The password
 is written to the A2h device (0x51) at registers 0x7B-0x7E (the module's MCU opens a
-short unlock window afterwards). If a write without a password is rejected, the
-firmware falls back through a built-in dictionary of 39 passwords (from
-`sfp-tool/passwords.json`, `00000000` first) and retries the write after each one.
+short unlock window afterwards). Every write tries, in order: a plain write, the
+`--pw` password when one was given, then each entry of the built-in dictionary
+(`sfp_pw_dict.inc`, `00000000` first) — no manual input is needed when the
+dictionary is compiled in.
 
 The dictionary lives in `sfp_pw_dict.inc`, which is gitignored (generated from
 passwords.json). CI builds create an empty stub so the firmware compiles with only
@@ -217,7 +218,13 @@ read/write operations:
 > sfp <slot> bulk <512-hex-chars>
   Writes all 256 bytes of the EEPROM at once using a hex string of exactly
   512 characters (two hex chars per byte). The checksum is automatically
-  fixed after the write.
+  fixed after the write. Note: command lines are capped at 127 characters,
+  so this form cannot arrive intact over the console or /cmd; the WebUI
+  "Upload .bin" sends 256 single-byte writes instead (with progress and a
+  read-back verification). A `--pw` password must come before the hex
+  payload (`sfp <slot> bulk --pw <hex8> <hex>`). Invalid hex aborts
+  without writing anything, and the write result is reported instead of
+  a blanket OK.
 
 > sfp <slot> describe
   Displays formatted module information: identifier, connector type, vendor
@@ -242,7 +249,11 @@ read/write operations:
 > sfp <slot> clone [--pw <hex8>]
   Writes the full 256-byte EEPROM from the flash buffer (pre-loaded via
   `sfp <slot> bulk <hex>` or `sfp <slot> restore`). The checksum is
-  auto-fixed after cloning.
+  auto-fixed after cloning. Note: single-byte `write`s do not touch the
+  flash buffer, so after a WebUI chunked upload the editor issues
+  `sfp <slot> save` first to load the buffer (and back it up) — without
+  that, `clone` would write stale data. Cloning takes a minute or more;
+  the WebUI request may time out while the switch keeps writing.
 ```
 
 ### Password notes
@@ -264,15 +275,43 @@ in a graphical hex editor:
 
 
 Features:
-- Select SFP slot (1 or 2) and refresh to read the current EEPROM contents
-- Click any hex byte to edit it inline (sends `sfp write` via the CLI)
-- Download the current EEPROM as a `.bin` file
+- Select SFP slot (1 or 2; the second option is hidden on single-SFP
+  machines) and the page (A0h EEPROM or A2h diagnostics), then refresh
+  to read the current contents
+- Click any hex byte to edit it inline (sends `sfp write` via the CLI;
+  A0h only, the diagnostics page is read-only)
+- Download the current page as a `.bin` file
 - Upload a `.bin` file (exactly 256 bytes) to write the entire EEPROM
-- Vendor, part number, serial number and module type are displayed at the top
+  (only bytes differing from the loaded image are sent, with progress
+  and a read-back verification; bytes 63/95 are maintained by the
+  firmware and skipped in the comparison — note some modules also drift
+  in vendor scratch bytes such as 225-231, which the verification may
+  flag)
+- Vendor, part number, serial number, signalling rate and checksum
+  validity (CC_BASE/CC_EXT, recomputed in the browser) are displayed
+  at the top; on the A2h page the live diagnostics (temperature,
+  voltage, Tx bias, Tx/Rx power) are decoded instead
+- Clone the flash buffer into the module (`sfp clone`; load the buffer
+  via bulk upload or restore first)
 
 The editor fetches data via the JSON endpoint:
 ```
-GET /sfp_eeprom.json?slot=<n>
-Returns: {"slot":<n>,"data":"<256 hex bytes>"}
+GET /sfp_eeprom.json?slot=<n>&page=<0|1>
+Returns: {"slot":<n>,"page":<p>,"data":"<256 hex bytes>"}
 ```
+
+## A2h diagnostics page
+
+The upper 256 bytes (I2C device 0x51) hold the password unlock window
+(registers 0x7B-0x7E) and the live diagnostic values. The editor shows
+them decoded per SFF-8472 (temperature in 1/256 °C, Vcc in 100 µV,
+Tx bias in 2 µA, Tx/Rx power in 0.1 µW, same formulas as the
+Prometheus exporter):
+
+- temperature: bytes 96-97, Vcc: 98-99, Tx bias: 100-101,
+  Tx power: 102-103, Rx power: 104-105
+
+There is deliberately no A2h write path: the serial `sfp write`
+command targets the A0h EEPROM only, and the WebUI refuses mutating
+operations while the A2h page is selected.
 

@@ -5,7 +5,8 @@
   "description": "End-to-end WebUI test against httpd_sim (or a real device)",
   "main": "test.js",
   "scripts": {
-    "test": "node test.js"
+    "test": "node test.js",
+    "test:mobile": "node mobile.js"
   },
   "dependencies": {
     "playwright": "^1.40.0"

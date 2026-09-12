@@ -1,7 +1,11 @@
 #ifndef __PAGE_IMPL_H__
 #define __PAGE_IMPL_H__
 
-void send_counters(char port);
+#include <stdbool.h>
+
+extern __code uint8_t * __code HTTP_RESPONCE_TXT;
+
+bool send_counters(char port);
 void json_escape(__xdata uint8_t *s);
 void send_status(void);
 void send_vlan(uint16_t vlan);
@@ -17,6 +21,7 @@ void send_cmd_log(void);
 void send_lag(void);
 void send_vlanlist(void);
 void send_sfp_eeprom(uint8_t slot);
+extern __xdata uint8_t sfp_eeprom_page;
 void send_sfp_diag(void);
 void send_running_config(void);
 void send_ping(void) __banked;

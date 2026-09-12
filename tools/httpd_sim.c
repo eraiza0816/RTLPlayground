@@ -603,7 +603,7 @@ void send_l2_delete(int s, int idx)
         emit(s, response, strlen(response));
 }
 
-void send_sfp_eeprom(int s, int slot)
+void send_sfp_eeprom(int s, int slot, int page)
 {
 	struct json_object *v;
 	const char *jstring;
@@ -612,9 +612,36 @@ void send_sfp_eeprom(int s, int slot)
 
 	v = json_object_new_object();
 	json_object_object_add(v, "slot", json_object_new_int(slot));
-	// Return empty 256-byte EEPROM data (all zeros)
+	json_object_object_add(v, "page", json_object_new_int(page));
+	/* Canned realistic module so the WebUI editor (and mobile.js) can
+	 * exercise the hexdump/info rendering with data present. */
+	unsigned char eeprom[256];
+	memset(eeprom, 0, sizeof(eeprom));
+	if (page) {
+		/* A2h diagnostics: 25.00 C, 3.300 V, 6.000 mA bias,
+		 * 0 dBm out (-inf in, no light). */
+		eeprom[96] = 0x19; eeprom[97] = 0x00;
+		eeprom[98] = 0x80; eeprom[99] = 0xe6;
+		eeprom[100] = 0x0b; eeprom[101] = 0xb8;
+		eeprom[102] = 0x27; eeprom[103] = 0x10;
+		eeprom[104] = 0x00; eeprom[105] = 0x00;
+	} else {
+		eeprom[0] = 0x03;			/* identifier: SFP */
+		eeprom[3] = 0x20;			/* 10GBase-LR */
+		eeprom[6] = 0x02;			/* 1000BASE-LX */
+		eeprom[12] = 0x67;			/* 10.3 GBd */
+		memcpy(eeprom + 20, "TEST VENDOR     ", 16);
+		memcpy(eeprom + 40, "TEST-PN-1234    ", 16);
+		memcpy(eeprom + 68, "SN12345678901234", 16);
+		unsigned sum = 0;
+		for (int i = 0; i <= 62; i++) sum += eeprom[i];
+		eeprom[63] = sum & 0xff;		/* CC_BASE */
+		sum = 0;
+		for (int i = 64; i <= 94; i++) sum += eeprom[i];
+		eeprom[95] = sum & 0xff;		/* CC_EXT */
+	}
 	char data[513];
-	memset(data, '0', 512);
+	for (int i = 0; i < 256; i++) sprintf(data + i * 2, "%02x", eeprom[i]);
 	data[512] = '\0';
 	json_object_object_add(v, "data", json_object_new_string(data));
 
@@ -793,7 +820,7 @@ void send_storm(int s)
 
 void send_qos(int s)
 {
-	struct json_object *v, *pcp, *dscp, *sched;
+	struct json_object *v, *pcp, *dscp;
 	const char *jstring;
 	char *header = "HTTP/1.1 200 OK\r\n"
 		"Content-Type: application/json; charset=UTF-8\r\n\r\n";
@@ -807,10 +834,6 @@ void send_qos(int s)
 	for (int i = 0; i < 64; i++)
 		json_object_array_add(dscp, json_object_new_int(0));
 	json_object_object_add(v, "dscp", dscp);
-	sched = json_object_new_array_ext(PORTS);
-	for (int i = 0; i < PORTS; i++)
-		json_object_array_add(sched, json_object_new_string("S1S1S1S1S1S1S1S1"));
-	json_object_object_add(v, "sched", sched);
 	emit(s, header, strlen(header));
 	jstring = json_object_to_json_string_ext(v, JSON_C_TO_STRING_PLAIN);
 	emit(s, jstring, strlen(jstring));
@@ -1084,11 +1107,12 @@ void launch(struct Server *server)
 					goto done;
 				} else if (!strncmp(&buffer[4], "/sfp_eeprom.json?slot=", 22)) {
 					int slot = atoi(&buffer[26]);
-					printf("SFP EEPROM request for slot %d\n", slot);
+					int page = strstr(&buffer[26], "page=1") ? 1 : 0;
+					printf("SFP EEPROM request for slot %d page %d\n", slot, page);
 					if (!authenticated)
 						send_unauthorized(new_socket);
 					else
-						send_sfp_eeprom(new_socket, slot);
+						send_sfp_eeprom(new_socket, slot, page);
 					goto done;
 				} else if (sim_is_word(&buffer[4], "/reset")) {
 					printf("Reset request\n");

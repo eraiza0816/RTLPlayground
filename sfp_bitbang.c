@@ -86,7 +86,9 @@ uint8_t sfp_write_reg(uint8_t slot, uint8_t reg, uint8_t data) __reentrant
 			if (++sfp_i2c_guard == 0)
 				break;
 		} while (sfr_data[3] & 0x1);
-		if (sfr_data[3] & 0x02) return 1;
+		// a NACKed data write means this password did not unlock the
+		// module: try the next dictionary entry, do not give up here
+		if (sfr_data[3] & 0x02) continue;
 
 		// the module's EEPROM update lags the controller's write completion
 		// (observed on the bus-3 port), so poll the readback for a while

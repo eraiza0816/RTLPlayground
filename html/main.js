@@ -100,15 +100,15 @@ function rtlCmdFor(method, url, data) {
   return null;
 }
 
-function fetchAPI(method, url, cb, data) {
+function fetchAPI(method, url, cb, data, onErr) {
   if (isFlashing) return;
   var key = url + '|' + method + '|' + (data || '');
   if (!cb) cb = function() {};
-  if (inFlight && inFlight.key === key) { inFlight.cbs.push(cb); return; }
+  if (inFlight && inFlight.key === key) { inFlight.cbs.push(cb); if (onErr) inFlight.ecbs.push(onErr); return; }
   for (var qi = 0; qi < reqQ.length; qi++) {
-    if (reqQ[qi].key === key) { reqQ[qi].cbs.push(cb); return; }
+    if (reqQ[qi].key === key) { reqQ[qi].cbs.push(cb); if (onErr) reqQ[qi].ecbs.push(onErr); return; }
   }
-  reqQ.push({ method: method, url: url, cbs: [cb], data: data, key: key });
+  reqQ.push({ method: method, url: url, cbs: [cb], ecbs: onErr ? [onErr] : [], data: data, key: key });
   if (!busy) processQ();
 }
 
@@ -116,10 +116,15 @@ function processQ() {
   if (reqQ.length === 0 || isFlashing) { busy = false; return; }
   busy = true;
   var r = reqQ.shift();
-  inFlight = { url: r.url, method: r.method, key: r.key, cbs: r.cbs };
+  inFlight = { url: r.url, method: r.method, key: r.key, cbs: r.cbs, ecbs: r.ecbs };
 
   var x = new XMLHttpRequest();
   x.timeout = 4000;
+  function fail(reason) {
+    inFlight = null;
+    if (isFlashing) return;
+    r.ecbs.forEach(function(c) { try { c(reason); } catch (e) {} });
+  }
   x.onreadystatechange = function() {
     if (x.readyState === 4) {
       inFlight = null;
@@ -135,10 +140,12 @@ function processQ() {
         r.cbs.forEach(function(c) { c(text); });
       }
       else if (x.status === 401) { document.location = '/login.html'; return; }
+      else fail('HTTP ' + x.status);
       setTimeout(processQ, 10);
     }
   };
-  x.ontimeout = x.onerror = function() { inFlight = null; setTimeout(processQ, 20); };
+  x.ontimeout = function() { fail('timeout'); setTimeout(processQ, 10); };
+  x.onerror = function() { fail('network error'); setTimeout(processQ, 10); };
 
   var cmd = rtlCmdFor(r.method, r.url, r.data);
   if (cmd === null || !pskReady()) {
@@ -318,7 +325,17 @@ const sysLabels = {
   } else if (id === 'bw') {
     loadBwConfig();
   } else if (id === 'sfp') {
-    loadEeprom();
+    /* Single-SFP machines have no sfp_slot_1 in /information.json:
+     * hide the dead second option before loading. */
+    fetchAPI('GET', '/information.json', function(raw) {
+      try {
+        var info = JSON.parse(raw);
+        var opt2 = document.querySelector('#slotsel option[value="1"]');
+        if (opt2) opt2.style.display = (info.sfp_slot_1 === undefined) ? 'none' : '';
+        if (info.sfp_slot_1 === undefined && $in('slotsel').value === '1') $in('slotsel').value = '0';
+      } catch (e) {}
+      loadEeprom();
+    });
   } else if (id === 'sys') {
     pollInfo(); systemInterval = setInterval(pollInfo, 5000);
     loadSysConfig();
@@ -873,7 +890,7 @@ function fillL2(s) {
     return 0;
   });
   s = s.filter(function(item, pos, ary) { return !pos || item.idx != ary[pos - 1].idx; });
-  s = s.map(function(e) { e.port = e.port != 9 ? e.port : 'CPU'; return e; });
+  s = s.map(function(e) { e.port = e.lag ? 'LAG' + e.lag : (e.port != 9 ? e.port : 'CPU'); return e; });
 
   /* Diff-update: skip DOM work entirely when the table is unchanged */
   var sig = s.map(function(e) { return e.idx + ':' + e.mac + ':' + e.vlan + ':' + e.port + ':' + e.type; }).join('|');
@@ -893,6 +910,7 @@ function fillL2(s) {
       tr.cells[1].textContent = e.mac;
       tr.cells[2].textContent = e.vlan;
       tr.cells[3].textContent = e.type;
+      tr.cells[4].innerHTML = (e.port === 'CPU') ? '' : '<button class="btn" style="padding:2px 8px;font-size:11px;" onclick="delL2(' + e.idx + ')">' + (t('l2_delete') || 'Delete') + '</button>';
     } else {
       tr = document.createElement('tr');
       tr.setAttribute('data-idx', e.idx);
@@ -900,7 +918,7 @@ function fillL2(s) {
       td = tr.insertCell(); td.textContent = e.mac;
       td = tr.insertCell(); td.textContent = e.vlan;
       td = tr.insertCell(); td.textContent = e.type;
-      td = tr.insertCell(); td.innerHTML = '<button class="btn" style="padding:2px 8px;font-size:11px;" onclick="delL2(' + e.idx + ')">' + (t('l2_delete') || 'Delete') + '</button>';
+      td = tr.insertCell(); td.innerHTML = (e.port === 'CPU') ? '' : '<button class="btn" style="padding:2px 8px;font-size:11px;" onclick="delL2(' + e.idx + ')">' + (t('l2_delete') || 'Delete') + '</button>';
     }
     tbody.appendChild(tr);
   });
@@ -908,7 +926,13 @@ function fillL2(s) {
 }
 
 function delL2(idx) {
-  fetchAPI('GET', '/l2_del.json?idx=' + idx, function() { notify('L2 entry deleted.', 'success'); });
+  fetchAPI('GET', '/l2_del.json?idx=' + idx, function() {
+    notify('L2 entry deleted.', 'success');
+    var tbody = document.getElementById('l2body');
+    var tr = tbody && tbody.querySelector('tr[data-idx="' + idx + '"]');
+    if (tr) tr.parentNode.removeChild(tr);
+    lastL2Sig = '';
+  });
 }
 
 function applyIGMP() {
@@ -1419,27 +1443,33 @@ function startFlash() {
 /** SFP EEPROM **/
 var sfpData = new Uint8Array(256);
 var sfpSlot = 0;
+var sfpPage = 0;
+var sfpLoaded = false;
 
 function hex(b) { return (b >> 4).toString(16) + (b & 0xf).toString(16); }
 
 function loadEeprom() {
   sfpSlot = parseInt($in('slotsel').value);
-  fetchAPI('GET', '/sfp_eeprom.json?slot=' + sfpSlot, function(raw) {
+  sfpPage = parseInt($in('pagesel').value) ? 1 : 0;
+  fetchAPI('GET', '/sfp_eeprom.json?slot=' + sfpSlot + '&page=' + sfpPage, function(raw) {
     try {
       var j = JSON.parse(raw);
       if (j.data) {
         for (var i = 0; i < 256; i++) sfpData[i] = parseInt(j.data.substr(i * 2, 2), 16);
+        sfpLoaded = true;
         showEeprom();
-        showSfpInfo();
+        if (sfpPage) showSfpDiag(); else showSfpInfo();
       }
-    } catch (e) { notify('Failed to load EEPROM.', 'error'); }
+    } catch (e) { notify(t('sfp_load_fail') || 'Failed to load EEPROM.', 'error'); }
   });
 }
 
 function showEeprom() {
   var h = '<table style="border-collapse:collapse"><tr><th></th>';
   for (var c = 0; c < 16; c++) h += '<th style="width:24px;font-size:10px;color:#888">' + c.toString(16) + '</th>';
-  h += '<th style="width:120px;font-size:10px;color:#888">ASCII</th></tr>';
+  /* No ASCII column on the diagnostics page: binary readings are meaningless as text. */
+  if (!sfpPage) h += '<th style="width:120px;font-size:10px;color:#888">ASCII</th>';
+  h += '</tr>';
   for (var r = 0; r < 16; r++) {
     h += '<tr><td style="font-size:10px;color:#888">' + hex(r << 4) + '</td>';
     var ascii = '';
@@ -1449,7 +1479,8 @@ function showEeprom() {
       h += ' onclick="editByte(' + (r * 16 + c) + ')" title="Click to edit">' + hex(b) + '</td>';
       ascii += (b >= 32 && b < 127) ? String.fromCharCode(b) : '.';
     }
-    h += '<td style="border:1px solid #ddd;padding-left:8px;font-size:11px;color:#666">' + ascii + '</td></tr>';
+    if (!sfpPage) h += '<td style="border:1px solid #ddd;padding-left:8px;font-size:11px;color:#666">' + ascii + '</td>';
+    h += '</tr>';
   }
   h += '</table>';
   document.getElementById('hexdump').innerHTML = h;
@@ -1462,53 +1493,116 @@ function showSfpInfo() {
     for (var i = start; i < end; i++) s += String.fromCharCode(sfpData[i]);
     return s.replace(/\0/g, '').trim();
   }
+  function cksum(start, end, check) {
+    var sum = 0;
+    for (var i = start; i <= end; i++) sum += sfpData[i];
+    return ((sum & 0xff) === sfpData[check]) ? 'OK' : 'BAD';
+  }
   var v = readStr(20, 36), pn = readStr(40, 56), sn = readStr(68, 84);
-  document.getElementById('info').innerHTML = '<b>Vendor:</b> ' + esc(v) + ' | <b>PN:</b> ' + esc(pn) + ' | <b>SN:</b> ' + esc(sn) + ' | <b>Type:</b> 0x' + hex(sfpData[3]);
+  var rate = (sfpData[12] / 10).toFixed(1) + ' GBd';
+  var cc = 'CC_BASE:' + cksum(0, 62, 63) + ' CC_EXT:' + cksum(64, 94, 95);
+  document.getElementById('info').innerHTML = '<b>' + (t('sfp_vendor') || 'Vendor:') + '</b> ' + esc(v) + ' | <b>' + (t('sfp_pn') || 'PN:') + '</b> ' + esc(pn) + ' | <b>' + (t('sfp_sn') || 'SN:') + '</b> ' + esc(sn) + ' | <b>' + (t('sfp_type') || 'Type:') + '</b> 0x' + hex(sfpData[0]) + ' | <b>Rate:</b> ' + rate + ' | <b>' + cc + '</b>';
+}
+
+/* A2h diagnostics, decoded per SFF-8472 (same formulas as the exporter).
+ * Read-only: editByte() refuses writes on this page. */
+function showSfpDiag() {
+  function u16(off) { return sfpData[off] * 256 + sfpData[off + 1]; }
+  function s16(off) { var v = u16(off); return v >= 0x8000 ? v - 0x10000 : v; }
+  function dbm(off) {
+    var mw = u16(off) * 0.0001;
+    return mw > 0 ? (10 * Math.log(mw) / Math.LN10).toFixed(2) + ' dBm' : '---';
+  }
+  var rows = [
+    [(t('sfp_temperature') || 'Temperature'), (s16(96) / 256).toFixed(2) + ' °C'],
+    [(t('sfp_voltage') || 'Voltage'), (u16(98) * 0.0001).toFixed(3) + ' V'],
+    [(t('sfp_tx_bias') || 'TX Bias'), (u16(100) * 0.002).toFixed(3) + ' mA'],
+    [(t('sfp_tx_power') || 'TX Power'), dbm(102)],
+    [(t('sfp_rx_power') || 'RX Power'), dbm(104)]
+  ];
+  var h = '<table>';
+  for (var i = 0; i < rows.length; i++) h += '<tr><td><b>' + esc(rows[i][0]) + '</b></td><td>' + esc(rows[i][1]) + '</td></tr>';
+  document.getElementById('info').innerHTML = h + '</table>';
 }
 
 function editByte(offset) {
+  if (sfpPage) { notify(t('sfp_readonly') || 'Diagnostics page is read-only.', 'error'); return; }
   var cell = document.getElementById('b' + offset);
   var oldVal = sfpData[offset];
-  var newVal = prompt('Edit byte 0x' + hex(offset) + ' (0x00-0xFF):', hex(oldVal));
+  var newVal = prompt((t('sfp_edit_byte') || 'Edit byte') + ' 0x' + hex(offset) + ' (0x00-0xFF):', hex(oldVal));
   if (newVal === null) return;
   if (newVal.startsWith('0x')) newVal = newVal.substring(2);
   var v = parseInt(newVal, 16);
-  if (isNaN(v) || v < 0 || v > 255) { notify('Invalid value', 'error'); return; }
+  if (isNaN(v) || v < 0 || v > 255) { notify(t('sfp_invalid_value') || 'Invalid value', 'error'); return; }
   var pw = pwArg();
   fetchAPI('POST', '/cmd', function() {
     sfpData[offset] = v;
     cell.textContent = hex(v);
     cell.style.backgroundColor = '#ff8';
     setTimeout(function() { cell.style.backgroundColor = ''; }, 2000);
-    notify('Byte 0x' + hex(offset) + ' updated.', 'success');
+    notify((t('sfp_byte') || 'Byte') + ' 0x' + hex(offset) + ' ' + (t('sfp_updated') || 'updated.'), 'success');
   }, 'sfp ' + (sfpSlot + 1) + ' write ' + hex(offset) + ' ' + hex(v) + pw);
 }
 
 function pwArg() {
   var pw = $in('pwinput').value.trim();
   if (!pw) return '';
-  if (!/^[0-9a-fA-F]{8}$/.test(pw)) { notify('Password must be 8 hex digits.', 'error'); return ''; }
+  if (!/^[0-9a-fA-F]{8}$/.test(pw)) { notify(t('sfp_bad_pw') || 'Password must be 8 hex digits.', 'error'); return ''; }
   return ' --pw ' + pw;
 }
 
+/* The A0h-only operations below refuse to run on the A2h page:
+ * the firmware has no A2h write path. */
+function sfpNeedA0() {
+  if (sfpPage) { notify(t('sfp_readonly') || 'Diagnostics page is read-only: switch back to A0h EEPROM.', 'error'); return false; }
+  return true;
+}
+
 function patchEeprom() {
-  if (!confirm('Patch SFP ' + (sfpSlot + 1) + ' EEPROM (FC→Ethernet)?')) return;
-  fetchAPI('POST', '/cmd', function() { notify('Patch complete.', 'success'); loadEeprom(); }, 'sfp ' + (sfpSlot + 1) + ' patch' + pwArg());
+  if (!sfpNeedA0()) return;
+  if (!confirm('SFP ' + (sfpSlot + 1) + ': ' + (t('sfp_patch_confirm') || 'patch EEPROM (FC→Ethernet)?'))) return;
+  fetchAPI('POST', '/cmd', function() { notify(t('sfp_patch_done') || 'Patch complete.', 'success'); loadEeprom(); }, 'sfp ' + (sfpSlot + 1) + ' patch' + pwArg());
 }
 
 function fixChecksum() {
-  if (!confirm('Fix checksums on SFP ' + (sfpSlot + 1) + '?')) return;
-  fetchAPI('POST', '/cmd', function() { notify('Checksums fixed.', 'success'); loadEeprom(); }, 'sfp ' + (sfpSlot + 1) + ' checksum --fix' + pwArg());
+  if (!sfpNeedA0()) return;
+  if (!confirm('SFP ' + (sfpSlot + 1) + ': ' + (t('sfp_fix_confirm') || 'fix checksums?'))) return;
+  fetchAPI('POST', '/cmd', function() { notify(t('sfp_fix_done') || 'Checksums fixed.', 'success'); loadEeprom(); }, 'sfp ' + (sfpSlot + 1) + ' checksum --fix' + pwArg());
 }
 
 function saveBackup() {
-  if (!confirm('Save current SFP EEPROM to flash backup?')) return;
-  fetchAPI('POST', '/cmd', function() { notify('Saved to flash.', 'success'); }, 'sfp ' + (sfpSlot + 1) + ' save');
+  if (!sfpNeedA0()) return;
+  if (!confirm('SFP ' + (sfpSlot + 1) + ': ' + (t('sfp_save_confirm') || 'save EEPROM to flash backup?'))) return;
+  fetchAPI('POST', '/cmd', function() { notify(t('sfp_save_done') || 'Saved to flash.', 'success'); }, 'sfp ' + (sfpSlot + 1) + ' save');
 }
 
 function restoreBackup() {
-  if (!confirm('Restore EEPROM from flash backup?')) return;
-  fetchAPI('POST', '/cmd', function() { notify('Restored.', 'success'); loadEeprom(); }, 'sfp ' + (sfpSlot + 1) + ' restore');
+  if (!sfpNeedA0()) return;
+  if (!confirm('SFP ' + (sfpSlot + 1) + ': ' + (t('sfp_restore_confirm') || 'restore EEPROM from flash backup?'))) return;
+  fetchAPI('POST', '/cmd', function() { notify(t('sfp_restore_done') || 'Restored.', 'success'); loadEeprom(); }, 'sfp ' + (sfpSlot + 1) + ' restore');
+}
+
+function cloneEeprom() {
+  if (!sfpNeedA0()) return;
+  if (!confirm('SFP ' + (sfpSlot + 1) + ': ' + (t('sfp_clone_confirm') || 'clone EEPROM from flash buffer (load via bulk upload or restore first)?'))) return;
+  var btn = document.getElementById('clonebtn');
+  var done = false;
+  function finish(msg, cls) {
+    if (done) return; done = true;
+    if (btn) btn.disabled = false;
+    notify(msg, cls);
+  }
+  /* Cloning 256 bytes takes a minute or more; the XHR gives up after
+   * 4 s while the switch keeps writing, so restore the button on a
+   * long watchdog and let the user verify in the editor. */
+  setTimeout(function() {
+    if (!done) { finish(t('sfp_write_stall') || 'Still writing — verify in the editor before retrying.', 'error'); loadEeprom(); }
+  }, 600000);
+  if (btn) btn.disabled = true;
+  fetchAPI('POST', '/cmd', function() {
+    if (!done) { loadEeprom(); }
+    finish(t('sfp_clone_done') || 'Cloned.', 'success');
+  }, 'sfp ' + (sfpSlot + 1) + ' clone' + pwArg());
 }
 
 function downloadBin() {
@@ -1533,14 +1627,65 @@ function downloadBin() {
 function uploadBin(input) {
   var file = input.files[0];
   if (!file) return;
-  if (file.size != 256) { notify('File must be exactly 256 bytes.', 'error'); return; }
-  if (!confirm('Write ' + file.name + ' to SFP ' + (sfpSlot + 1) + ' EEPROM?')) return;
+  if (file.size != 256) { notify(t('sfp_bad_size') || 'File must be exactly 256 bytes.', 'error'); return; }
+  if (!sfpNeedA0()) return;
+  if (!confirm('SFP ' + (sfpSlot + 1) + ': ' + (t('sfp_write_confirm') || 'write file to EEPROM?') + ' (' + file.name + ')')) return;
   var reader = new FileReader();
   reader.onload = function(e) {
+    /* Write only the bytes that differ from the loaded image (like a
+     * template+diff flow): faster, and untouched bytes never risk an
+     * unlock attempt. Without a fresh load, fall back to all 256. */
     var data = new Uint8Array(/** @type {ArrayBuffer} */ (e.target.result));
-    var hexStr = '';
-    for (var i = 0; i < 256; i++) hexStr += hex(data[i]);
-    fetchAPI('POST', '/cmd', function() { notify('Write complete.', 'success'); loadEeprom(); }, 'sfp ' + (sfpSlot + 1) + ' bulk ' + hexStr + pwArg());
+    var diffs = [];
+    for (var d = 0; d < 256; d++) {
+      if (!sfpLoaded || sfpData[d] !== data[d]) diffs.push(d);
+    }
+    if (!diffs.length) { notify(t('sfp_identical') || 'Already identical, nothing to do.', 'success'); return; }
+    var pw = pwArg();
+    var btn = document.getElementById('uploadbtn');
+    var upLabel = t('sfp_upload') || 'Upload .bin';
+    var i = 0, tries = 0, done = false;
+    function finish(msg, cls) {
+      if (done) return; done = true;
+      if (btn) { btn.disabled = false; btn.textContent = upLabel; }
+      notify(msg, cls);
+    }
+    setTimeout(function() {
+      if (!done) finish(t('sfp_write_stall') || 'Still writing — verify in the editor before retrying.', 'error');
+    }, 300000);
+    if (btn) btn.disabled = true;
+    (function next() {
+      if (i >= diffs.length) {
+        loadEeprom();
+        setTimeout(function() {
+          var bad = 0;
+          for (var k = 0; k < 256; k++) {
+            if (k === 63 || k === 95) continue;
+            if (sfpData[k] !== data[k]) bad++;
+          }
+          if (bad) {
+            finish((t('sfp_verify_fail') || 'Verify failed.') + ' ' + bad + '/256', 'error');
+            return;
+          }
+          /* Load flash_buf with the just-written image (single-byte
+           * writes do not touch it) so a later `clone` copies this
+           * image; this also backs it up to flash. */
+          fetchAPI('POST', '/cmd', function() {
+            finish((t('sfp_write_done') || 'Write complete.') + ' ' + (t('sfp_save_done') || 'Saved to flash.'), 'success');
+          }, 'sfp ' + (sfpSlot + 1) + ' save');
+        }, 1200);
+        return;
+      }
+      var off = diffs[i];
+      if (btn) btn.textContent = (t('sfp_writing') || 'Writing ') + i + '/' + diffs.length;
+      /* A single dropped request (timeout, HTTP error) used to stall
+       * the chain forever with no message: retry the same byte, which
+       * is idempotent, then abort naming the byte. */
+      fetchAPI('POST', '/cmd', function() { i++; tries = 0; next(); }, 'sfp ' + (sfpSlot + 1) + ' write ' + hex(off) + ' ' + hex(data[off]) + pw, function() {
+        if (++tries <= 3) { next(); return; }
+        finish((t('sfp_write_fail') || 'Write failed at byte ') + off, 'error');
+      });
+    })();
   };
   reader.readAsArrayBuffer(file);
 }
@@ -1667,12 +1812,6 @@ function loadQos() {
         }
         h += '</tr></tbody>';
         dscpEl.innerHTML = h;
-      }
-      var schedEl = document.getElementById('qos-sched');
-      if (schedEl) {
-        var sh = '';
-        j.sched.forEach(function(s, i) { sh += 'Port ' + (i + 1) + ': ' + s + '<br>'; });
-        schedEl.innerHTML = sh;
       }
     } catch (e) {}
   });

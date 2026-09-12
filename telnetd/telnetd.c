@@ -22,7 +22,7 @@ extern __xdata uint16_t uip_slen;
 #define AUTH_WAIT 0
 #define AUTH_OK   1
 
-extern __xdata uint8_t cmd_buffer[128];
+/* cmd_buffer comes from cmd_parser.h (sized by CMD_BUF_SIZE). */
 
 static __xdata uint8_t tx_buf[TX_BUF];
 static __xdata uint16_t tx_head, tx_tail, tx_inflight;

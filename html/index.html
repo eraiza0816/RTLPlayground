@@ -146,8 +146,10 @@
     @media (max-width: 480px) {
       body { flex-direction: column; }
       #nav { width: 100%; height: auto; flex-direction: row; align-items: center; overflow-x: auto; white-space: nowrap; }
-      #nav .brand { padding: 12px; font-size: 0.75rem; }
-      #nav li { padding: 10px 8px; font-size: 11px; }
+      #nav .brand { padding: 12px; font-size: 0.75rem; flex-shrink: 0; }
+      #nav ul { display: flex; flex-direction: row; }
+      #nav li { padding: 10px 8px; font-size: 11px; border-left: none; border-bottom: 4px solid transparent; flex-shrink: 0; }
+      #nav li.active { border-left: none; border-bottom-color: var(--accent); }
       #content { padding: 8px; }
       .panel { padding: 16px; border-radius: 4px; }
       h2 { font-size: 1.1rem; }
@@ -156,7 +158,12 @@
       table { font-size: 11px; min-width: 0; }
       th, td { padding: 6px 4px; }
       .input-row > * { width: 100% !important; }
+      /* 16px+ inputs prevent iOS Safari focus zoom */
+      input[type="text"], input[type="number"], select, textarea { font-size: 16px; }
       .btn { width: 100%; min-height: 48px; }
+      .tab-bar { overflow-x: auto; }
+      .tab-btn { white-space: nowrap; flex-shrink: 0; }
+      #toast { max-width: calc(100vw - 48px); right: 12px; }
       .modal-content { padding: 16px; width: 96%; }
       .lag-container { grid-template-columns: 1fr; }
     }
@@ -165,13 +172,18 @@
       #nav { width: 100%; height: auto; flex-direction: row; align-items: center; overflow-x: auto; white-space: nowrap; }
       #nav .brand { border-bottom: none; border-right: 1px solid rgba(255,255,255,0.1); padding: 16px; font-size: 0.85rem; }
       #nav ul { display: flex; flex-direction: row; }
-      #nav li { padding: 12px; border-left: none; border-bottom: 4px solid transparent; font-size: 12px; }
+      #nav li { padding: 12px; border-left: none; border-bottom: 4px solid transparent; font-size: 12px; flex-shrink: 0; }
       #nav li.active { border-left: none; border-bottom-color: var(--accent); }
       #content { padding: 16px; }
       .panel { padding: 20px; border-radius: 4px; }
       .input-row { flex-direction: column; align-items: flex-start; }
       .input-row > * { width: 100% !important; }
+      /* 16px+ inputs prevent iOS Safari focus zoom */
+      input[type="text"], input[type="number"], select, textarea { font-size: 16px; }
       .btn { width: 100%; }
+      .tab-bar { overflow-x: auto; }
+      .tab-btn { white-space: nowrap; flex-shrink: 0; }
+      #toast { max-width: calc(100vw - 48px); }
       .port-grid { grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); }
     }
   </style>

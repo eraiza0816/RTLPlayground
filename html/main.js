@@ -100,15 +100,15 @@ function rtlCmdFor(method, url, data) {
   return null;
 }
 
-function fetchAPI(method, url, cb, data) {
+function fetchAPI(method, url, cb, data, onErr) {
   if (isFlashing) return;
   var key = url + '|' + method + '|' + (data || '');
   if (!cb) cb = function() {};
-  if (inFlight && inFlight.key === key) { inFlight.cbs.push(cb); return; }
+  if (inFlight && inFlight.key === key) { inFlight.cbs.push(cb); if (onErr) inFlight.ecbs.push(onErr); return; }
   for (var qi = 0; qi < reqQ.length; qi++) {
-    if (reqQ[qi].key === key) { reqQ[qi].cbs.push(cb); return; }
+    if (reqQ[qi].key === key) { reqQ[qi].cbs.push(cb); if (onErr) reqQ[qi].ecbs.push(onErr); return; }
   }
-  reqQ.push({ method: method, url: url, cbs: [cb], data: data, key: key });
+  reqQ.push({ method: method, url: url, cbs: [cb], ecbs: onErr ? [onErr] : [], data: data, key: key });
   if (!busy) processQ();
 }
 
@@ -116,10 +116,15 @@ function processQ() {
   if (reqQ.length === 0 || isFlashing) { busy = false; return; }
   busy = true;
   var r = reqQ.shift();
-  inFlight = { url: r.url, method: r.method, key: r.key, cbs: r.cbs };
+  inFlight = { url: r.url, method: r.method, key: r.key, cbs: r.cbs, ecbs: r.ecbs };
 
   var x = new XMLHttpRequest();
   x.timeout = 4000;
+  function fail(reason) {
+    inFlight = null;
+    if (isFlashing) return;
+    r.ecbs.forEach(function(c) { try { c(reason); } catch (e) {} });
+  }
   x.onreadystatechange = function() {
     if (x.readyState === 4) {
       inFlight = null;
@@ -135,10 +140,12 @@ function processQ() {
         r.cbs.forEach(function(c) { c(text); });
       }
       else if (x.status === 401) { document.location = '/login.html'; return; }
+      else fail('HTTP ' + x.status);
       setTimeout(processQ, 10);
     }
   };
-  x.ontimeout = x.onerror = function() { inFlight = null; setTimeout(processQ, 20); };
+  x.ontimeout = function() { fail('timeout'); setTimeout(processQ, 10); };
+  x.onerror = function() { fail('network error'); setTimeout(processQ, 10); };
 
   var cmd = rtlCmdFor(r.method, r.url, r.data);
   if (cmd === null || !pskReady()) {
@@ -1641,7 +1648,7 @@ function uploadBin(input) {
     var pw = pwArg();
     var btn = document.getElementById('uploadbtn');
     var upLabel = t('sfp_upload') || 'Upload .bin';
-    var i = 0, done = false;
+    var i = 0, tries = 0, done = false;
     function finish(msg, cls) {
       if (done) return; done = true;
       if (btn) { btn.disabled = false; btn.textContent = upLabel; }
@@ -1674,7 +1681,13 @@ function uploadBin(input) {
         return;
       }
       if (btn) btn.textContent = (t('sfp_writing') || 'Writing ') + i + '/256';
-      fetchAPI('POST', '/cmd', function() { i++; next(); }, 'sfp ' + (sfpSlot + 1) + ' write ' + hex(i) + ' ' + hex(data[i]) + pw);
+      /* A single dropped request (timeout, HTTP error) used to stall
+       * the chain forever with no message: retry the same byte, which
+       * is idempotent, then abort naming the byte. */
+      fetchAPI('POST', '/cmd', function() { i++; tries = 0; next(); }, 'sfp ' + (sfpSlot + 1) + ' write ' + hex(i) + ' ' + hex(data[i]) + pw, function() {
+        if (++tries <= 3) { next(); return; }
+        finish((t('sfp_write_fail') || 'Write failed at byte ') + i, 'error');
+      });
     })();
   };
   reader.readAsArrayBuffer(file);

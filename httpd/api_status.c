@@ -257,8 +257,6 @@ void send_storm(void) __banked
 void send_qos(void) __banked
 {
 	__xdata uint8_t i;
-	__xdata uint8_t port;
-	__xdata uint8_t first = 1;
 
 	slen = strtox(outbuf, api_json_hdr);
 	char_to_html('{');
@@ -274,26 +272,6 @@ void send_qos(void) __banked
 	for (i = 0; i < 64; i++) {
 		if (i) char_to_html(',');
 		itoa_html(qos_dscp_map[i]);
-	}
-	char_to_html(']');
-	json_str(",\"sched\":[");
-	first = 1;
-	for (port = machine.min_port; port <= machine.max_port; port++) {
-		if (slen + 40 > TCP_OUTBUF_SIZE)
-			break;
-		if (!first)
-			char_to_html(',');
-		first = 0;
-		char_to_html('"');
-		for (i = 0; i < 8; i++) {
-			reg_read_m(RTL837X_SCHED_PORT_Q_CTRL_SET(port, i));
-			if (sfr_data[3] & SCHED_Q_STRICT_EN)
-				char_to_html('S');
-			else
-				char_to_html('W');
-			itoa_html(sfr_data[3] & SCHED_Q_WEIGHT_MASK);
-		}
-		char_to_html('"');
 	}
 	char_to_html(']');
 	char_to_html('}');

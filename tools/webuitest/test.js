@@ -182,11 +182,10 @@ async function waitForNode(fn, timeout = 10000, what = 'condition') {
       const mode = await page.evaluate(() => document.getElementById('qos-mode').value);
       const pcp = await page.evaluate(() => document.querySelectorAll('#qos-pcp-table select').length);
       const dscp = await page.evaluate(() => document.querySelectorAll('#qos-dscp-table select').length);
-      const sched = await page.evaluate(() => (document.getElementById('qos-sched').textContent.match(/Port /g) || []).length);
-      if (!/^[0-3]$/.test(mode) || pcp !== 8 || dscp !== 8 || sched !== portNums.length) {
-        throw new Error('qos mode=' + mode + ' pcp=' + pcp + ' dscp=' + dscp + ' sched=' + sched);
+      if (!/^[0-3]$/.test(mode) || pcp !== 8 || dscp !== 8) {
+        throw new Error('qos mode=' + mode + ' pcp=' + pcp + ' dscp=' + dscp);
       }
-      console.log('OK: qos mode=' + mode + ' pcp=' + pcp + ' dscp=' + dscp + ' sched=' + sched);
+      console.log('OK: qos mode=' + mode + ' pcp=' + pcp + ' dscp=' + dscp);
     },
     storm: async () => {
       const rows = await page.$$eval('#storm-body tr', els => els.length);

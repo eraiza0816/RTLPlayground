@@ -1675,12 +1675,6 @@ function loadQos() {
         h += '</tr></tbody>';
         dscpEl.innerHTML = h;
       }
-      var schedEl = document.getElementById('qos-sched');
-      if (schedEl) {
-        var sh = '';
-        j.sched.forEach(function(s, i) { sh += 'Port ' + (i + 1) + ': ' + s + '<br>'; });
-        schedEl.innerHTML = sh;
-      }
     } catch (e) {}
   });
 }

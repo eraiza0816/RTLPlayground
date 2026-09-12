@@ -793,7 +793,7 @@ void send_storm(int s)
 
 void send_qos(int s)
 {
-	struct json_object *v, *pcp, *dscp, *sched;
+	struct json_object *v, *pcp, *dscp;
 	const char *jstring;
 	char *header = "HTTP/1.1 200 OK\r\n"
 		"Content-Type: application/json; charset=UTF-8\r\n\r\n";
@@ -807,10 +807,6 @@ void send_qos(int s)
 	for (int i = 0; i < 64; i++)
 		json_object_array_add(dscp, json_object_new_int(0));
 	json_object_object_add(v, "dscp", dscp);
-	sched = json_object_new_array_ext(PORTS);
-	for (int i = 0; i < PORTS; i++)
-		json_object_array_add(sched, json_object_new_string("S1S1S1S1S1S1S1S1"));
-	json_object_object_add(v, "sched", sched);
 	emit(s, header, strlen(header));
 	jstring = json_object_to_json_string_ext(v, JSON_C_TO_STRING_PLAIN);
 	emit(s, jstring, strlen(jstring));

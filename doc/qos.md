@@ -42,7 +42,9 @@ The "QoS" panel shows:
 - the priority decision mode selector (Off / PCP / DSCP / PCP+DSCP)
 - the PCP → queue table (8 selectors)
 - the DSCP → queue table (64 values, edited in 8-column groups)
-- the per-port scheduling summary
+
+The per-port scheduling (`qos sched <port> strict|wfq [weight]`) is
+console-only with no readout; the queue state is set, not displayed.
 
 ## JSON endpoint
 
@@ -51,13 +53,10 @@ The "QoS" panel shows:
 ```json
 {"mode":0,
  "pcp":[0,1,2,3,4,5,6,7],
- "dscp":[0,0,0,...],       // 64 entries
- "sched":["S1S1S1S1S1S1S1S1", ...]}  // per port
+ "dscp":[0,0,0,...]}       // 64 entries
 ```
 
-`mode` is 0=off, 1=pcp, 2=dscp, 3=both.  `sched` strings encode the
-queue scheduling of each port (`S1` = strict for queue 1, `W1` = WFQ
-with weight 1, ...).
+`mode` is 0=off, 1=pcp, 2=dscp, 3=both.
 
 ## rtlpctl
 

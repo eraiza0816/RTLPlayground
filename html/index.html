@@ -458,7 +458,7 @@
     <button class="btn" onclick="loadEeprom()" data-i18n="sfp_refresh">Refresh</button>
     <button class="btn" onclick="downloadBin()" data-i18n="sfp_download">Download .bin</button>
     <input type="file" id="uploadfile" accept=".bin" style="display:none" onchange="uploadBin(this)">
-    <button class="btn" onclick="document.getElementById('uploadfile').click()" data-i18n="sfp_upload">Upload .bin</button>
+    <button class="btn" id="uploadbtn" onclick="document.getElementById('uploadfile').click()" data-i18n="sfp_upload">Upload .bin</button>
     <button class="btn btn-success" onclick="saveBackup()" data-i18n="sfp_save">Save Backup</button>
     <button class="btn btn-danger" onclick="restoreBackup()" data-i18n="sfp_restore">Restore Backup</button>
     <button class="btn" onclick="cloneEeprom()" data-i18n="sfp_clone">Clone from Flash</button>

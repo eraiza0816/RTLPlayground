@@ -1014,17 +1014,26 @@ static void sfp_cmd_checksum(uint8_t slot)
 
 static void sfp_cmd_bulk(uint8_t slot)
 {
+	/* NOTE: command lines are capped at 127 chars, so a full 512-char
+	 * payload never arrives here intact; the WebUI uploads in single
+	 * byte writes instead (see uploadBin). A short or malformed payload
+	 * aborts without writing: flash_buf may hold stale bytes. */
 	if (cmd_words_len < 4) return;
 	uint8_t bulk_idx = cmd_words_b[3];
 	for (uint16_t bulk_i = 0; bulk_i < 256; bulk_i++) {
 		uint8_t bh = sfp_hex(cmd_buffer[bulk_idx]);
 		uint8_t bl = sfp_hex(cmd_buffer[bulk_idx + 1]);
-		if (bh > 15 || bl > 15) { print_string("Invalid hex\n"); break; }
+		if (bh > 15 || bl > 15) {
+			print_string("Invalid hex\n");
+			return;
+		}
 		flash_buf[bulk_i] = (bh << 4) | bl;
 		bulk_idx += 2;
 	}
-	sfp_bulk_write(slot);
-	print_string(" Bulk write OK\n");
+	if (sfp_bulk_write(slot))
+		print_string(" Bulk write failed!\n");
+	else
+		print_string(" Bulk write OK\n");
 }
 
 static void sfp_cmd_write(uint8_t slot)

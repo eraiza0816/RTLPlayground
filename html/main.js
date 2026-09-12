@@ -1610,15 +1610,46 @@ function downloadBin() {
 function uploadBin(input) {
   var file = input.files[0];
   if (!file) return;
-  if (!sfpNeedA0()) return;
   if (file.size != 256) { notify(t('sfp_bad_size') || 'File must be exactly 256 bytes.', 'error'); return; }
+  if (!sfpNeedA0()) return;
   if (!confirm('SFP ' + (sfpSlot + 1) + ': ' + (t('sfp_write_confirm') || 'write file to EEPROM?') + ' (' + file.name + ')')) return;
   var reader = new FileReader();
   reader.onload = function(e) {
+    /* Command lines are capped at 127 chars, so a 512-char bulk payload
+     * cannot go through /cmd: send 256 single-byte writes instead, with
+     * progress on the button and a read-back verification at the end.
+     * Bytes 63/95 are skipped in the comparison: the firmware maintains
+     * the checksums itself and fixes them when they arrive wrong. */
     var data = new Uint8Array(/** @type {ArrayBuffer} */ (e.target.result));
-    var hexStr = '';
-    for (var i = 0; i < 256; i++) hexStr += hex(data[i]);
-    fetchAPI('POST', '/cmd', function() { notify(t('sfp_write_done') || 'Write complete.', 'success'); loadEeprom(); }, 'sfp ' + (sfpSlot + 1) + ' bulk ' + hexStr + pwArg());
+    var pw = pwArg();
+    var btn = document.getElementById('uploadbtn');
+    var upLabel = t('sfp_upload') || 'Upload .bin';
+    var i = 0, done = false;
+    function finish(msg, cls) {
+      if (done) return; done = true;
+      if (btn) { btn.disabled = false; btn.textContent = upLabel; }
+      notify(msg, cls);
+    }
+    setTimeout(function() {
+      if (!done) finish(t('sfp_write_stall') || 'Still writing — verify in the editor before retrying.', 'error');
+    }, 300000);
+    if (btn) btn.disabled = true;
+    (function next() {
+      if (i >= 256) {
+        loadEeprom();
+        setTimeout(function() {
+          var bad = 0;
+          for (var k = 0; k < 256; k++) {
+            if (k === 63 || k === 95) continue;
+            if (sfpData[k] !== data[k]) bad++;
+          }
+          finish(bad ? (t('sfp_verify_fail') || 'Verify failed.') + ' ' + bad + '/256' : (t('sfp_write_done') || 'Write complete.'), bad ? 'error' : 'success');
+        }, 1200);
+        return;
+      }
+      if (btn) btn.textContent = (t('sfp_writing') || 'Writing ') + i + '/256';
+      fetchAPI('POST', '/cmd', function() { i++; next(); }, 'sfp ' + (sfpSlot + 1) + ' write ' + hex(i) + ' ' + hex(data[i]) + pw);
+    })();
   };
   reader.readAsArrayBuffer(file);
 }

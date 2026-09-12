@@ -220,7 +220,13 @@ read/write operations:
 > sfp <slot> bulk <512-hex-chars>
   Writes all 256 bytes of the EEPROM at once using a hex string of exactly
   512 characters (two hex chars per byte). The checksum is automatically
-  fixed after the write.
+  fixed after the write. Note: command lines are capped at 127 characters,
+  so this form cannot arrive intact over the console or /cmd; the WebUI
+  "Upload .bin" sends 256 single-byte writes instead (with progress and a
+  read-back verification). A `--pw` password must come before the hex
+  payload (`sfp <slot> bulk --pw <hex8> <hex>`). Invalid hex aborts
+  without writing anything, and the write result is reported instead of
+  a blanket OK.
 
 > sfp <slot> describe
   Displays formatted module information: identifier, connector type, vendor
@@ -274,6 +280,10 @@ Features:
   A0h only, the diagnostics page is read-only)
 - Download the current page as a `.bin` file
 - Upload a `.bin` file (exactly 256 bytes) to write the entire EEPROM
+  (sent as 256 single-byte writes with progress and a read-back
+  verification; bytes 63/95 are maintained by the firmware and skipped
+  in the comparison — note some modules also drift in vendor scratch
+  bytes such as 225-231, which the verification may flag)
 - Vendor, part number, serial number, signalling rate and checksum
   validity (CC_BASE/CC_EXT, recomputed in the browser) are displayed
   at the top; on the A2h page the live diagnostics (temperature,

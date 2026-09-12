@@ -2339,7 +2339,7 @@ struct mode_entry {
 
 __code struct mode_entry mode_allow[] = {
 	{"reset",       (1<<MODE_PRIVILEGED)},
-	{"sfp",         (1<<MODE_PRIVILEGED)},
+	{"sfp",         (1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
 	{"stat",        (1<<MODE_EXEC)|(1<<MODE_PRIVILEGED)|(1<<MODE_CONFIG)},
 	{"flash",       (1<<MODE_PRIVILEGED)},
 	{"sds",         (1<<MODE_PRIVILEGED)},

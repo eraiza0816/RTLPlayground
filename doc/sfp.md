@@ -164,9 +164,12 @@ uint8_t sfp_write_reg(uint8_t slot, uint8_t reg, uint8_t data) __reentrant
 
 Many modules require a 4-byte password to unlock the EEPROM for writes. The password
 is written to the A2h device (0x51) at registers 0x7B-0x7E (the module's MCU opens a
-short unlock window afterwards). If a write without a password is rejected, the
-firmware falls back through a built-in dictionary of 39 passwords (from
-`sfp-tool/passwords.json`, `00000000` first) and retries the write after each one.
+short unlock window afterwards). Every write tries, in order: a plain write, the
+`--pw` password when one was given, then each entry of the built-in dictionary
+(`sfp_pw_dict.inc`, `00000000` first) — no manual input is needed when the
+dictionary is compiled in. `information.json` reports the entry count as
+`sfp_pw_dict` (1 = only the inline all-zero key, i.e. effectively empty);
+the WebUI hides its manual password field when the count is above 1.
 
 The dictionary lives in `sfp_pw_dict.inc`, which is gitignored (generated from
 passwords.json). CI builds create an empty stub so the firmware compiles with only

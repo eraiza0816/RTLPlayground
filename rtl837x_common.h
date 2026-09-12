@@ -161,6 +161,7 @@ void write_char_no_syslog(char c);
 void write_char(char c);
 void print_reg(uint16_t reg);
 uint8_t sfp_read_reg(uint8_t slot, uint8_t reg);
+uint8_t sfp_pw_dict_count(void) __banked;
 void reg_bit_set(uint16_t reg_addr, char bit);
 void reg_bit_clear(uint16_t reg_addr, char bit);
 uint8_t reg_bit_test(uint16_t reg_addr, char bit);

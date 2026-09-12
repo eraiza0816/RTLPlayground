@@ -326,6 +326,15 @@ const sysLabels = {
         var opt2 = document.querySelector('#slotsel option[value="1"]');
         if (opt2) opt2.style.display = (info.sfp_slot_1 === undefined) ? 'none' : '';
         if (info.sfp_slot_1 === undefined && $in('slotsel').value === '1') $in('slotsel').value = '0';
+        /* The firmware walks its password dictionary on its own; only
+         * ask for a manual password when no dictionary is compiled in
+         * (count 1 = just the inline all-zero key, or key absent). */
+        var pwrow = document.getElementById('pwrow');
+        if (pwrow) {
+          var hide = (info.sfp_pw_dict || 0) > 1;
+          pwrow.style.display = hide ? 'none' : '';
+          if (hide) $in('pwinput').value = '';
+        }
       } catch (e) {}
       loadEeprom();
     });
@@ -1458,7 +1467,9 @@ function loadEeprom() {
 function showEeprom() {
   var h = '<table style="border-collapse:collapse"><tr><th></th>';
   for (var c = 0; c < 16; c++) h += '<th style="width:24px;font-size:10px;color:#888">' + c.toString(16) + '</th>';
-  h += '<th style="width:120px;font-size:10px;color:#888">ASCII</th></tr>';
+  /* No ASCII column on the diagnostics page: binary readings are meaningless as text. */
+  if (!sfpPage) h += '<th style="width:120px;font-size:10px;color:#888">ASCII</th>';
+  h += '</tr>';
   for (var r = 0; r < 16; r++) {
     h += '<tr><td style="font-size:10px;color:#888">' + hex(r << 4) + '</td>';
     var ascii = '';
@@ -1468,7 +1479,8 @@ function showEeprom() {
       h += ' onclick="editByte(' + (r * 16 + c) + ')" title="Click to edit">' + hex(b) + '</td>';
       ascii += (b >= 32 && b < 127) ? String.fromCharCode(b) : '.';
     }
-    h += '<td style="border:1px solid #ddd;padding-left:8px;font-size:11px;color:#666">' + ascii + '</td></tr>';
+    if (!sfpPage) h += '<td style="border:1px solid #ddd;padding-left:8px;font-size:11px;color:#666">' + ascii + '</td>';
+    h += '</tr>';
   }
   h += '</table>';
   document.getElementById('hexdump').innerHTML = h;

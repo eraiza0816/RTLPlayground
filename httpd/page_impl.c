@@ -198,14 +198,26 @@ void send_sfp_info(uint8_t sfp)
 	}
 }
 
+/* A0h (page 0) and A2h diagnostics (page 1, bit 7 selects I2C device
+ * 0x51) share one function. The page rides a global (not a parameter)
+ * and all locals are XDATA: the 8051 internal RAM is full.
+ * A2h is read-only: there is no A2h write path (the CLI write is
+ * A0h-only; A2h holds the password window and live diagnostics). */
+__xdata uint8_t sfp_eeprom_page;
+
 void send_sfp_eeprom(uint8_t slot)
 {
+	/* Locals live in XDATA: the 8051 internal RAM is full. */
+	__xdata uint16_t i;
+	__xdata uint8_t base = sfp_eeprom_page ? 0x80 : 0;
 	slen = strtox(outbuf, HTTP_RESPONCE_JSON);
 	slen += strtox(outbuf + slen, "{\"slot\":");
 	itoa_html(slot);
+	slen += strtox(outbuf + slen, ",\"page\":");
+	itoa_html(sfp_eeprom_page);
 	slen += strtox(outbuf + slen, ",\"data\":\"");
-	for (uint16_t i = 0; i < 256; i++) {
-		byte_to_html(sfp_read_reg(slot, (uint8_t)i));
+	for (i = 0; i < 256; i++) {
+		byte_to_html(sfp_read_reg(slot, (uint8_t)(i | base)));
 	}
 	slen += strtox(outbuf + slen, "\"}");
 }

@@ -264,15 +264,38 @@ in a graphical hex editor:
 
 
 Features:
-- Select SFP slot (1 or 2) and refresh to read the current EEPROM contents
-- Click any hex byte to edit it inline (sends `sfp write` via the CLI)
-- Download the current EEPROM as a `.bin` file
+- Select SFP slot (1 or 2; the second option is hidden on single-SFP
+  machines) and the page (A0h EEPROM or A2h diagnostics), then refresh
+  to read the current contents
+- Click any hex byte to edit it inline (sends `sfp write` via the CLI;
+  A0h only, the diagnostics page is read-only)
+- Download the current page as a `.bin` file
 - Upload a `.bin` file (exactly 256 bytes) to write the entire EEPROM
-- Vendor, part number, serial number and module type are displayed at the top
+- Vendor, part number, serial number, signalling rate and checksum
+  validity (CC_BASE/CC_EXT, recomputed in the browser) are displayed
+  at the top; on the A2h page the live diagnostics (temperature,
+  voltage, Tx bias, Tx/Rx power) are decoded instead
+- Clone the flash buffer into the module (`sfp clone`; load the buffer
+  via bulk upload or restore first)
 
 The editor fetches data via the JSON endpoint:
 ```
-GET /sfp_eeprom.json?slot=<n>
-Returns: {"slot":<n>,"data":"<256 hex bytes>"}
+GET /sfp_eeprom.json?slot=<n>&page=<0|1>
+Returns: {"slot":<n>,"page":<p>,"data":"<256 hex bytes>"}
 ```
+
+## A2h diagnostics page
+
+The upper 256 bytes (I2C device 0x51) hold the password unlock window
+(registers 0x7B-0x7E) and the live diagnostic values. The editor shows
+them decoded per SFF-8472 (temperature in 1/256 °C, Vcc in 100 µV,
+Tx bias in 2 µA, Tx/Rx power in 0.1 µW, same formulas as the
+Prometheus exporter):
+
+- temperature: bytes 96-97, Vcc: 98-99, Tx bias: 100-101,
+  Tx power: 102-103, Rx power: 104-105
+
+There is deliberately no A2h write path: the serial `sfp write`
+command targets the A0h EEPROM only, and the WebUI refuses mutating
+operations while the A2h page is selected.
 

@@ -246,6 +246,7 @@ async function waitForNode(fn, timeout = 10000, what = 'condition') {
         if (pg === 'port') await waitFor(page, () => document.querySelectorAll('#speedbody tr').length >= 2, 15000, pg + ' rows');
         if (pg === 'bw') await waitFor(page, () => document.querySelectorAll('#bw-body tr').length >= 2, 15000, pg + ' rows');
         if (pg === 'storm') await waitFor(page, () => document.querySelectorAll('#storm-body tr').length >= 2, 15000, pg + ' rows');
+        if (pg === 'qos') await waitFor(page, () => document.querySelectorAll('#qos-pcp-table select').length === 8, 15000, pg + ' pcp selects');
         await check();
       } catch (e) {
         failures.push('check(' + pg + '): ' + e.message);

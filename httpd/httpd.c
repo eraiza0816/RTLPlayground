@@ -621,13 +621,21 @@ static uint8_t handle_api_path(__xdata uint8_t *q)
 		send_lag();
 		return 1;
 	} else if (is_word(q, "/sfp_eeprom.json")) {
+		/* Locals live in XDATA: the 8051 internal RAM is full. */
+		__xdata uint8_t sslot;
 		api_query_key = "slot";
 		api_query_u16(q);
 		if (short_parsed >= machine.n_sfp) {
 			send_bad_request();
 			return 1;
 		}
-		send_sfp_eeprom((uint8_t)short_parsed);
+		sslot = (uint8_t)short_parsed;
+		sfp_eeprom_page = 0;
+		api_query_key = "page";
+		api_query_u16(q);
+		if (short_parsed)
+			sfp_eeprom_page = 1;
+		send_sfp_eeprom(sslot);
 		return 1;
 	} else if (is_word(q, "/vlanlist")) {
 		send_vlanlist();

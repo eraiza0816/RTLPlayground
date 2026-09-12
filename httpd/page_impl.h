@@ -21,6 +21,7 @@ void send_cmd_log(void);
 void send_lag(void);
 void send_vlanlist(void);
 void send_sfp_eeprom(uint8_t slot);
+extern __xdata uint8_t sfp_eeprom_page;
 void send_sfp_diag(void);
 void send_running_config(void);
 void send_ping(void) __banked;

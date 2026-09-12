@@ -58,9 +58,10 @@ extern __xdata char sfp_module_model[2][17];
 extern __xdata char sfp_module_serial[2][17];
 extern __xdata uint8_t sfp_options[2];
 extern __xdata char hostname[32];
+extern __xdata struct uip_eth_addr uip_ethaddr;
 
 __code uint8_t * __code HTTP_RESPONCE_JSON = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nCache-Control: private, max-age=1\r\n\r\n";
-__code uint8_t * __code HTTP_RESPONCE_TXT = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n";
+__code uint8_t * __code HTTP_RESPONCE_TXT = "HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Type: text/plain\r\n\r\n";
 
 // Convert uint8_t to ascii HEX char push on html-buffer.
 // Note: not __inline — SDCC's mcs51 backend bloats code at the ~25 call
@@ -359,15 +360,18 @@ void send_vlan(uint16_t vlan)
 }
 
 
-void send_counters(char port)
+bool send_counters(char port)
 {
-	dbg_string("send_counters called: "); dbg_byte(port); dbg_char('\n');
-	slen = strtox(outbuf, HTTP_RESPONCE_JSON);
-	dbg_string("sending counters\n");
-	dbg_byte(port);
+	uint8_t phys_port_idx = port - 1;
+	if (phys_port_idx > (machine.max_port - machine.min_port))
+		goto err;
 	/* phys_to_log_port is 0-based (physical port N = index N-1, see
 	 * send_status); the query gives a 1-based physical port number. */
-	uint8_t i = machine.phys_to_log_port[port - 1];
+	uint8_t i = machine.phys_to_log_port[phys_port_idx];
+	dbg_string("send_counters called: "); dbg_byte(phys_port_idx); dbg_char('\n');
+	slen = strtox(outbuf, HTTP_RESPONCE_JSON);
+	dbg_string("sending counters\n");
+	dbg_byte(phys_port_idx);
 	slen += strtox(outbuf + slen, "[");
 	for (uint8_t counter = 0; counter < 0x37; counter++) {
 		STAT_GET(counter, i);
@@ -379,6 +383,12 @@ void send_counters(char port)
 			char_to_html(',');
 	}
 	char_to_html(']');
+
+	return false;
+
+err:
+	dbg_string("Error: counters: phys port does not exist\n");
+	return true;
 }
 
 
@@ -455,7 +465,7 @@ void send_l2(uint16_t idx)
 
 			// type
 			reg_read_m(RTL837x_L2_DATA_OUT_C);
-			if (sfr_data[2] & 0x1)
+			if (sfr_data[1] & 0x1)
 				slen += strtox(outbuf + slen, "\",\"type\":\"s\",\"port\":");
 			else
 				slen += strtox(outbuf + slen, "\",\"type\":\"l\",\"port\":");
@@ -501,25 +511,33 @@ void l2_delete(uint16_t idx)
 	if (!(sfr_data[0] & 0x20)) {
 		char_to_html('0');
 	} else {
+		uint8_t is_our_mac = uip_ethaddr.addr[0] == sfr_data[2] && uip_ethaddr.addr[1] == sfr_data[3];
 		sfr_data[0] &= 0x3f; // Clear SPA
 		reg_write_m(RTL837x_TBL_DATA_IN_B);
 
 		// Second half of MAC is copied
 		reg_read_m(RTL837x_L2_DATA_OUT_A);
-		reg_write_m(RTL837x_TBL_DATA_IN_A);
+		if (is_our_mac && uip_ethaddr.addr[2] == sfr_data[0] && uip_ethaddr.addr[3] == sfr_data[1]
+		    && uip_ethaddr.addr[4] == sfr_data[2] && uip_ethaddr.addr[5] == sfr_data[3]) {
+			// The switch's own entry: deleting it would blackhole
+			// management unicast until it is re-learned.
+			char_to_html('0');
+		} else {
+			reg_write_m(RTL837x_TBL_DATA_IN_A);
 
-		reg_read_m(RTL837x_L2_DATA_OUT_C);
-		sfr_data[3] &= 0xc0; // Clear age, auth and second part of ports
-		sfr_data[1] &= 0xfe; // Clear nosalearn
-		reg_write_m(RTL837x_TBL_DATA_IN_C);
+			reg_read_m(RTL837x_L2_DATA_OUT_C);
+			sfr_data[3] &= 0xc0; // Clear age, auth and second part of ports
+			sfr_data[1] &= 0xfe; // Clear nosalearn
+			reg_write_m(RTL837x_TBL_DATA_IN_C);
 
-		reg_read_m(RTL837x_TBL_DATA_0);
-		REG_WRITE(RTL837x_TBL_DATA_0, sfr_data[0], sfr_data[1], TBL_L2_UNICAST, sfr_data[3]);
+			reg_read_m(RTL837x_TBL_DATA_0);
+			REG_WRITE(RTL837x_TBL_DATA_0, sfr_data[0], sfr_data[1], TBL_L2_UNICAST, sfr_data[3]);
 
-		REG_WRITE(RTL837X_TBL_CTRL, idx >> 8, idx, TBL_L2_UNICAST, TBL_WRITE | TBL_EXECUTE);
-		TBL_BUSY_WAIT();
+			REG_WRITE(RTL837X_TBL_CTRL, idx >> 8, idx, TBL_L2_UNICAST, TBL_WRITE | TBL_EXECUTE);
+			TBL_BUSY_WAIT();
 
-		char_to_html('1');
+			char_to_html('1');
+		}
 	}
 	char_to_html('}');
 }

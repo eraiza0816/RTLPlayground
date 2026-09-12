@@ -893,6 +893,7 @@ function fillL2(s) {
       tr.cells[1].textContent = e.mac;
       tr.cells[2].textContent = e.vlan;
       tr.cells[3].textContent = e.type;
+      tr.cells[4].innerHTML = (e.port === 'CPU') ? '' : '<button class="btn" style="padding:2px 8px;font-size:11px;" onclick="delL2(' + e.idx + ')">' + (t('l2_delete') || 'Delete') + '</button>';
     } else {
       tr = document.createElement('tr');
       tr.setAttribute('data-idx', e.idx);
@@ -900,7 +901,7 @@ function fillL2(s) {
       td = tr.insertCell(); td.textContent = e.mac;
       td = tr.insertCell(); td.textContent = e.vlan;
       td = tr.insertCell(); td.textContent = e.type;
-      td = tr.insertCell(); td.innerHTML = '<button class="btn" style="padding:2px 8px;font-size:11px;" onclick="delL2(' + e.idx + ')">' + (t('l2_delete') || 'Delete') + '</button>';
+      td = tr.insertCell(); td.innerHTML = (e.port === 'CPU') ? '' : '<button class="btn" style="padding:2px 8px;font-size:11px;" onclick="delL2(' + e.idx + ')">' + (t('l2_delete') || 'Delete') + '</button>';
     }
     tbody.appendChild(tr);
   });
@@ -908,7 +909,13 @@ function fillL2(s) {
 }
 
 function delL2(idx) {
-  fetchAPI('GET', '/l2_del.json?idx=' + idx, function() { notify('L2 entry deleted.', 'success'); });
+  fetchAPI('GET', '/l2_del.json?idx=' + idx, function() {
+    notify('L2 entry deleted.', 'success');
+    var tbody = document.getElementById('l2body');
+    var tr = tbody && tbody.querySelector('tr[data-idx="' + idx + '"]');
+    if (tr) tr.parentNode.removeChild(tr);
+    lastL2Sig = '';
+  });
 }
 
 function applyIGMP() {

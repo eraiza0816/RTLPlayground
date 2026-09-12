@@ -309,9 +309,19 @@ void parse_lag(void)
 		return;
 	}
 
-	if (cmd_words_len < 2 || !isnumber(cmd_buffer[cmd_words_b[1]]))
+	if (cmd_words_len < 3 || !isnumber(cmd_buffer[cmd_words_b[1]]))
 		goto err;
+	// Groups are 1-based on the command line, matching "lag show" and
+	// the WebUI ("LAG Group 1" is index 0 in the registers).
 	group = cmd_buffer[cmd_words_b[1]] - '0';
+	if (group < 1 || group > 4)
+		goto err;
+	group--;
+
+	if (cmd_compare(2, "d")) {
+		port_lag_members_set(group, 0);
+		return;
+	}
 
 	uint8_t w = 2;
 	while (w < cmd_words_len) {
@@ -327,7 +337,7 @@ void parse_lag(void)
 	port_lag_members_set(group, members);
 	return;
 err:
-	print_string("Bad lag cmd\n");
+	print_string("Error: lag (show | <1-4> (d | <port>...))\n");
 }
 
 
@@ -336,12 +346,13 @@ void parse_lag_hash(void)
 	__xdata uint8_t group;
 	__xdata uint8_t hash = 0;
 
-	// TODO: validate group range (0-3) before port_lag_hash_set call
+	// Groups are 1-based on the command line, like "lag".
 	group = cmd_buffer[cmd_words_b[1]] - '0';
-	if (!isnumber(cmd_buffer[cmd_words_b[1]]) || group > 3) {
-		print_string("Link aggregation group must be 0-3!\n");
+	if (!isnumber(cmd_buffer[cmd_words_b[1]]) || group < 1 || group > 4) {
+		print_string("Error: laghash <1-4> [spa|smac|dmac|sip|dip|sport|dport]\n");
 		return;
 	}
+	group--;
 
 	uint8_t w = 2;
 	while (w < cmd_words_len) {
@@ -396,17 +407,20 @@ void parse_vlan(void)
 			register uint8_t i = 0;
 			while (cmd_buffer[cmd_words_b[w] + i] != ' ' && cmd_buffer[cmd_words_b[w] + i] != '\0')
 				i++;
-			vlan_name_remove(vlan_settings.vlan);
 			// A lone '-' in the name position clears the VLAN name
 			// instead of storing a new one.
 			uint8_t name_is_clear = (cmd_buffer[cmd_words_b[w]] == '-' &&
 						 (cmd_buffer[cmd_words_b[w] + 1] == ' ' ||
 						  cmd_buffer[cmd_words_b[w] + 1] == '\0'));
-			if (!name_is_clear) {
-				if (vlan_ptr + 3 + i + 2 > VLAN_NAMES_SIZE) {
-					print_string("VLAN name storage full\n");
-					goto err;
-				}
+			if (name_is_clear) {
+				vlan_name_remove(vlan_settings.vlan);
+			} else if (vlan_ptr + 3 + i + 2 > VLAN_NAMES_SIZE) {
+				// Check before removing: an oversized name must not
+				// destroy the stored one, and the ports given on the
+				// same line are still applied below.
+				print_string("VLAN name table full, name ignored\n");
+			} else {
+				vlan_name_remove(vlan_settings.vlan);
 				vlan_names[vlan_ptr++] = hex[(vlan_settings.vlan >> 8) & 0xf];
 				vlan_names[vlan_ptr++] = hex[(vlan_settings.vlan >> 4) & 0xf] ;
 				vlan_names[vlan_ptr++] = hex[vlan_settings.vlan & 0xf];

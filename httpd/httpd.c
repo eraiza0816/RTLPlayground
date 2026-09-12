@@ -591,11 +591,9 @@ static uint8_t handle_api_path(__xdata uint8_t *q)
 	} else if (is_word(q, "/counters.json")) {
 		api_query_key = "port";
 		api_query_u16(q);
-		if (short_parsed < 1 || short_parsed > 9) {
+		if (send_counters((char)short_parsed)) {
 			send_bad_request();
-			return 1;
 		}
-		send_counters((char)short_parsed);
 		return 1;
 	} else if (is_word(q, "/eee.json")) {
 		send_eee();
@@ -1080,7 +1078,7 @@ void handle_post(void)
 		send_not_found();
 		return;
 	}
-	slen = strtox(outbuf, "HTTP/1.1 200 OK\r\n\r\n");
+	slen = strtox(outbuf, HTTP_RESPONCE_TXT);
 	return;
 bad_request:
 	send_bad_request();

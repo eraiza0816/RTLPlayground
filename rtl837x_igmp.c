@@ -525,15 +525,10 @@ void igmp_packet_handler(void) __banked
 			reg_read_m(RTL837x_L2_DATA_OUT_C);
 			entry.pmask |= ((uint16_t)sfr_data[3]) << 2;
 		}
-		// Update (found) entry with portmask from trapped Packet
-		// Port number is 4 bits in the tag; validate it before shifting
-		// (a bogus value would shift a 32-bit mask by up to 255).
-		{
-			uint8_t gport = IGMP_I->rtl_tag.pmask >> 8;
-			if (gport > 8)
-				return;
-			entry.pmask |= (1L << gport);
-		}
+		// Update (found) entry with portmask from trapped Packet.
+		// The source port is 4 bits in the tag; mask it before shifting
+		// (a bogus value would shift by up to 255 and hang the CPU).
+		entry.pmask |= ((uint16_t)1) << ((IGMP_I->rtl_tag.pmask >> 8) & 0x0f);
 //		print_string("\nPort-Mask: "); print_short(entry.pmask); write_char('\n');
 	} else if (IGMP_I->igmp_rtype == 0x3){  // Leave group
 		if (sfr_data[2] & 0x10) {
@@ -549,13 +544,9 @@ void igmp_packet_handler(void) __banked
 			print_short(idx);
 			write_char('\n');
 #endif
-			// Remove portmask of IGMP packet from entry
-			{
-				uint8_t gport = IGMP_I->rtl_tag.pmask >> 8;
-				if (gport > 8)
-					return;
-				entry.pmask &= ~(1L << gport);
-			}
+			// Remove portmask of IGMP packet from entry (source port is
+			// 4 bits in the tag; mask it before shifting).
+			entry.pmask &= ~(((uint16_t)1) << ((IGMP_I->rtl_tag.pmask >> 8) & 0x0f));
 //			print_string("\nPort-Mask: "); print_short(entry.pmask); write_char('\n');
 		} else {
 			print_string("IGMP Entry already deleted\n");
